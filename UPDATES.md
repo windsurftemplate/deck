@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 12 packages, 30 commits.
-Tests (counted): **184 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 34 commits.
+Tests (counted): **201 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -247,10 +247,36 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 28. `feat: workspace packs and starting setup step`
 29. `chore: MIT license, security policy, contributing guide, third-party notices`
 30. `feat: snapshots and picture attachments, images on all providers, spoken replies`
+31. `fix: Mac installer strips file labels and builds outside iCloud folders so signing succeeds`
+32. `feat: streaming replies with typing dots on all providers; saved chats sidebar`
+33. `feat: second brain (files, text, links, Obsidian, Notion, Apple Notes, notes) with 3D map; document recall marked untrusted`
+34. `feat: livelier station (space, props, live screens, crew at consoles)`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Streaming chat, saved chats, second brain, livelier station
+
+**Changed**
+- Chat streams: replies appear word by word with typing dots until the first words arrive. Streaming works on Claude, OpenAI and Gemini (each provider's event stream, tool calls rebuilt from pieces). The Chief of Staff walks to its console and types while answering.
+- Saved chats: a Chats list (rename, delete) and New chat. Each chat keeps its own history in the encrypted workspace; memory still spans all chats. Telegram is one ongoing chat.
+- Second brain (`packages/ingest`, memory documents): drop or choose files (PDF, Word, Markdown, text, CSV, JSON, HTML; 25 MB each), paste text, add a web page (links to this computer or a private network refused), import an Obsidian vault or Markdown folder, a Notion export zip, or Apple Notes (Mac, asks permission), and write notes in the app with [[links]]. Everything is split into passages, embedded with the memory model, and found by keyword and meaning. Re-imports skip notes already added. Switching the memory search model rebuilds document search too.
+- The crew recalls document passages alongside facts, always wrapped as untrusted data (they may contain instructions from strangers).
+- Brain view (header: Deck, Brain, List): a 3D map of what the crew knows: you, people and things from facts, and every document, linked by relationships, note links and mentions. Turn, zoom, search, click to read a document or a subject's facts, remove documents. Add, Notes and Library tabs beside it. The Archive station has an "Open the second brain" button.
+- Station: the outpost now sits on an asteroid in open space with a ringed planet and a moon; extra props, blinking wall lights, a rotating beacon; holo screens with live numbers (today's work and approvals, open issues, drafts, memory facts, documents and skills, tokens against the daily cap); crew members type at glowing consoles while working and take short walks when idle (all motion off with reduced motion).
+
+**Verified**
+- Streaming tests for each provider; agent loop passes streamed text with breaks between turns.
+- Saved chats: separate histories, naming from the first message, rename, delete, streamed text events.
+- Memory contract suite (both adapters): documents stored, searched, updated, deleted, recalled with citations; migration rebuilds documents.
+- Ingest tests: Markdown with front matter and wikilinks, HTML cleanup, text, PDF, unknown types refused, private links refused, page fetch, Notion zip, Apple Notes listing.
+- Engine: every way to add content, re-import skipping, passages wrapped as untrusted in the prompt, graph links, deletion; wall-screen numbers.
+- Desktop with a stand-in engine: typing dots then streamed text, chat list and reopening a chat, the Brain view with 51 points and 92 links, adding text, the upgraded station with live screens and working crew.
+- 201 TypeScript tests and 6 Rust tests pass (counted); `pnpm check` green; no secrets in the repo.
+
+**Not verified yet**
+- Real streaming, web pages and Apple Notes on your Mac.
 
 ## 2026-10-03: First real Mac install: signing fix
 

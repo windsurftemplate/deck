@@ -43,6 +43,7 @@ async function main() {
     "brain.document": (p) => engine.brain.document(Number((p as { id?: number })?.id)),
     "brain.delete": (p) => engine.brain.remove(Number((p as { id?: number })?.id)),
     "brain.graph": () => engine.brain.graph(),
+    "deck.stats": () => engine.deckStats(),
     "threads.list": async () => engine.threads.list(),
     "threads.messages": async (p) => engine.threads.messages(String((p as { id?: string })?.id ?? "")),
     "threads.rename": async (p) => engine.threads.rename(String((p as { id?: string })?.id ?? ""), String((p as { title?: string })?.title ?? "")),

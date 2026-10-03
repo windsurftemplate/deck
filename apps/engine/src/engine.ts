@@ -945,6 +945,25 @@ export class Engine {
     return "Agents resumed.";
   }
 
+  /** Numbers for the station's wall screens. */
+  async deckStats() {
+    const tasks = this.board.list();
+    const { facts } = await this.store.graph();
+    const [docs, skills, issues] = await Promise.all([this.store.documents(), this.store.skills(), this.tracker.list({})]);
+    return {
+      running: tasks.filter((t) => t.status === "running").length,
+      waiting: this.approvals.pending().length,
+      done: tasks.filter((t) => t.status === "done").length,
+      issuesOpen: issues.filter((i) => !["done", "cancelled"].includes(i.status)).length,
+      facts: facts.length,
+      docs: docs.length,
+      skills: skills.filter((k) => k.status === "active").length,
+      drafts: this.drafts.length,
+      tokens: this.router.spend().tokens,
+      tokenCap: this.d.settings.models.dailyTokenCap,
+    };
+  }
+
   status(): string {
     const sp = this.router.spend();
     return [`Agents: ${this.stopped ? "stopped" : "running"}`, `Tokens today: ${sp.tokens.toLocaleString("en-US")} of ${this.d.settings.models.dailyTokenCap.toLocaleString("en-US")}`, `Waiting for you: ${this.approvals.pending().length}`].join("\n");

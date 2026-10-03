@@ -194,6 +194,9 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P5.3 | One-click installers for Mac, Windows and Linux | Double-click installs and opens deck | done (Linux verified here) |
 | P5.4 | Camera snapshots and picture attachments; images on Claude, OpenAI and Gemini | Off by default; camera on only while taking a picture, with a badge; pictures never stored | done |
 | P5.5 | Open source the repo: MIT license, security policy, contributing guide, third-party notices | License chosen, full-history secret scan clean, no personal data | done (publish when you push) |
+| P5.7 | Chat like a chat app: replies stream word by word with typing dots (Claude, OpenAI, Gemini); saved chats sidebar with rename and delete | Text appears as it is written; each chat keeps its own history | done |
+| P5.8 | Second brain: drop files (PDF, Word, Markdown, text, HTML), paste text, add web pages, import Obsidian, Notion and Apple Notes, write notes; all searchable by the crew; 3D map of what it knows | Added content is recalled in chat, marked untrusted | done |
+| P5.9 | Station life: asteroid in space with a ringed planet, extra props, blinking lights and beacon, live wall screens (tasks, issues, drafts, memory, tokens, approvals), crew typing at glowing consoles while working, idle crew walking around | Screens show engine numbers; working crew types | done |
 | P5.6 | Hands-free voice: spoken replies done (computer's built-in voice); wake word todo | Off by default; mic indicator always on | partly done |
 
 ## How to use this file

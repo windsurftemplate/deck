@@ -7,7 +7,7 @@ import { STATIONS, STATUS_COLOR, STATUS_TEXT, type StationStatus } from "./stati
  * Imperative three.js scene; React drives it through the small API at the bottom.
  */
 const FLOOR_Y = 0.3;
-const MODELS = ["floor", "floor-panel", "floor-detail", "wall", "wall-window", "wall-banner", "wall-corner", "wall-door", "door-double-closed", "rail", "computer", "computer-screen", "computer-wide", "computer-system", "chair-headrest", "chair-armrest-headrest", "chair-cushion", "table-display-planet", "table-display-small", "table-display", "table-inset", "table-large", "display-wall", "display-wall-wide", "container", "container-tall", "container-wide", "container-flat", "container-flat-open", "structure", "structure-barrier-high", "structure-panel", "pipe", "pipe-ring-colored", "pipe-end-colored", "rocks", "skip-rocks", "skip", "stairs"];
+const MODELS = ["floor", "floor-panel", "floor-detail", "wall", "wall-window", "wall-banner", "wall-corner", "wall-door", "door-double-closed", "rail", "computer", "computer-screen", "computer-wide", "computer-system", "chair-headrest", "chair-armrest-headrest", "chair-cushion", "table-display-planet", "table-display-small", "table-display", "table-inset", "table-large", "display-wall", "display-wall-wide", "container", "container-tall", "container-wide", "container-flat", "container-flat-open", "structure", "structure-barrier-high", "structure-panel", "pipe", "pipe-ring-colored", "pipe-end-colored", "rocks", "skip-rocks", "skip", "stairs", "chair", "wall-detail", "wall-switch", "wall-pillar-banner", "bed-single-cover"];
 const PLACE: Record<string, { c: [number, number]; face: [number, number]; crew?: [number, number] }> = {
   command: { c: [0, -4], face: [0, -5.2], crew: [0, -4.4] },
   comms: { c: [-5.5, -4], face: [-4.8, -5.2], crew: [-4.8, -4.55] },
@@ -25,12 +25,30 @@ interface Crew {
   mesh: THREE.Group;
   legL: THREE.Mesh;
   legR: THREE.Mesh;
+  armL: THREE.Mesh;
+  armR: THREE.Mesh;
+  /** Glowing console face in front of the crew member; bright and flickering while working. */
+  console: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  nextWander: number;
   home: THREE.Vector3;
   face: [number, number];
   path: Step[];
   ring: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>;
   lamp: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
   bob: number;
+}
+
+export interface DeckStats {
+  running: number;
+  waiting: number;
+  done: number;
+  issuesOpen: number;
+  facts: number;
+  docs: number;
+  skills: number;
+  drafts: number;
+  tokens: number;
+  tokenCap: number;
 }
 
 export interface DeckOptions {
@@ -45,7 +63,7 @@ export class DeckScene {
   private camera = new THREE.PerspectiveCamera(30, 1, 0.1, 300);
   private world = new THREE.Group();
   private T: Record<string, THREE.Object3D> = {};
-  private extras: { mol?: THREE.Group; banks?: THREE.Mesh[]; core?: { col: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>; r1: THREE.Mesh; r2: THREE.Mesh }; wheel?: THREE.Group } = {};
+  private extras: { planet?: THREE.Group; lamps?: THREE.Mesh[]; beacon?: THREE.Group; mol?: THREE.Group; banks?: THREE.Mesh[]; core?: { col: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>; r1: THREE.Mesh; r2: THREE.Mesh }; wheel?: THREE.Group } = {};
   private crew: Record<string, Crew> = {};
   private status: Record<string, StationStatus> = Object.fromEntries(STATIONS.map((s) => [s.id, "idle"]));
   private task: Record<string, string> = {};
@@ -88,6 +106,7 @@ export class DeckScene {
     this.coreLight.position.set(0, 1.4, 4);
     this.scene.add(this.coreLight, this.world);
     this.ground();
+    this.sky();
     for (const s of STATIONS) {
       const sTag = document.createElement("div");
       sTag.className = "tag station";
@@ -100,6 +119,8 @@ export class DeckScene {
     this.input();
     this.ready = this.load(opts.assetBase ?? "kenney/").then(() => {
       this.build();
+      this.dress();
+      this.makeScreens();
       for (const s of STATIONS) if (PLACE[s.id]!.crew) this.makeCrew(s.id, s.color);
       for (const s of STATIONS) {
         const p = PLACE[s.id]!;
@@ -115,25 +136,130 @@ export class DeckScene {
     });
   }
 
+  /** The outpost sits on a small asteroid floating in space. */
   private ground() {
-    const c = document.createElement("canvas");
-    c.width = c.height = 128;
-    const g = c.getContext("2d")!;
-    g.fillStyle = "#323238";
-    g.fillRect(0, 0, 128, 128);
-    g.fillStyle = "#2C2C32";
-    g.fillRect(0, 0, 64, 64);
-    g.fillRect(64, 64, 64, 64);
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(30, 30);
-    t.colorSpace = THREE.SRGBColorSpace;
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ map: t, roughness: 1 }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.001;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
+    const geo = new THREE.CylinderGeometry(13.5, 9, 3.2, 40, 4);
+    const p = geo.attributes.position!;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      if (y < 1.5) {
+        const k = 1 + (Math.sin(i * 12.9898) * 43758.5453 % 1) * 0.12;
+        p.setX(i, p.getX(i) * k);
+        p.setZ(i, p.getZ(i) * k);
+        p.setY(i, y - Math.abs(Math.sin(i * 3.1)) * 0.6);
+      }
+    }
+    geo.computeVertexNormals();
+    const rock = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x4a4560, roughness: 1, flatShading: true }));
+    rock.position.y = -1.6;
+    rock.receiveShadow = true;
+    this.scene.add(rock);
   }
+
+  /** Outside: a dusk sky with stars, a ringed planet and a moon over the outpost. */
+  private sky() {
+    const c = document.createElement("canvas");
+    c.width = 4;
+    c.height = 256;
+    const g = c.getContext("2d")!;
+    const grad = g.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, "#0b0a13");
+    grad.addColorStop(0.5, "#1a1728");
+    grad.addColorStop(1, "#0b0a13");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 4, 256);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.scene.background = null;
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(200, 32, 16), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, depthWrite: false }));
+    this.scene.add(dome);
+    const pts = new Float32Array(2400 * 3);
+    for (let i = 0; i < 2400; i++) {
+      const u = Math.random(), v = Math.random() * 2;
+      const th = u * Math.PI * 2, ph = Math.acos(1 - v);
+      pts.set([190 * Math.sin(ph) * Math.cos(th), 190 * Math.cos(ph), 190 * Math.sin(ph) * Math.sin(th)], i * 3);
+    }
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+    this.scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xe9e6ff, size: 0.9, sizeAttenuation: true })));
+    const pc = document.createElement("canvas");
+    pc.width = 256;
+    pc.height = 128;
+    const pg = pc.getContext("2d")!;
+    for (let y = 0; y < 128; y++) {
+      pg.fillStyle = `hsl(${265 + Math.sin(y / 9) * 14}, 45%, ${42 + Math.sin(y / 5) * 9}%)`;
+      pg.fillRect(0, y, 256, 1);
+    }
+    const ptex = new THREE.CanvasTexture(pc);
+    ptex.colorSpace = THREE.SRGBColorSpace;
+    const planet = new THREE.Group();
+    planet.add(new THREE.Mesh(new THREE.SphereGeometry(16, 48, 32), new THREE.MeshStandardMaterial({ map: ptex, roughness: 1 })));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(21, 31, 96), new THREE.MeshBasicMaterial({ color: 0xffb36b, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+    ring.rotation.x = Math.PI / 2.4;
+    planet.add(ring);
+    planet.position.set(-48, -26, -62);
+    planet.rotation.z = 0.35;
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(4, 24, 16), new THREE.MeshStandardMaterial({ color: 0xd9d7fa, roughness: 1 }));
+    moon.position.set(30, -14, -78);
+    this.scene.add(planet, moon);
+    this.extras.planet = planet;
+  }
+
+  /** Extra props, blinking indicator lights and a rotating beacon so the outpost feels lived in. */
+  private dress() {
+    const put = this.put.bind(this);
+    put("chair", -4.8, -4.6, Math.PI); put("chair", 4.2, -4.6, Math.PI);
+    put("wall-switch", -3.6, -6.15); put("wall-detail", 3.6, -6.15); put("wall-detail", -8.15, -2.6, Math.PI / 2); put("wall-switch", -8.15, 2.4, Math.PI / 2);
+    put("wall-pillar-banner", -8.15, 5.5, Math.PI / 2);
+    put("bed-single-cover", -9.6, 3.2, Math.PI / 2, 0);
+    put("container-tall", 3.7, 1.6); put("container-flat", -3.8, -0.9);
+    const lamps: THREE.Mesh[] = [];
+    const add = (x: number, y: number, z: number, color: number) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), new THREE.MeshBasicMaterial({ color }));
+      m.position.set(x, y, z);
+      m.userData.phase = Math.random() * 6;
+      m.userData.color = color;
+      this.world.add(m);
+      lamps.push(m);
+    };
+    for (let x = -7.5; x <= 7.5; x += 1.5) add(x, FLOOR_Y + 1.62, -6.05, x % 3 === 0 ? 0xff9a3d : 0x6fd6ff);
+    for (let z = -5.5; z <= 5.5; z += 1.5) add(-8.05, FLOOR_Y + 1.62, z, z % 3 === 0 ? 0xff9a3d : 0x7cf5b0);
+    this.extras.lamps = lamps;
+    const beacon = new THREE.Group();
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff5c5c }));
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.4, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xff5c5c, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
+    beam.rotation.z = Math.PI / 2;
+    beam.position.x = 1.2;
+    beacon.add(bulb, beam);
+    beacon.position.set(-8.15, FLOOR_Y + 1.95, -6.15);
+    this.world.add(beacon);
+    this.extras.beacon = beacon;
+  }
+
+  /** Wall and holo screens that show real numbers from the engine. */
+  private screens: Record<string, { ctx: CanvasRenderingContext2D; tex: THREE.CanvasTexture }> = {};
+  private makeScreens() {
+    const make = (key: string, w: number, h: number, x: number, y: number, z: number, ry: number, holo = false) => {
+      const c = document.createElement("canvas");
+      c.width = 512;
+      c.height = Math.round((512 * h) / w);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: holo ? 0.85 : 1, side: holo ? THREE.DoubleSide : THREE.FrontSide, depthWrite: !holo }));
+      m.position.set(x, y, z);
+      m.rotation.y = ry;
+      this.world.add(m);
+      this.screens[key] = { ctx: c.getContext("2d")!, tex };
+    };
+    make("command", 2.2, 0.9, 0, FLOOR_Y + 1.75, -5.7, 0, true);
+    make("engineering", 1.3, 0.6, 5.5, FLOOR_Y + 1.6, -5.7, 0, true);
+    make("comms", 1.3, 0.6, -7.7, FLOOR_Y + 1.6, -2.8, Math.PI / 2, true);
+    make("archive", 1.4, 0.65, -7.7, FLOOR_Y + 1.6, 4.6, Math.PI / 2, true);
+    make("core", 1.5, 0.6, 0, FLOOR_Y + 2.55, 4, Math.PI / 4, true);
+    make("vault", 1.3, 0.55, 5.6, FLOOR_Y + 1.7, 5.2, Math.PI / 4, true);
+    this.setStats(this.stats);
+  }
+  private stats: DeckStats = { running: 0, waiting: 0, done: 0, issuesOpen: 0, facts: 0, docs: 0, skills: 0, drafts: 0, tokens: 0, tokenCap: 1 };
 
   private async load(base: string) {
     const loader = new GLTFLoader();
@@ -244,7 +370,7 @@ export class DeckScene {
     put('stairs', 0, 6.5, Math.PI, 0); put('stairs', 1, 6.5, Math.PI, 0);
     put('rocks', 11, 5.8, .4, 0); put('skip-rocks', 9.6, 2.4, -.3, 0); put('skip', 9.6, 5.0, .2, 0);
     put('container', -9.4, 6.5, .3, 0); put('container-tall', -10.2, 5.2, 0, 0);
-    put('rocks', -9.2, 8.8, 1.9, 0);
+    put('rocks', -9.2, 7.6, 1.9, 0);
   }
 
 
@@ -270,7 +396,12 @@ export class DeckScene {
     visor.position.set(0, 0.53, 0.045);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshBasicMaterial({ color: 0x55546a }));
     lamp.position.set(0, 0.69, 0.03);
-    for (const m of [legL, legR, body, belt, pack, helmet, visor]) {
+    const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.18, 8), suit);
+    armL.geometry.translate(0, -0.09, 0);
+    armL.position.set(-0.14, 0.4, 0.02);
+    const armR = armL.clone();
+    armR.position.x = 0.14;
+    for (const m of [legL, legR, body, belt, pack, helmet, visor, armL, armR]) {
       m.castShadow = true;
       a.add(m);
     }
@@ -283,7 +414,13 @@ export class DeckScene {
     a.position.set(p.crew![0], FLOOR_Y, p.crew![1]);
     a.rotation.y = Math.atan2(p.face[0] - a.position.x, p.face[1] - a.position.z);
     this.world.add(a);
-    this.crew[id] = { mesh: a, ring, lamp, legL, legR, home: a.position.clone(), face: p.face, path: [], bob: Math.random() * 6 };
+    // Console glow: a screen face between the crew member and what they face.
+    const dir = new THREE.Vector3(p.face[0] - a.position.x, 0, p.face[1] - a.position.z).normalize();
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
+    glow.position.set(a.position.x + dir.x * 0.42, FLOOR_Y + 0.62, a.position.z + dir.z * 0.42);
+    glow.lookAt(a.position.x, FLOOR_Y + 0.62, a.position.z);
+    this.world.add(glow);
+    this.crew[id] = { mesh: a, ring, lamp, legL, legR, armL, armR, console: glow, nextWander: 8 + Math.random() * 25, home: a.position.clone(), face: p.face, path: [], bob: Math.random() * 6 };
   }
 
   private apply(id: string) {
@@ -419,7 +556,7 @@ export class DeckScene {
     this.archivePulse = Math.max(0, this.archivePulse - dt);
     for (const [i, b] of this.extras.banks!.entries()) (b.material as THREE.MeshBasicMaterial).color.setHex(this.archivePulse > 0 && Math.sin(t * 10 + i) > 0 ? 0xffffff : 0x9fb7ff);
     for (const [id, cr] of Object.entries(this.crew)) {
-      const st = this.status[id];
+      const st = this.status[id]!;
       if (st === "needs") cr.ring.material.color.setHex(STATUS_COLOR.needs).multiplyScalar(0.55 + Math.sin(t * 5) * 0.45);
       if (st === "blocked") cr.ring.material.color.setHex(Math.sin(t * 8) > 0 ? STATUS_COLOR.blocked : 0x4a2020);
       const m = cr.mesh;
@@ -451,7 +588,23 @@ export class DeckScene {
         cr.legL.rotation.x = cr.legR.rotation.x = 0;
         m.position.y = FLOOR_Y + (this.reduce ? 0 : Math.max(0, Math.sin(t * 1.6 + cr.bob)) * 0.012);
       }
+      // Working: at the console, typing, screen flickering. Idle: now and then a short walk around the room.
+      const working = st === "working" && !this.stopped;
+      const typing = working && !cr.path.length && !this.reduce;
+      cr.armL.rotation.x = typing ? -1.1 + Math.sin(t * 14) * 0.25 : cr.path.length ? Math.sin(t * 12) * 0.4 : 0;
+      cr.armR.rotation.x = typing ? -1.1 + Math.sin(t * 14 + 1.7) * 0.25 : cr.path.length ? -Math.sin(t * 12) * 0.4 : 0;
+      cr.console.material.opacity = working ? 0.55 + (this.reduce ? 0 : Math.sin(t * 9 + cr.bob) * 0.15 + (Math.random() < 0.04 ? 0.2 : 0)) : 0.12;
+      if (working && !cr.path.length && Math.abs(m.position.x - cr.home.x) < 0.05 && Math.abs(m.position.z - cr.home.z) < 0.05) m.rotation.y = Math.atan2(cr.face[0] - m.position.x, cr.face[1] - m.position.z);
+      if (!this.reduce && st === "idle" && !this.stopped && !cr.path.length && t > cr.nextWander) {
+        const c = PLACE[id]!.c;
+        const spot = new THREE.Vector3(c[0] + (Math.random() * 2 - 1) * 1.4, FLOOR_Y, c[1] + (Math.random() * 2 - 1) * 1.0);
+        cr.path = [spot, { wait: 2 + Math.random() * 3 }, cr.home.clone(), { face: true }];
+        cr.nextWander = t + 20 + Math.random() * 35;
+      }
     }
+    for (const l of this.extras.lamps ?? []) (l.material as THREE.MeshBasicMaterial).color.setHex(this.stopped ? 0x3a3848 : Math.sin(t * 2.2 + (l.userData.phase as number)) > 0.2 ? (l.userData.color as number) : 0x3a3848);
+    if (this.extras.beacon) this.extras.beacon.rotation.y = this.stopped ? 0 : t * 2.4;
+    if (this.extras.planet) this.extras.planet.rotation.y = t * 0.02;
     for (let i = this.beams.length - 1; i >= 0; i--) {
       const b = this.beams[i]!;
       b.t += dt / 1.3;
@@ -478,6 +631,49 @@ export class DeckScene {
   };
 
   /* ---------- API ---------- */
+  setStats(st: DeckStats) {
+    this.stats = st;
+    const draw = (key: string, title: string, lines: [string, string][], bar?: number) => {
+      const sc = this.screens[key];
+      if (!sc) return;
+      const g = sc.ctx, W = g.canvas.width, H = g.canvas.height;
+      g.fillStyle = "#14131c";
+      g.fillRect(0, 0, W, H);
+      g.strokeStyle = "#6fd6ff";
+      g.lineWidth = 6;
+      g.strokeRect(3, 3, W - 6, H - 6);
+      g.fillStyle = "#c59bff";
+      g.font = "600 30px 'Chakra Petch', system-ui, sans-serif";
+      g.fillText(title, 22, 44);
+      const rowH = (H - 70 - (bar !== undefined ? 34 : 0)) / Math.max(1, lines.length);
+      lines.forEach(([k, v], i) => {
+        const y = 70 + rowH * i + rowH * 0.7;
+        g.fillStyle = "#cfcbea";
+        g.font = "400 26px 'Chakra Petch', system-ui, sans-serif";
+        g.fillText(k, 22, y);
+        g.fillStyle = "#e9fbff";
+        g.font = "600 34px 'Chakra Petch', system-ui, sans-serif";
+        g.textAlign = "right";
+        g.fillText(v, W - 22, y);
+        g.textAlign = "left";
+      });
+      if (bar !== undefined) {
+        g.fillStyle = "#2b2b3a";
+        g.fillRect(22, H - 40, W - 44, 18);
+        g.fillStyle = bar > 0.85 ? "#ff5c5c" : bar > 0.6 ? "#ffc23d" : "#6fd6ff";
+        g.fillRect(22, H - 40, (W - 44) * Math.min(1, bar), 18);
+      }
+      sc.tex.needsUpdate = true;
+    };
+    const n = (x: number) => x.toLocaleString("en-US");
+    draw("command", "Today", [["Working on", n(st.running)], ["Waiting for you", n(st.waiting)], ["Done", n(st.done)]]);
+    draw("engineering", "Issues", [["Open", n(st.issuesOpen)]]);
+    draw("comms", "Drafts", [["Ready to review", n(st.drafts)]]);
+    draw("archive", "Memory", [["Facts", n(st.facts)], ["Documents", n(st.docs)], ["Skills", n(st.skills)]]);
+    draw("core", "Tokens today", [[`of ${n(st.tokenCap)}`, n(st.tokens)]], st.tokens / Math.max(1, st.tokenCap));
+    draw("vault", "Approvals", [["Waiting", n(st.waiting)]]);
+  }
+
   resize() {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     if (!w || !h) return;

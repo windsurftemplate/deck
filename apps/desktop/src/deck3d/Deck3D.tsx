@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Approval } from "../bridge";
-import { DeckScene } from "./scene";
+import { DeckScene, type DeckStats } from "./scene";
 import { STATIONS, STATUS_TEXT, stationForAgent, stationStatus } from "./stations";
 
 export interface DeckState {
@@ -10,7 +10,7 @@ export interface DeckState {
 }
 
 /** The 3D command deck with a side panel for the selected station. */
-export function Deck3D({ state, signal, onDecide, onOpenBrain }: { state: DeckState; signal: { beam?: string; archive?: number; visit?: string }; onDecide: (id: string, approve: boolean) => void; onOpenBrain?: () => void }) {
+export function Deck3D({ state, signal, onDecide, onOpenBrain, stats }: { state: DeckState; signal: { beam?: string; archive?: number; visit?: string }; onDecide: (id: string, approve: boolean) => void; onOpenBrain?: () => void; stats?: DeckStats | null }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
   const deck = useRef<DeckScene | null>(null);
@@ -59,6 +59,9 @@ export function Deck3D({ state, signal, onDecide, onOpenBrain }: { state: DeckSt
       if (st) deck.current?.beam(st.id);
     }
   }, [signal.beam]);
+  useEffect(() => {
+    if (stats) deck.current?.setStats(stats);
+  }, [stats, loading]);
   useEffect(() => {
     if (signal.archive) deck.current?.pulseArchive();
   }, [signal.archive]);

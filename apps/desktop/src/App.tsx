@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Deck3D } from "./deck3d/Deck3D";
+import type { DeckStats } from "./deck3d/scene";
 import { BrainView } from "./brain3d/BrainView";
 import { MicButton } from "./Voice";
 import { SnapshotButton, attachFile, type Picture } from "./Camera";
 import { PowerUp } from "./boot/PowerUp";
-import { listThreads, threadMessages, deleteThread, renameThread, type Thread } from "./bridge";
+import { engineCall, listThreads, threadMessages, deleteThread, renameThread, type Thread } from "./bridge";
 import { applyProposal, decideApproval, emergencyStop, listen, loadSettings, onEngineEvent, pendingApprovals, saveSettings, sendChat, type ActionRecord, type Approval, type Proposal } from "./bridge";
 import { Onboarding } from "./onboarding/Onboarding";
 import { SettingsPanel } from "./SettingsPanel";
@@ -31,6 +32,14 @@ export function App() {
   const threadRef = useRef<string | undefined>(undefined);
   threadRef.current = threadId;
   const refreshThreads = () => void listThreads().then(setThreads);
+  const [stats, setStats] = useState<DeckStats | null>(null);
+  useEffect(() => {
+    if (view !== "3d") return;
+    const load = () => void engineCall<DeckStats>("deck.stats").then((x) => x && setStats(x)).catch(() => {});
+    load();
+    const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [view, crew, pending]);
   useEffect(refreshThreads, []);
   const openThread = async (id: string | undefined) => {
     setThreadId(id);
@@ -138,6 +147,7 @@ export function App() {
         ) : view === "3d" ? (
           <Deck3D
             onOpenBrain={() => switchView("brain")}
+            stats={stats}
             state={{ crew, pending, stopped }}
             signal={{ ...(signal.beam ? { beam: signal.beam.split("#")[0]! } : {}), ...(signal.archive ? { archive: signal.archive } : {}), ...(signal.visit ? { visit: signal.visit } : {}) }}
             onDecide={async (id, approve) => {
@@ -286,8 +296,10 @@ export function App() {
               setLog((l) => [...l, { from: "you", text: pics.length ? `${text} (${pics.length} picture${pics.length > 1 ? "s" : ""})` : text }, { from: "agent", text: "", typing: true }]);
               setDraft("");
               setPictures([]);
+              setCrew((c) => ({ ...c, "chief-of-staff": { status: "running", task: "Answering you" } }));
               sendChat(text, pics.map(({ mediaType, data }) => ({ mediaType, data })), threadRef.current).then((r) => {
                 if (r.threadId && r.threadId !== threadRef.current) setThreadId(r.threadId);
+                setCrew((c) => ({ ...c, "chief-of-staff": { status: "done", task: "" } }));
                 if (speak && "speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(r.reply.slice(0, 1200)));
                 return r;
               }).then((r) => setLog((l) => [...l.filter((x) => !x.typing), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.actions?.length ? { actions: r.actions.filter((a) => a.status !== "waiting") } : {}) }]));

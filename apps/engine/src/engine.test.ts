@@ -511,6 +511,19 @@ describe("research agent", () => {
   });
 });
 
+describe("deck screens", () => {
+  it("reports live numbers for the station's wall screens", async () => {
+    const e = make({});
+    await e.open();
+    await e.issues().create({ title: "Ship beta", by: "owner" });
+    await e.brain.addText("Pricing", "2k per month");
+    const t = e.board.create({ title: "x", why: "w", doneWhen: ["d"], scopes: [], agent: "ops" });
+    e.board.move(t.id, "running");
+    expect(await e.deckStats()).toMatchObject({ running: 1, waiting: 0, done: 0, issuesOpen: 1, docs: 1, tokens: 0, tokenCap: DEFAULTS.models.dailyTokenCap });
+    await e.close();
+  });
+});
+
 describe("second brain", () => {
   it("adds files, text, links and notes, imports note apps, recalls passages as untrusted, and draws a graph", async () => {
     const page = (async () => new Response("<html><title>Breach roundup</title><body><article><p>Leaked API keys caused the Acme incident.</p></article></body></html>", { headers: { "content-type": "text/html" } })) as unknown as typeof fetch;
