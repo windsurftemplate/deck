@@ -15,7 +15,7 @@ describe("startup checks", () => {
     const r = await runStartupChecks({ ...allOk, gateway: async () => ({ status: "blocking", message: "Attestation failed.", fix: "Retry attestation" }) });
     const by = Object.fromEntries(r.map((x) => [x.id, x.status]));
     expect(by).toMatchObject({ gateway: "blocking", models: "waiting", decision: "waiting", connectors: "waiting", skills: "ok" });
-    expect(r.find((x) => x.id === "models")!.message).toBe("Waiting on Gateway.");
+    expect(r.find((x) => x.id === "models")!.message).toBe("Waiting on VaultProof.");
     expect(summarize(r)).toMatchObject({ canStart: false, blocking: [{ id: "gateway" }] });
   });
 

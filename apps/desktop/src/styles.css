@@ -51,3 +51,18 @@ button { font: inherit; }
 .composer input { flex: 1; font: inherit; color: var(--text); background: var(--hull); border: 1px solid var(--seam); border-radius: 6px; padding: 10px 12px; }
 @media (max-width: 760px) { .boot { grid-template-columns: 1fr; } .main { grid-template-columns: 1fr; } .crew { border-right: 0; border-bottom: 1px solid var(--seam); } }
 @media (prefers-reduced-motion: reduce) { .seg, .core { transition: none; } }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.settings { padding: 20px; overflow: auto; max-width: 720px; }
+.settings-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.settings h2 { font-size: 20px; font-weight: 600; margin: 0; }
+.card { border: 1px solid var(--seam); border-radius: 10px; background: var(--hull); padding: 16px 18px; display: grid; gap: 10px; }
+.card h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.muted { color: var(--muted); margin: 0; font-size: 14px; line-height: 1.5; }
+.field { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+.field input { font: inherit; font-size: 15px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 6px; padding: 9px 11px; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 15px; }
+.check input { accent-color: var(--ion); width: 16px; height: 16px; }
+.error { color: #ff8c87; margin: 0; font-size: 14px; }
+.warn { color: var(--warn); margin: 0; font-size: 14px; }
+.ok { color: var(--ion); font-size: 14px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }

@@ -1,4 +1,5 @@
 import type { CheckResult } from "./boot/checks";
+import { applyUpdate, parseSettings, type DeepPartial, type Settings } from "@deck/settings";
 
 /** True inside the Tauri app; false in a plain browser during UI development. */
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -22,15 +23,20 @@ const ENGINE_PENDING = "Agent engine not connected yet. It ships in the next bui
  */
 export async function runChecks(onResult: (r: CheckResult) => void): Promise<{ results: CheckResult[]; preview: boolean }> {
   const ids = ["power", "keychain", "memory", "gateway", "connectors", "skills", "agents", "scheduler", "chat", "world", "models"];
-  const names: Record<string, string> = { power: "Power", keychain: "Keychain", memory: "Memory", gateway: "Gateway", connectors: "Connectors", skills: "Skills", agents: "Agents", scheduler: "Scheduler", chat: "Chat", world: "World", models: "Models" };
+  const names: Record<string, string> = { power: "Power", keychain: "Keychain", memory: "Memory", gateway: "VaultProof", connectors: "Connectors", skills: "Skills", agents: "Agents", scheduler: "Scheduler", chat: "Chat", world: "World", models: "Models" };
   const results: CheckResult[] = [];
   const push = (r: CheckResult) => (results.push(r), onResult(r));
   const pause = () => new Promise((r) => setTimeout(r, 260));
 
+  const vp = (await loadSettings()).vaultproof;
+  const vaultproof: CheckResult = vp.enabled
+    ? { id: "gateway", name: "VaultProof", status: "waiting", message: "Connection check runs in the agent engine (next build step)." }
+    : { id: "gateway", name: "VaultProof", status: "off", message: "Not connected. Turn it on in Settings > VaultProof when the server is live." };
+
   if (!inTauri) {
     for (const id of ids) {
       await pause();
-      push(id === "models" ? { id, name: names[id]!, status: "waiting", message: "Connect an LLM to ignite the core." } : { id, name: names[id]!, status: "ok", message: "Preview only." });
+      push(id === "models" ? { id, name: names[id]!, status: "waiting", message: "Connect an LLM to ignite the core." } : id === "gateway" ? vaultproof : { id, name: names[id]!, status: "ok", message: "Preview only." });
     }
     return { results, preview: true };
   }
@@ -38,9 +44,26 @@ export async function runChecks(onResult: (r: CheckResult) => void): Promise<{ r
   for (const id of ids) {
     await pause();
     const n = native.find((r) => r.id === id);
-    push(n ?? { id, name: names[id]!, status: "waiting", message: ENGINE_PENDING });
+    push(n ?? (id === "gateway" ? vaultproof : { id, name: names[id]!, status: "waiting", message: ENGINE_PENDING }));
   }
   return { results, preview: false };
 }
 
 export const emergencyStop = () => (inTauri ? invoke<void>("emergency_stop") : Promise.resolve());
+
+const LOCAL_KEY = "deck.settings";
+
+/** Settings live in a plain file in the app data folder (no secrets). In a browser preview, localStorage. */
+export async function loadSettings(): Promise<Settings> {
+  if (!inTauri) return parseSettings(globalThis.localStorage?.getItem(LOCAL_KEY));
+  return parseSettings(await invoke<string | null>("settings_get"));
+}
+
+/** Validates, saves, and returns the new settings. Throws SettingsError with a field and a plain message. */
+export async function saveSettings(patch: DeepPartial<Settings>): Promise<Settings> {
+  const next = applyUpdate(await loadSettings(), patch);
+  const json = JSON.stringify(next, null, 2);
+  if (inTauri) await invoke("settings_set", { json });
+  else globalThis.localStorage?.setItem(LOCAL_KEY, json);
+  return next;
+}

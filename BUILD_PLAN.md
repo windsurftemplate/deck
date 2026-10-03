@@ -9,7 +9,7 @@ Status keys: `todo`, `doing`, `done`, `blocked`.
 ## Next file
 
 **`apps/engine/src/main.ts` (step 4.5, agent engine sidecar).**
-It connects the tested packages to the desktop app. Real model calls need the Gateway details confirmed (see `UPDATES.md`, Open).
+It connects the tested packages to the desktop app and runs the VaultProof check for real. How the engine reaches a model before VaultProof is live is an open question (see `UPDATES.md`, Open).
 
 ## Phase 1: Core (weeks 1 to 2)
 
@@ -48,8 +48,12 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | # | File | What it does | Done when | Status |
 |---|------|--------------|-----------|--------|
 | 3.1 | `packages/models/adapter.ts` | One interface: chat, vision, embed, decide | Claude call works through the adapter | done |
-| 3.2 | `packages/models/gateway.ts` | All calls through VaultProof Gateway with a scoped token | No raw key anywhere in the app | done (confirm Gateway API path and auth) |
+| 3.2 | `packages/models/gateway.ts` | All calls through VaultProof Gateway with a scoped token | No raw key anywhere in the app | on hold (Gateway API paused; client kept) |
 | 3.3 | `packages/models/roles.ts` | Heavy and cheap roles, spend caps, fallbacks | Cap stops calls when hit | done |
+| 3.4 | `packages/settings/src/schema.ts` | Settings file (no secrets): VaultProof MCP URL and on/off, boot options; validation | Unsafe URLs refused; cannot turn on without a URL | done |
+| 3.5 | `packages/connectors/src/vaultproof.ts` | VaultProof MCP check: handshake, session id, tools list, sign-in needed, not live yet | Each state reported; never blocks boot | done (needs the live server) |
+| 3.6 | `apps/desktop/src/SettingsPanel.tsx` | Systems panel: VaultProof URL, connect toggle, saved to app data | Settings survive restart; boot shows off or waiting | done |
+| 3.7 | VaultProof sign-in (OAuth in the browser, session in keychain) | Sign in to the MCP server | Signed-in check shows connected | blocked: VaultProof MCP server not live |
 
 ### Step 4: Orchestrator
 

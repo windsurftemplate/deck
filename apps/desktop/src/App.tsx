@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { PowerUp } from "./boot/PowerUp";
 import { emergencyStop, listen } from "./bridge";
+import { SettingsPanel } from "./SettingsPanel";
 
 type Line = { from: "you" | "agent" | "system"; text: string };
 
@@ -9,6 +10,7 @@ export function App() {
   const [stopped, setStopped] = useState(false);
   const [log, setLog] = useState<Line[]>([{ from: "system", text: "Chief of Staff is on standby. The agent engine connects in the next build step." }]);
   const [draft, setDraft] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     let off = () => {};
@@ -31,10 +33,18 @@ export function App() {
     <div className="shell">
       <header className="bar">
         <b>Command deck</b>
-        <button className="danger" type="button" onClick={stopAll} disabled={stopped}>
-          {stopped ? "Stopped" : "Stop all agents"}
-        </button>
+        <div className="row">
+          <button className="btn" type="button" onClick={() => setShowSettings((v) => !v)} aria-expanded={showSettings}>
+            Settings
+          </button>
+          <button className="danger" type="button" onClick={stopAll} disabled={stopped}>
+            {stopped ? "Stopped" : "Stop all agents"}
+          </button>
+        </div>
       </header>
+      {showSettings ? (
+        <SettingsPanel onClose={() => setShowSettings(false)} />
+      ) : (
       <div className="main">
         <aside className="crew" aria-label="Crew">
           <h2>Crew</h2>
@@ -67,6 +77,7 @@ export function App() {
           </form>
         </section>
       </div>
+      )}
     </div>
   );
 }

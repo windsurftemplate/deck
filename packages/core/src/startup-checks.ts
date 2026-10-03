@@ -22,7 +22,7 @@ export const CHECKS: { id: CheckId; name: string; dependsOn?: CheckId[] }[] = [
   { id: "power", name: "Power" },
   { id: "memory", name: "Memory", dependsOn: ["keychain"] },
   { id: "keychain", name: "Keychain" },
-  { id: "gateway", name: "Gateway", dependsOn: ["clock"] },
+  { id: "gateway", name: "VaultProof", dependsOn: ["clock"] },
   { id: "connectors", name: "Connectors", dependsOn: ["gateway", "keychain"] },
   { id: "skills", name: "Skills" },
   { id: "agents", name: "Agents" },

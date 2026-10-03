@@ -2,6 +2,28 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: VaultProof MCP setting, Gateway API on hold
+
+**Changed**
+- `packages/settings`: settings schema with a VaultProof section (on/off, MCP server URL) and boot options. Validation refuses http (except localhost), credentials in the URL, and token-like query parameters; it cannot be turned on without a URL. No secrets in the settings file.
+- `packages/connectors/src/vaultproof.ts`: MCP check over Streamable HTTP (initialize, session id, tools/list; JSON or SSE replies). Reports connected, sign-in needed, not live yet, or error. Startup probe never blocks boot.
+- Startup check segment renamed from Gateway to VaultProof (id unchanged).
+- Desktop: Systems panel with the VaultProof card; settings saved to the app data folder by Rust (`settings_get`, `settings_set`, atomic write, size and JSON checks). Boot shows VaultProof as off, or waiting when turned on.
+- `AGENTS.md` and the plan: credential rule now says VaultProof brokers credentials (MCP server, almost ready); Gateway client kept but on hold.
+
+**Verified**
+- 72 TypeScript tests and 2 Rust tests pass; `pnpm check` runs 34 tasks green.
+- In the browser preview: turning on without a URL and saving an http URL both show the right message; a valid URL saves, survives reload, and boot then shows VaultProof as waiting.
+
+**Open**
+- Until VaultProof is live, how should the engine reach a model? Options: wait (no model calls yet), or a temporary developer key in the keychain, clearly marked and removable.
+- VaultProof MCP server URL and its sign-in flow (OAuth details) when it launches.
+- Which MCP servers for Linear and GitHub.
+- Embedding model for memory.
+
+**Next**
+- Step 4.5: `apps/engine/src/main.ts`, the agent engine sidecar.
+
 ## 2026-10-02: Steps 1 to 10, Phase 1 packages
 
 **Changed**
@@ -35,7 +57,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - Kept the dark ship theme in the app for now; the Kenney look is still pending.
 
 **Open**
-- VaultProof Gateway API: the client assumes `POST {base}/anthropic/v1/messages` with `Authorization: Bearer vp-proj-...`. Confirm or correct.
+- VaultProof Gateway API: on hold (see the newer entry).
 - Which MCP servers for Linear and GitHub (steps 6.3 and 6.4).
 - Embedding model for memory (provider and dimension).
 

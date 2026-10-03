@@ -88,6 +88,42 @@ fn native_checks(app: AppHandle) -> Vec<CheckResult> {
     out
 }
 
+const SETTINGS_FILE: &str = "settings.json";
+const SETTINGS_MAX: usize = 64 * 1024;
+
+/// Plain settings file in the app data folder. No secrets: those stay in the keychain.
+#[tauri::command]
+fn settings_get(app: AppHandle) -> Result<Option<String>, String> {
+    let path = app.path().app_data_dir().map_err(|e| e.to_string())?.join(SETTINGS_FILE);
+    match std::fs::read_to_string(&path) {
+        Ok(s) => Ok(Some(s)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn settings_set(app: AppHandle, json: String) -> Result<(), String> {
+    check_settings_json(&json)?;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Write to a temp file then rename, so a crash never leaves a half-written file.
+    let tmp = dir.join("settings.json.tmp");
+    std::fs::write(&tmp, json.as_bytes()).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, dir.join(SETTINGS_FILE)).map_err(|e| e.to_string())
+}
+
+fn check_settings_json(json: &str) -> Result<(), String> {
+    if json.len() > SETTINGS_MAX {
+        return Err("settings file too large".into());
+    }
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|_| "settings must be valid JSON".to_string())?;
+    if !v.is_object() {
+        return Err("settings must be a JSON object".into());
+    }
+    Ok(())
+}
+
 /// Emergency stop: tells every part of the app to stop all agents now.
 #[tauri::command]
 fn emergency_stop(app: AppHandle) -> Result<(), String> {
@@ -129,14 +165,22 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_delete, native_checks, emergency_stop])
+        .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_delete, native_checks, emergency_stop, settings_get, settings_set])
         .run(tauri::generate_context!())
         .expect("error while running deck");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::valid_name;
+    use super::{check_settings_json, valid_name};
+
+    #[test]
+    fn settings_file_must_be_a_small_json_object() {
+        assert!(check_settings_json(r#"{"version":1}"#).is_ok());
+        assert!(check_settings_json("[1,2]").is_err());
+        assert!(check_settings_json("not json").is_err());
+        assert!(check_settings_json(&format!("{{\"x\":\"{}\"}}", "a".repeat(70_000))).is_err());
+    }
 
     #[test]
     fn secret_names_are_restricted() {
