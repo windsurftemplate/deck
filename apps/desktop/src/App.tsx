@@ -5,6 +5,7 @@ import { BrainView } from "./brain3d/BrainView";
 import { CommandCenter } from "./pages/CommandCenter";
 import { CrewChannel } from "./pages/CrewChannel";
 import { Tools } from "./pages/Tools";
+import { Automations } from "./pages/Automations";
 import { MicButton } from "./Voice";
 import { SnapshotButton, attachFile, type Picture } from "./Camera";
 import { PowerUp } from "./boot/PowerUp";
@@ -24,7 +25,7 @@ export function App() {
   const [crew, setCrew] = useState<Record<string, { status: string; task?: string }>>({});
   const [pending, setPending] = useState<Approval[]>([]);
   const [signal, setSignal] = useState<{ beam?: string; archive?: number; visit?: string }>({});
-  type View = "3d" | "brain" | "center" | "channel" | "tools" | "list";
+  type View = "3d" | "brain" | "center" | "channel" | "automations" | "tools" | "list";
   const [view, setView] = useState<View>("3d");
   const [voiceOn, setVoiceOn] = useState(false);
   const [speak, setSpeak] = useState(false);
@@ -129,7 +130,7 @@ export function App() {
         <b>Command deck</b>
         <div className="row">
           <div className="seg" role="group" aria-label="View">
-            {([["3d", "Deck"], ["brain", "Brain"], ["center", "Command center"], ["channel", "Crew chat"], ["tools", "Tools"], ["list", "List"]] as const).map(([v, label]) => (
+            {([["3d", "Deck"], ["brain", "Brain"], ["center", "Command center"], ["channel", "Crew chat"], ["automations", "Automations"], ["tools", "Tools"], ["list", "List"]] as const).map(([v, label]) => (
               <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => switchView(v)}>
                 {label}
               </button>
@@ -153,6 +154,8 @@ export function App() {
           <CommandCenter />
         ) : view === "channel" ? (
           <CrewChannel />
+        ) : view === "automations" ? (
+          <Automations />
         ) : view === "tools" ? (
           <Tools openSettings={() => setShowSettings(true)} openBrain={() => switchView("brain")} />
         ) : view === "3d" ? (

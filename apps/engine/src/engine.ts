@@ -17,6 +17,7 @@ import type { Keychain } from "./keychain.js";
 import { Threads } from "./threads.js";
 import { Brain } from "./brain.js";
 import { Activity, type CrewMessage } from "./activity.js";
+import { Automations, checkAutomation, describeSchedule, parseDays, type NewAutomation } from "./automations.js";
 
 /** A settings change the owner asked for in chat. Nothing changes until they confirm. */
 export interface Proposal {
@@ -25,6 +26,8 @@ export interface Proposal {
   patch: DeepPartial<Settings>;
   /** Set when the proposal changes an agent's rules instead of settings. */
   crew?: { agent: string; override: CrewOverride };
+  /** Set when the proposal schedules a recurring job. */
+  automation?: NewAutomation;
 }
 
 const SCOPE_LABEL: Record<string, string> = {
@@ -88,6 +91,7 @@ export class Engine {
   threads!: Threads;
   brain!: Brain;
   activity?: Activity;
+  automations?: Automations;
   private stopped = false;
   private proposals = new Map<string, Proposal>();
   private clock: () => Date;
@@ -154,6 +158,8 @@ export class Engine {
     this.tracker = new Tracker(new SqliteTrackerStore(this.store.connection), "VP", this.clock);
     this.threads = new Threads(this.store.connection, this.clock);
     this.activity = new Activity(this.store.connection, this.clock);
+    this.automations = new Automations(this.store.connection, this.clock);
+    for (const a of this.automations.list()) if (a.enabled) this.scheduleAutomation(a.id);
     this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
     this.buildRouter();
     this.crew = JSON.parse((await this.store.getMeta("crew.overrides")) ?? "{}") as CrewOverrides;
@@ -534,6 +540,37 @@ export class Engine {
     if (agent === AGENT)
       extra.push({
         spec: {
+          name: "schedule_automation",
+          description: "When the owner asks for something to happen on a schedule (every Monday, each weekday morning), propose a recurring job. The owner confirms with Apply; nothing is scheduled before that.",
+          parameters: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Short name, like Weekly pipeline review" },
+              agent: { type: "string", enum: [AGENT, ...Object.keys(Engine.CREW)], description: "Who does it" },
+              instruction: { type: "string", description: "What to do each time, in the owner's words" },
+              time: { type: "string", description: "24-hour local time like 09:00" },
+              days: { type: "string", description: "daily, weekdays, weekends, or days like mon,thu" },
+            },
+            required: ["name", "agent", "instruction", "time"],
+          },
+        },
+        scope: "crew.configure",
+        kind: "read", // only proposes; the owner applies it
+        describe: (i) => `Propose a schedule: ${str(i.name)}`,
+        run: async (i) => {
+          const a: NewAutomation = { name: str(i.name), agent: str(i.agent), instruction: str(i.instruction), at: str(i.time).padStart(5, "0"), days: parseDays(str(i.days)) };
+          const err = checkAutomation(a, [AGENT, ...Object.keys(Engine.CREW)]);
+          if (err) return `Cannot propose that: ${err}`;
+          const who = a.agent === AGENT ? "Chief of Staff" : Engine.CREW[a.agent];
+          const p: Proposal = { id: randomBytes(3).toString("hex"), summary: `Schedule "${a.name}" for ${who}, ${describeSchedule(a.at, a.days)}: ${a.instruction}`, patch: {}, automation: a };
+          this.proposals.set(p.id, p);
+          this.toolProposals.push(p);
+          return `Proposed: ${p.summary}. Tell the owner to press Apply to confirm; nothing is scheduled yet.`;
+        },
+      });
+    if (agent === AGENT)
+      extra.push({
+        spec: {
           name: "delegate",
           description: "Hand a task to a crew member and get their checked report back. gtm: leads, outreach drafts. ops: tracker cleanup, admin drafts. code: engineering breakdowns and decisions.",
           parameters: { type: "object", properties: { agent: { type: "string", enum: Object.keys(Engine.CREW) }, goal: { type: "string" }, why: { type: "string" }, done_when: { type: "array", items: { type: "string" }, description: "Checks that prove the task is finished" } }, required: ["agent", "goal", "done_when"] },
@@ -794,6 +831,11 @@ export class Engine {
   async applyProposal(id: string): Promise<{ applied: boolean; summary: string; settings: Settings }> {
     const p = this.proposals.get(id);
     if (!p) return { applied: false, summary: "That change expired or was already applied.", settings: this.d.settings };
+    if (p.automation) {
+      this.proposals.delete(id);
+      const a = this.automationCreate(p.automation);
+      return { applied: true, summary: `Scheduled "${a.name}": ${describeSchedule(a.at, a.days)}.`, settings: this.d.settings };
+    }
     if (p.crew) {
       this.proposals.delete(id);
       try {
@@ -1032,6 +1074,61 @@ export class Engine {
     const msg = this.activity!.post({ channel: `discussion:${id}`, sender: "owner", recipient: "crew", kind: "discussion", text: text.slice(0, 2000) });
     this.emit("crew.message", msg);
     return msg;
+  }
+
+  /* ---------- automations ---------- */
+  private scheduleAutomation(id: string) {
+    const a = this.automations!.get(id);
+    this.scheduler.remove(`auto:${id}`);
+    if (a?.enabled) this.scheduler.add({ name: `auto:${id}`, at: a.at, ...(a.days.length ? { days: a.days } : {}), run: async () => void (await this.runAutomation(id)) });
+  }
+  automationsList() {
+    return this.automations!.list().map((a) => ({ ...a, schedule: describeSchedule(a.at, a.days) }));
+  }
+  automationCreate(a: NewAutomation) {
+    const err = checkAutomation(a, [AGENT, ...Object.keys(Engine.CREW)]);
+    if (err) throw new Error(err);
+    const created = this.automations!.create(a);
+    this.scheduleAutomation(created.id);
+    this.emit("automations", {});
+    return created;
+  }
+  automationUpdate(id: string, patch: Partial<NewAutomation> & { enabled?: boolean }) {
+    const cur = this.automations!.get(id);
+    if (!cur) throw new Error("That automation no longer exists.");
+    const err = checkAutomation({ ...cur, ...patch }, [AGENT, ...Object.keys(Engine.CREW)]);
+    if (err) throw new Error(err);
+    const a = this.automations!.update(id, patch);
+    this.scheduleAutomation(id);
+    this.emit("automations", {});
+    return a;
+  }
+  automationDelete(id: string) {
+    this.scheduler.remove(`auto:${id}`);
+    this.automations!.remove(id);
+    this.emit("automations", {});
+  }
+  /** Runs a scheduled job now: the Chief of Staff answers it in an "Automations" chat; crew members get it as a task. */
+  async runAutomation(id: string): Promise<string> {
+    const a = this.automations!.get(id);
+    if (!a) return "That automation no longer exists.";
+    if (this.stopped) return "Agents are stopped; skipped.";
+    let result: string;
+    try {
+      if (a.agent === AGENT) {
+        let tid = (await this.store.getMeta(`automation.thread.${id}`)) ?? undefined;
+        if (!tid || !this.threads.exists(tid)) await this.store.setMeta(`automation.thread.${id}`, (tid = this.threads.create(`Automation: ${a.name}`).id));
+        result = (await this.chat(a.instruction, [], tid)).reply;
+      } else result = await this.delegate(a.agent, a.instruction, `Scheduled job "${a.name}"`, ["the instruction is carried out", "the report says what changed and what needs the owner"]);
+    } catch (e) {
+      result = `Failed: ${(e as Error).message}`;
+    }
+    this.automations!.markRun(id, result);
+    const note = `${a.name}: ${result.slice(0, 600)}`;
+    this.emit("automation", { id, name: a.name, result });
+    this.emit("notify", { title: `Automation: ${a.name}`, body: result.slice(0, 200) });
+    for (const chat of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(chat, note).catch(() => {});
+    return result;
   }
 
   /** Every outside tool and integration, with its state, for the Tools page. */

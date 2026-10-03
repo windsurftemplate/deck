@@ -242,3 +242,12 @@ select { font: inherit; font-size: 15px; color: var(--text); background: var(--v
 .page input, .page textarea, .page select { font: inherit; font-size: 14px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 8px; padding: 7px 10px; }
 .page textarea, .page .field input { width: 100%; box-sizing: border-box; }
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .panels { grid-template-columns: 1fr; } .span2 { grid-column: auto; } .channel { grid-template-columns: 1fr; } }
+.days { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.days legend { width: 100%; margin-bottom: 4px; }
+.autos { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.autos li { border: 1px solid var(--seam); border-radius: 10px; padding: 12px; display: grid; gap: 6px; }
+.autos li.off { opacity: .6; }
+.autos p { margin: 0; line-height: 1.45; }
+.auto-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.autos .result { white-space: pre-wrap; font-size: 13px; color: var(--muted); max-height: 200px; overflow: auto; }
+.bar .seg { flex-wrap: wrap; }

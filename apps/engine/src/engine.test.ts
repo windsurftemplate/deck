@@ -511,6 +511,33 @@ describe("research agent", () => {
   });
 });
 
+describe("automations", () => {
+  it("proposes from chat, schedules on Apply, runs as a task, reports, and validates", async () => {
+    const events: string[] = [];
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, emit: (ev) => events.push(ev), makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model) });
+    await e.open();
+    const tool = (e as unknown as { toolsFor: (a: string) => { spec: { name: string }; run: (i: object) => Promise<string> }[] }).toolsFor("chief-of-staff").find((t) => t.spec.name === "schedule_automation")!;
+    expect(await tool.run({ name: "Pipeline", agent: "gtm", instruction: "Review the pipeline", time: "25:00" })).toMatch(/Time must look like 09:00/);
+    const out = await tool.run({ name: "Weekly pipeline review", agent: "gtm", instruction: "Review the pipeline and flag stale deals", time: "9:00", days: "mon" });
+    expect(out).toMatch(/Proposed: Schedule "Weekly pipeline review" for GTM, Mondays at 09:00/);
+    expect(e.automationsList()).toHaveLength(0);
+    const id = [...(e as unknown as { proposals: Map<string, unknown> }).proposals.keys()][0]!;
+    expect((await e.applyProposal(id)).summary).toBe('Scheduled "Weekly pipeline review": Mondays at 09:00.');
+    const [a] = e.automationsList();
+    expect(a).toMatchObject({ agent: "gtm", at: "09:00", days: [1], enabled: true, schedule: "Mondays at 09:00" });
+    const result = await e.runAutomation(a!.id);
+    expect(result).toMatch(/GTM report|could not finish/);
+    expect(e.automationsList()[0]!.lastResult).toBe(result);
+    expect(events).toContain("notify");
+    e.automationUpdate(a!.id, { enabled: false, days: [1, 2, 3, 4, 5] });
+    expect(e.automationsList()[0]).toMatchObject({ enabled: false, schedule: "weekdays at 09:00" });
+    expect(() => e.automationCreate({ name: "x", agent: "nobody", instruction: "y", at: "09:00", days: [] })).toThrow(/Pick who runs it/);
+    e.automationDelete(a!.id);
+    expect(e.automationsList()).toHaveLength(0);
+    await e.close();
+  });
+});
+
 describe("crew channel and command center", () => {
   it("records handoffs, tool calls, reports, checks, approvals and usage; runs a crew discussion", async () => {
     const msgs: { sender: string; kind: string; channel: string }[] = [];
