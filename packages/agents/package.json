@@ -26,6 +26,9 @@
   "files": [
     "dist",
     "core-rules.md",
-    "chief-of-staff"
+    "chief-of-staff",
+    "gtm",
+    "ops",
+    "code"
   ]
 }

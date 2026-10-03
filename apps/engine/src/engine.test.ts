@@ -237,6 +237,56 @@ describe("the crew acts with tools", () => {
   });
 });
 
+describe("crew delegation", () => {
+  const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const tool = (name: string, input: Record<string, unknown>) => ({ text: "", toolCalls: [{ type: "tool_call" as const, id: `c-${name}-${Math.random()}`, name, input }], model: "m", stopReason: "tool_use", usage: U });
+  const text = (t: string) => ({ text: t, model: "m", stopReason: "end_turn", usage: U });
+  const setup = (heavy: ReturnType<typeof text>[], cheap: ReturnType<typeof text>[]) => {
+    const seen: string[] = [];
+    const e = new Engine({
+      dataDir: dir(),
+      keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }),
+      settings: DEFAULTS,
+      fetch: offline,
+      makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => (seen.push(`${ref.model}:${req.system?.[1]?.text.split("\n")[0] ?? "verifier"}`), ((ref.model.includes("haiku") ? cheap : heavy).shift() ?? text("ok")) as never) }),
+    });
+    return { e, seen };
+  };
+
+  it("the Chief of Staff hands a task to GTM, GTM drafts, the work is checked, the report comes back", async () => {
+    const { e, seen } = setup(
+      [tool("delegate", { agent: "gtm", goal: "Draft a follow-up to Dana at Acme", done_when: ["a draft to Dana exists"] }), tool("draft_message", { to: "dana@acme.com", subject: "Q2 pilot", body: "Hi Dana, checking in on Q2." }), text("Drafted a follow-up to Dana."), text("GTM drafted the follow-up; it is ready for you to review.")],
+      [text('{"missing": []}')],
+    );
+    await e.open();
+    const r = await e.chat("Get GTM to draft a follow-up to Dana at Acme");
+    expect(r.reply).toBe("GTM drafted the follow-up; it is ready for you to review.");
+    expect(seen).toEqual(["claude-sonnet-5:# Role: Chief of Staff", "claude-sonnet-5:# Role: GTM", "claude-sonnet-5:# Role: GTM", "claude-haiku-4-5-20251001:verifier", "claude-sonnet-5:# Role: Chief of Staff"]);
+    expect(e.recentDrafts()[0]).toMatchObject({ agent: "gtm", to: "dana@acme.com", subject: "Q2 pilot" });
+    expect(e.board.list({ agent: "gtm" })[0]).toMatchObject({ status: "done", note: "Checked: all done-when items met." });
+    await e.close();
+  });
+
+  it("a crew member that does not finish is reported honestly", async () => {
+    const { e } = setup([tool("delegate", { agent: "ops", goal: "Close stale issues", done_when: ["every stale issue is closed"] }), text("I looked."), text("Still looked."), text("Ops did not finish.")], [text('{"missing": ["every stale issue is closed"]}'), text('{"missing": ["every stale issue is closed"]}')]);
+    await e.open();
+    await e.chat("Have ops close stale issues");
+    expect(e.board.list({ agent: "ops" })[0]).toMatchObject({ status: "failed", note: "Not finished: every stale issue is closed" });
+    await e.close();
+  });
+
+  it("crew members cannot delegate further and cannot send", async () => {
+    const tools = (e: Engine, a: string) => (e as unknown as { toolsFor: (a: string) => { spec: { name: string } }[] }).toolsFor(a).map((t) => t.spec.name);
+    const { e } = setup([], []);
+    await e.open();
+    expect(tools(e, "chief-of-staff")).toContain("delegate");
+    expect(tools(e, "gtm")).not.toContain("delegate");
+    expect(await e.delegate("nobody", "x", "y", ["z"])).toMatch(/no crew member/);
+    await e.close();
+  });
+});
+
 describe("onboarding", () => {
   it("saves the interview as stated facts and uses them in chat", async () => {
     const e = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });

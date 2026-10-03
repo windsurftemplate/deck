@@ -12,6 +12,7 @@ export function App() {
   const [log, setLog] = useState<Line[]>([{ from: "system", text: "Chief of Staff is ready. Ask anything, or open Settings to add keys." }]);
   const [draft, setDraft] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [crew, setCrew] = useState<Record<string, { status: string; task?: string }>>({});
 
   // Approvals and finished actions arrive from the engine at any time.
   useEffect(() => {
@@ -23,6 +24,10 @@ export function App() {
         const a = data as Approval;
         if (a.status === "pending") addApproval(a);
         else setLog((l) => l.map((x) => (x.approval?.id === a.id ? { ...x, settled: true } : x)));
+      }
+      if (event === "deck") {
+        const d = data as { type: string; task?: { agent: string | null; status: string; title: string } };
+        if ((d.type === "task.created" || d.type === "task.updated") && d.task?.agent) setCrew((c) => ({ ...c, [d.task!.agent!]: { status: d.task!.status, task: d.task!.title } }));
       }
       if (event === "action") {
         const r = data as ActionRecord;
@@ -69,10 +74,21 @@ export function App() {
       <div className="main">
         <aside className="crew" aria-label="Crew">
           <h2>Crew</h2>
-          <div className="member">
-            Chief of Staff
-            <div className="st">{stopped ? "Stopped" : "Standby"}</div>
-          </div>
+          {[
+            ["chief-of-staff", "Chief of Staff", "Command"],
+            ["gtm", "GTM", "Comms"],
+            ["code", "Engineering", "Engineering"],
+            ["ops", "Operations", "Operations"],
+          ].map(([id, name, station]) => {
+            const c = crew[id!];
+            const label = stopped ? "Stopped" : !c ? "Standby" : c.status === "running" ? `Working: ${c.task}` : c.status === "done" ? `Done: ${c.task}` : c.status === "failed" ? `Not finished: ${c.task}` : c.status;
+            return (
+              <div className={`member ${c?.status ?? ""}`} key={id}>
+                {name} <span className="station">{station}</span>
+                <div className="st">{label}</div>
+              </div>
+            );
+          })}
         </aside>
         <section className="chat" aria-label="Chat with the Chief of Staff">
           <h2>Chat</h2>

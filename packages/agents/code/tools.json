@@ -1,0 +1,6 @@
+{
+  "agent": "code",
+  "allow": ["issues.read", "issues.write", "memory.read", "memory.write"],
+  "requiresApproval": [],
+  "deny": ["github.merge", "*.delete", "payments.*"]
+}

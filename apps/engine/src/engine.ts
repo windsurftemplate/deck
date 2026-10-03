@@ -269,6 +269,85 @@ export class Engine {
     ];
   }
 
+  /** Agents the Chief of Staff can hand work to. */
+  static CREW: Record<string, string> = { gtm: "GTM", ops: "Operations", code: "Engineering" };
+  private drafts: { ts: string; agent: string; to: string; subject: string; body: string }[] = [];
+
+  /** Shared tools plus the ones only some agents get. Sub-agents never get delegate, so work cannot bounce around forever. */
+  private toolsFor(agent: string): AgentTool[] {
+    const str = (v: unknown) => String(v ?? "").trim();
+    const extra: AgentTool[] = [
+      {
+        spec: { name: "draft_message", description: "Write a draft email or message for the owner to review. Nothing is sent.", parameters: { type: "object", properties: { to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } }, required: ["to", "body"] } },
+        scope: "drafts.write",
+        kind: "write",
+        describe: (i) => `Draft a message to ${str(i.to)}`,
+        run: async (i) => {
+          const d = { ts: this.clock().toISOString(), agent, to: str(i.to), subject: str(i.subject), body: str(i.body) };
+          this.drafts = [d, ...this.drafts].slice(0, 50);
+          this.emit("draft", d);
+          await this.writer.logEpisode({ agent, kind: "draft", summary: `Draft to ${d.to}${d.subject ? ` (${d.subject})` : ""}: ${d.body.slice(0, 200)}` });
+          return `Draft saved for the owner.\nTo: ${d.to}${d.subject ? `\nSubject: ${d.subject}` : ""}\n\n${d.body}`;
+        },
+      },
+    ];
+    if (agent === AGENT)
+      extra.push({
+        spec: {
+          name: "delegate",
+          description: "Hand a task to a crew member and get their checked report back. gtm: leads, outreach drafts. ops: tracker cleanup, admin drafts. code: engineering breakdowns and decisions.",
+          parameters: { type: "object", properties: { agent: { type: "string", enum: Object.keys(Engine.CREW) }, goal: { type: "string" }, why: { type: "string" }, done_when: { type: "array", items: { type: "string" }, description: "Checks that prove the task is finished" } }, required: ["agent", "goal", "done_when"] },
+        },
+        scope: "crew.delegate",
+        kind: "read", // no effect by itself; the crew member's own actions go through the gate
+        describe: (i) => `Ask ${Engine.CREW[str(i.agent)] ?? str(i.agent)}: ${str(i.goal)}`,
+        run: async (i) => this.delegate(str(i.agent), str(i.goal), str(i.why) || "Asked by the Chief of Staff", (Array.isArray(i.done_when) ? i.done_when : [i.done_when]).map(str).filter(Boolean)),
+      });
+    return [...this.tools(), ...extra];
+  }
+
+  /** Runs one crew member on a task, checks the result, and returns a report the Chief of Staff can relay. */
+  async delegate(agent: string, goal: string, why: string, doneWhen: string[]): Promise<string> {
+    const name = Engine.CREW[agent];
+    if (!name) return `There is no crew member called ${agent}.`;
+    if (this.stopped) return "Agents are stopped.";
+    if (!doneWhen.length) doneWhen = ["the goal is met and the report says what changed"];
+    const policy = loadPolicy(agent);
+    const task = this.board.create({ title: goal, why, doneWhen, scopes: policy.allow, agent });
+    this.board.move(task.id, "running");
+    const memories = await this.reader.retrieve(goal, { tokenBudget: 600 });
+    const p = buildPrompt({ coreRules: loadCoreRules(), role: loadRole(agent), userModel: await this.userModel(), skillsIndex: [], task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: MemoryReader.format(memories), working: "" });
+    try {
+      const out = await runAgent({
+        agent,
+        chat: (req) => this.router.chat("heavy", agent, req),
+        system: p.system,
+        messages: [{ role: "user", content: p.user }],
+        tools: this.toolsFor(agent),
+        policy,
+        taskScopes: task.scopes,
+        preset: this.d.settings.preset,
+        approvals: this.approvals,
+        onLater: (r) => this.later(r),
+        verify: { goal, doneWhen, chat: (req) => this.router.chat("cheap", "verifier", req) },
+      });
+      const v = out.verdict;
+      const check = !v ? "" : v.passed ? (v.checked ? "\nChecked: all done-when items met." : "\nNot independently checked.") : `\nNot finished: ${v.missing.join("; ")}`;
+      this.board.move(task.id, v && !v.passed ? "failed" : "done", { result: out.text.slice(0, 2000), note: check.trim() });
+      const did = out.actions.map((a) => `- ${a.status}: ${a.summary}`).join("\n");
+      await this.writer.logEpisode({ agent, kind: "task", taskId: task.id, summary: `${goal}: ${v?.passed === false ? "not finished" : "done"}`, outcome: out.text.slice(0, 300) });
+      return `${name} report:\n${out.text}${did ? `\n\nActions:\n${did}` : ""}${check}`;
+    } catch (err) {
+      this.board.move(task.id, "failed", { note: (err as Error).message });
+      return `${name} could not finish: ${(err as Error).message}`;
+    }
+  }
+
+  /** Recent drafts for the owner to review. */
+  recentDrafts() {
+    return this.drafts;
+  }
+
   /** An approved action finished (or was rejected) after the chat turn ended. */
   private later(r: ActionRecord) {
     this.emit("action", r);
@@ -359,7 +438,7 @@ export class Engine {
         chat: (req) => this.router.chat("heavy", AGENT, req),
         system: p.system,
         messages: [{ role: "user", content: `${p.user}\n\n# Owner's message\n${clean}` }],
-        tools: this.tools(),
+        tools: this.toolsFor(AGENT),
         policy,
         taskScopes: policy.allow,
         preset: this.d.settings.preset,

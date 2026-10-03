@@ -1,0 +1,6 @@
+{
+  "agent": "ops",
+  "allow": ["issues.read", "issues.write", "memory.read", "memory.write", "drafts.write"],
+  "requiresApproval": [],
+  "deny": ["gmail.send", "*.delete", "payments.*"]
+}

@@ -2,6 +2,25 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Verifier and the crew (GTM, Operations, Engineering)
+
+**Changed**
+- Verifier (`verifyWork`): after a task, a separate cheap model call checks the report and the action log against the task's done-when list and lists anything missing. Failed actions always fail the check. If something is missing, the agent gets one more try with the exact gaps; the final result is reported honestly as checked, not finished, or not independently checked.
+- New crew members with role files and permissions: GTM (lead notes, outreach drafts, follow-up issues), Operations (tracker hygiene, admin drafts, commitments), Engineering (breaks work into issues, records decisions; plans only until repository tools exist). None can send, delete, merge or pay.
+- `delegate` tool for the Chief of Staff: hands a task (goal, why, done-when) to a crew member, which runs with its own prompt and narrower permissions, then is verified; the report comes back to the Chief of Staff. Crew members cannot delegate further.
+- `draft_message` tool: drafts saved for review and logged to memory; nothing is sent.
+- Task board tracks each delegated task (running, done, not finished). Desktop crew panel shows each member's live status.
+
+**Verified**
+- 180 TypeScript tests pass; `pnpm check` green; no secrets in the repo.
+- Engine: Chief of Staff hands a draft to GTM, GTM drafts, the verifier passes it, the report comes back, the task shows done; an Ops task that does not finish is marked not finished with the reason; crew members have no delegate tool.
+- Desktop crew panel updates from engine events.
+
+**Waiting on you**
+- Run on your Mac; push the repo.
+- Google sign-in for email and calendar (drafts become sendable, behind approval).
+- Jev access for routing and action checks (P2.6).
+
 ## 2026-10-02: The crew can act (Phase 2 begins)
 
 **Changed**

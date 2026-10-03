@@ -1,0 +1,6 @@
+{
+  "agent": "gtm",
+  "allow": ["memory.read", "memory.write", "issues.read", "issues.write", "drafts.write"],
+  "requiresApproval": [],
+  "deny": ["gmail.send", "*.delete", "payments.*"]
+}

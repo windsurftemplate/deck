@@ -47,6 +47,39 @@ export interface RunAgentInput {
   onLater?: (r: ActionRecord) => void;
   maxTurns?: number;
   maxTokens?: number;
+  /** Check the result against the task's done-when list before reporting done. One retry if something is missing. */
+  verify?: { goal: string; doneWhen: string[]; chat: (req: ChatRequest) => Promise<ChatResponse> };
+}
+
+export interface Verdict {
+  passed: boolean;
+  missing: string[];
+  /** False when the checker could not give a clear answer; the result is reported as unverified. */
+  checked: boolean;
+}
+
+/**
+ * Independent check of finished work. A separate, cheap model call reads the goal, the done-when list,
+ * the final report and what was actually done, and lists anything not met. Failed actions always fail the check.
+ */
+export async function verifyWork(v: { goal: string; doneWhen: string[]; report: string; actions: ActionRecord[]; chat: (req: ChatRequest) => Promise<ChatResponse> }): Promise<Verdict> {
+  const failed = v.actions.filter((a) => a.status === "failed").map((a) => `Failed: ${a.summary}`);
+  const log = v.actions.map((a) => `- ${a.status}: ${a.summary}${a.result ? ` -> ${a.result.slice(0, 200)}` : ""}`).join("\n") || "- (no actions)";
+  try {
+    const res = await v.chat({
+      system: [{ type: "text", text: "You check whether work is finished. Judge only from the report and the action log, not from intentions. Actions marked waiting count as done if the item only asks to prepare or queue something. Reply with JSON only: {\"missing\": [\"done-when item not met, copied exactly\"]}. Use an empty list when everything is met." }],
+      messages: [{ role: "user", content: `Goal: ${v.goal}\nDone when:\n${v.doneWhen.map((d) => `- ${d}`).join("\n")}\n\nReport:\n${v.report.slice(0, 3000)}\n\nAction log:\n${log}` }],
+      maxTokens: 300,
+      temperature: 0,
+    });
+    const json = res.text.slice(res.text.indexOf("{"), res.text.lastIndexOf("}") + 1);
+    const missing = (JSON.parse(json) as { missing?: unknown }).missing;
+    if (!Array.isArray(missing)) throw new Error("bad shape");
+    const all = [...failed, ...missing.map(String).filter(Boolean)];
+    return { passed: all.length === 0, missing: all, checked: true };
+  } catch {
+    return { passed: failed.length === 0, missing: failed, checked: false };
+  }
 }
 
 const missing = (spec: ToolSpec, input: Record<string, unknown>) => (spec.parameters.required ?? []).filter((k) => input[k] === undefined || input[k] === "");
@@ -55,15 +88,25 @@ const missing = (spec: ToolSpec, input: Record<string, unknown>) => (spec.parame
  * The agent loop with an action gate. The model may call tools; each call is checked against
  * permissions, then run, sent for approval, or refused. Approved actions run later, after the owner decides.
  */
-export async function runAgent(i: RunAgentInput): Promise<{ text: string; actions: ActionRecord[]; turns: number }> {
+export async function runAgent(i: RunAgentInput): Promise<{ text: string; actions: ActionRecord[]; turns: number; verdict?: Verdict }> {
   const allowed = i.tools.filter((t) => decideTool(i.policy, i.taskScopes, t.scope) !== "deny");
   const messages = [...i.messages];
   const actions: ActionRecord[] = [];
   const max = i.maxTurns ?? 6;
+  let retried = false;
   for (let turn = 1; turn <= max; turn++) {
     const res = await i.chat({ system: i.system, messages, tools: allowed.map((t) => t.spec), maxTokens: i.maxTokens ?? 900 });
     const calls = res.toolCalls ?? [];
-    if (!calls.length) return { text: res.text.trim(), actions, turns: turn };
+    if (!calls.length) {
+      const text = res.text.trim();
+      if (!i.verify) return { text, actions, turns: turn };
+      const verdict = await verifyWork({ ...i.verify, report: text, actions });
+      if (verdict.passed || retried || turn === max) return { text, actions, turns: turn, verdict };
+      // One more try: tell the agent exactly what is missing.
+      retried = true;
+      messages.push({ role: "assistant", content: text || "(no report)" }, { role: "user", content: `Check before reporting: not done yet. Missing:\n${verdict.missing.map((m) => `- ${m}`).join("\n")}\nFinish these, then report again.` });
+      continue;
+    }
     const assistant: Block[] = [...(res.text.trim() ? [{ type: "text" as const, text: res.text }] : []), ...calls];
     messages.push({ role: "assistant", content: assistant });
     const results: Block[] = [];

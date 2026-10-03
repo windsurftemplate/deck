@@ -1,6 +1,23 @@
 {
   "agent": "chief-of-staff",
-  "allow": ["calendar.read", "gmail.read", "issues.read", "issues.write", "github.read", "memory.read", "memory.write", "tasks.create", "tasks.assign"],
+  "allow": [
+    "calendar.read",
+    "crew.delegate",
+    "drafts.write",
+    "github.read",
+    "gmail.read",
+    "issues.read",
+    "issues.write",
+    "memory.read",
+    "memory.write",
+    "tasks.assign",
+    "tasks.create"
+  ],
   "requiresApproval": [],
-  "deny": ["gmail.send", "github.merge", "payments.*", "*.delete"]
+  "deny": [
+    "gmail.send",
+    "github.merge",
+    "payments.*",
+    "*.delete"
+  ]
 }

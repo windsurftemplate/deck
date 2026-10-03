@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApprovalQueue } from "@deck/gate";
 import type { ChatRequest, ChatResponse, ToolCallBlock } from "@deck/models";
-import { runAgent, needsApproval, type ActionRecord, type AgentTool } from "./index.js";
+import { runAgent, needsApproval, verifyWork, type ActionRecord, type AgentTool } from "./index.js";
 
 const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
 const say = (text: string): ChatResponse => ({ text, model: "m", stopReason: "end_turn", usage });
@@ -96,5 +96,28 @@ describe("action gate", () => {
 
   it("preset rules", () => {
     expect([needsApproval("read", "cautious"), needsApproval("write", "cautious"), needsApproval("write", "balanced"), needsApproval("external", "autonomous")]).toEqual([false, true, false, true]);
+  });
+});
+
+describe("verifier", () => {
+  const judge = (...answers: string[]) => async () => say(answers.shift() ?? '{"missing": []}');
+  it("passes finished work and reports it as checked", async () => {
+    const s = script(call("issues_create", { title: "Acme follow-up" }), say("Created VP-2."));
+    const out = await runAgent(base(s.chat, { verify: { goal: "Track the Acme follow-up", doneWhen: ["an issue exists for the Acme follow-up"], chat: judge('{"missing": []}') } }));
+    expect(out.verdict).toEqual({ passed: true, missing: [], checked: true });
+  });
+
+  it("sends the agent back once with what is missing, then reports the result", async () => {
+    const s = script(say("I will do it later."), call("issues_create", { title: "Acme follow-up" }), say("Created VP-2."));
+    const out = await runAgent(base(s.chat, { verify: { goal: "Track it", doneWhen: ["an issue exists"], chat: judge('{"missing": ["an issue exists"]}', '{"missing": []}') } }));
+    const nudge = s.seen[1]!.messages.at(-1)!.content as string;
+    expect(nudge).toMatch(/not done yet\. Missing:\n- an issue exists/);
+    expect(out).toMatchObject({ text: "Created VP-2.", verdict: { passed: true } });
+  });
+
+  it("failed actions always fail the check; an unclear checker is reported as unchecked", async () => {
+    const actions = [{ tool: "x", summary: "Create issue", status: "failed" as const, result: "db locked" }];
+    expect(await verifyWork({ goal: "g", doneWhen: ["d"], report: "done", actions, chat: judge('{"missing": []}') })).toEqual({ passed: false, missing: ["Failed: Create issue"], checked: true });
+    expect(await verifyWork({ goal: "g", doneWhen: ["d"], report: "done", actions: [], chat: judge("looks fine to me") })).toEqual({ passed: true, missing: [], checked: false });
   });
 });

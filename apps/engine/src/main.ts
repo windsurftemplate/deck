@@ -42,6 +42,8 @@ async function main() {
     "issues.get": (p) => engine.issues().get(p as never),
     "profile.save": (p) => engine.saveProfile((p ?? {}) as Record<string, string>),
     "models.test": () => engine.testModel(),
+    "drafts.list": async () => engine.recentDrafts(),
+    "crew.tasks": async () => engine.board.list(),
     "approvals.list": async () => engine.pendingApprovals(),
     "approvals.decide": async (p) => engine.decide(String((p as { id?: string })?.id ?? ""), !!(p as { approve?: boolean })?.approve),
     "settings.apply": (p) => engine.applyProposal(String((p as { id?: string })?.id ?? "")),

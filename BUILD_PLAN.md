@@ -133,10 +133,9 @@ Gate to leave Phase 2: no raw key anywhere in the app or logs, and every externa
 | P2.2 | `packages/agents/src/act.ts` | Agent loop with the action gate: reads run, writes follow the preset, external always waits for approval | Approved actions run later; rejected never run; secrets stripped from results | done |
 | P2.3 | Chief of Staff tools | Issues (list, create, update, comment) and memory (search, remember) | Works from the chat box and Telegram, with approval cards | done |
 | P2.4 | Email drafts and calendar holds | Draft replies and hold times, both behind approval | Approve in the app sends the draft | blocked: Google sign-in |
-| P2.5 | GTM, Code and Ops agents | Role files, tools, handoffs from the Chief of Staff | A delegated task finishes with a report | todo |
-| P2.6 | Jev routing and Laya intent check | Decide which agent and check each action matches the task | Off-task actions are stopped | todo |
-| P2.7 | Verifier | Check work against done-when before reporting done | Unfinished work is not reported done | todo |
-
+| P2.5 | GTM, Code and Ops agents | Role files, tools, handoffs from the Chief of Staff | A delegated task finishes with a report | done (GTM, Ops, Engineering; Engineering plans only until repo tools exist) |
+| P2.6 | Jev routing and Laya intent check | Decide which agent and check each action matches the task | Off-task actions are stopped | blocked: needs your Jev access (API key) and a decision on Laya |
+| P2.7 | Verifier | Check work against done-when before reporting done | Unfinished work is not reported done | done |
 ## Code signing
 
 - Not needed to build and run on your own Mac (apps you build yourself are not quarantined).
