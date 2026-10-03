@@ -1,3 +1,4 @@
+import { embedChunks } from "./docs.js";
 import type { MemoryStore } from "./store.js";
 import type { Embedder } from "./types.js";
 
@@ -23,6 +24,14 @@ export async function migrateMemory(from: MemoryStore, to: MemoryStore, embedder
       const vecs = await embedder!.embed(batch.map((e) => e.summary));
       for (let j = 0; j < batch.length; j++) await to.setVector("episode", batch[j]!.id, vecs[j]!);
     }
+  }
+  // Documents are rebuilt from their text, so their search vectors always match the new model.
+  const docs = await from.documents();
+  if (docs.length && !embedder) throw new Error("memory: pass an embedder to copy documents");
+  for (const d of docs) {
+    const full = (await from.document(d.id))!;
+    const chunks = await embedChunks(embedder!, full.title, full.text);
+    await to.addDocument({ title: full.title, kind: full.kind, source: full.source, text: full.text }, chunks, full.createdAt);
   }
   return { facts: dump.facts.length, episodes: dump.episodes.length, reembedded: reembed };
 }

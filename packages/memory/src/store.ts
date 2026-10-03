@@ -47,6 +47,17 @@ export interface MemoryStore {
   episodesSince(afterId: number, limit: number): Promise<(StoredEpisode & { agent: string; kind: string })[]>;
   feedbackSince(afterId: number): Promise<{ id: number; ts: string; actionId: string; agent: string; verdict: "approve" | "reject" | "edit"; reason: string | null }[]>;
 
+  /** Second brain: documents (files, pages, notes) split into searchable chunks. */
+  addDocument(d: NewDocument, chunks: { text: string; vec: Float32Array }[], ts: string): Promise<number>;
+  updateDocument(id: number, d: Partial<Pick<NewDocument, "title" | "text">>, chunks: { text: string; vec: Float32Array }[] | null, ts: string): Promise<void>;
+  documents(kind?: string): Promise<StoredDocument[]>;
+  document(id: number): Promise<(StoredDocument & { text: string }) | undefined>;
+  deleteDocument(id: number): Promise<void>;
+  searchChunksByVector(vec: Float32Array, k: number): Promise<StoredChunk[]>;
+  searchChunksByText(text: string, k: number): Promise<StoredChunk[]>;
+  /** Every current fact and relationship, for the 3D brain view. */
+  graph(): Promise<{ facts: StoredFact[]; edges: StoredEdge[] }>;
+
   /** Skills: learned procedures. New ones start as drafts and are only used once the owner approves. */
   saveSkill(s: { name: string; description: string; body: string }, ts: string): Promise<StoredSkill>;
   skills(status?: SkillStatus): Promise<StoredSkill[]>;
@@ -80,6 +91,31 @@ export interface StoredEpisode {
   ts: string;
   summary: string;
 }
+export interface NewDocument {
+  title: string;
+  /** file, page, note, obsidian, notion, apple-notes */
+  kind: string;
+  /** Where it came from: file name, URL, vault path. */
+  source: string;
+  text: string;
+}
+export interface StoredDocument {
+  id: number;
+  title: string;
+  kind: string;
+  source: string;
+  chars: number;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface StoredChunk {
+  id: number;
+  docId: number;
+  title: string;
+  kind: string;
+  text: string;
+}
+
 export type SkillStatus = "draft" | "active" | "retired";
 export interface StoredSkill {
   name: string;

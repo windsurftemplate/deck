@@ -511,6 +511,38 @@ describe("research agent", () => {
   });
 });
 
+describe("second brain", () => {
+  it("adds files, text, links and notes, imports note apps, recalls passages as untrusted, and draws a graph", async () => {
+    const page = (async () => new Response("<html><title>Breach roundup</title><body><article><p>Leaked API keys caused the Acme incident.</p></article></body></html>", { headers: { "content-type": "text/html" } })) as unknown as typeof fetch;
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: page, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model), osascript: async () => JSON.stringify([{ name: "Ideas", body: "<div>Ship the MCP server for Acme</div>" }]) });
+    await e.open();
+    await e.brain.addFile("acme.md", Buffer.from("# Acme\nDana Wright wants SSO before signing. See [[Pricing]].").toString("base64"));
+    await e.brain.addText("", "Pilot pricing is 2k per month for the first quarter.");
+    await expect(e.brain.addLink("http://localhost:8080/admin")).rejects.toThrow(/private network/);
+    await e.brain.addLink("https://news.example/breach");
+    const imp = await e.brain.importMarkdown([{ path: "vault/Pricing.md", content: "# Pricing\nAnnual plan saves 20%. Linked to [[Acme]]." }, { path: "vault/.obsidian/app.json", content: "{}" }]);
+    expect(imp).toEqual({ added: 1, skipped: 0, errors: [] });
+    expect((await e.brain.importMarkdown([{ path: "vault/Pricing.md", content: "# Pricing\nchanged" }])).skipped).toBe(1);
+    expect((await e.brain.importAppleNotes()).added).toBe(1);
+    const note = await e.brain.saveNote(null, "Call notes", "Acme wants a security review.");
+    await e.brain.saveNote(note.id, "Call notes", "Acme wants a security review on Tuesday.");
+    expect((await e.brain.document(note.id))!.text).toContain("Tuesday");
+    expect((await e.brain.documents()).map((d) => d.kind).sort()).toEqual(["apple-notes", "file", "note", "obsidian", "page", "text"]);
+    sent.length = 0;
+    await e.chat("What does Dana want before signing?");
+    const prompt = JSON.stringify(sent.at(-1)!.messages);
+    expect(prompt).toContain('<untrusted source=\\"second brain documents\\">');
+    expect(prompt).toContain("wants SSO before signing");
+    const g = await e.brain.graph();
+    const acme = g.nodes.find((n) => n.label === "Acme" && n.type === "doc")!;
+    const pricing = g.nodes.find((n) => n.label === "Pricing" && n.type === "doc")!;
+    expect(g.links.some((l) => l.source === acme.id && l.target === pricing.id && l.label === "links to")).toBe(true);
+    await e.brain.remove(acme.id === undefined ? 0 : Number(acme.id.slice(2)));
+    expect((await e.brain.documents()).some((d) => d.title === "Acme")).toBe(false);
+    await e.close();
+  });
+});
+
 describe("saved chats and streaming", () => {
   it("keeps each chat's history, names it from the first message, and streams reply text", async () => {
     const events: { ev: string; data: { delta?: string; threadId?: string } }[] = [];

@@ -1,5 +1,5 @@
 export { openMemory, storedDim, type DB, type OpenOptions } from "./db.js";
-export type { MemoryStore, MemoryDump, NewFact, StoredFact, StoredFactRef, StoredEpisode, StoredEdge, StoredSkill, SkillStatus } from "./store.js";
+export type { MemoryStore, MemoryDump, NewFact, StoredFact, StoredFactRef, StoredEpisode, StoredEdge, StoredSkill, SkillStatus, NewDocument, StoredDocument, StoredChunk } from "./store.js";
 export { SqliteMemoryStore } from "./sqlite-store.js";
 export { InMemoryStore } from "./memory-store.js";
 export { MemoryWriter, type FactDecider, type WriteResult, type CurrentFact } from "./write.js";
@@ -8,3 +8,4 @@ export { migrateMemory } from "./migrate.js";
 export { ftsQuery } from "./fts.js";
 export { HashEmbedder } from "./testing.js";
 export * from "./types.js";
+export { chunkText, embedChunks, ingestDocument } from "./docs.js";

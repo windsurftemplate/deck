@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { memoryStoreContract } from "./contract.js";
-import { HashEmbedder, InMemoryStore, MemoryReader, MemoryWriter, SqliteMemoryStore, ftsQuery, migrateMemory, openMemory } from "./index.js";
+import { ingestDocument, HashEmbedder, InMemoryStore, MemoryReader, MemoryWriter, SqliteMemoryStore, ftsQuery, migrateMemory, openMemory } from "./index.js";
 
 const KEY = "test-key-0123456789abcdef"; // gitleaks:allow (fake test key)
 const tmp = () => join(mkdtempSync(join(tmpdir(), "mem-")), "m.db");
@@ -82,5 +82,17 @@ describe("switching databases", () => {
     const texts = (await new MemoryReader(to, new HashEmbedder(32)).retrieve("Acme timing")).map((m) => m.text).join("\n");
     expect(texts).toContain("Not buying until Q2");
     await to.close();
+  });
+});
+
+describe("migration keeps documents", () => {
+  it("rebuilds document search with the new embedding model", async () => {
+    const from = new InMemoryStore(64);
+    await ingestDocument(from, new HashEmbedder(64), { title: "Pricing memo", kind: "note", source: "note", text: "Pilot price is 2k per month." }, "2026-10-01T00:00:00Z");
+    const to = new SqliteMemoryStore({ path: ":memory:", key: KEY, dim: 32 });
+    await expect(migrateMemory(from, new InMemoryStore(32))).rejects.toThrow(/embedder/);
+    await migrateMemory(from, to, new HashEmbedder(32));
+    expect((await to.documents()).map((d) => d.title)).toEqual(["Pricing memo"]);
+    expect((await to.searchChunksByText("pilot price", 2))[0]!.title).toBe("Pricing memo");
   });
 });

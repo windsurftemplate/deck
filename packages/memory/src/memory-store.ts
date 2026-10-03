@@ -1,6 +1,6 @@
 import { words } from "./fts.js";
 import { checkDump } from "./sqlite-store.js";
-import type { MemoryDump, MemoryStore, NewFact, SkillStatus, StoredEdge, StoredEpisode, StoredFact, StoredSkill } from "./store.js";
+import type { MemoryDump, MemoryStore, NewDocument, StoredChunk, StoredDocument, NewFact, SkillStatus, StoredEdge, StoredEpisode, StoredFact, StoredSkill } from "./store.js";
 import type { EpisodeInput } from "./types.js";
 
 type Dump = MemoryDump;
@@ -149,6 +149,58 @@ export class InMemoryStore implements MemoryStore {
     const max = (xs: { id: number }[]) => xs.reduce((m, x) => Math.max(m, x.id), 0);
     this.seq = { e: max(this.d.episodes), f: max(this.d.facts), edge: max(this.d.edges), r: max(this.d.reviews), fb: max(this.d.feedback) };
   }
+  private docs: (StoredDocument & { text: string })[] = [];
+  private chunks: { id: number; docId: number; text: string; vec: Float32Array }[] = [];
+  private seqDoc = 0;
+  private seqChunk = 0;
+  async addDocument(d: NewDocument, chunks: { text: string; vec: Float32Array }[], ts: string) {
+    const id = ++this.seqDoc;
+    this.docs.push({ id, title: d.title, kind: d.kind, source: d.source, text: d.text, chars: d.text.length, createdAt: ts, updatedAt: ts });
+    for (const c of chunks) this.chunks.push({ id: ++this.seqChunk, docId: id, text: c.text, vec: c.vec });
+    return id;
+  }
+  async updateDocument(id: number, d: Partial<Pick<NewDocument, "title" | "text">>, chunks: { text: string; vec: Float32Array }[] | null, ts: string) {
+    const doc = this.docs.find((x) => x.id === id);
+    if (!doc) return;
+    if (d.title !== undefined) doc.title = d.title;
+    if (d.text !== undefined) (doc.text = d.text), (doc.chars = d.text.length);
+    doc.updatedAt = ts;
+    if (chunks) {
+      this.chunks = this.chunks.filter((c) => c.docId !== id);
+      for (const c of chunks) this.chunks.push({ id: ++this.seqChunk, docId: id, text: c.text, vec: c.vec });
+    }
+  }
+  async documents(kind?: string) {
+    return this.docs.filter((d) => !kind || d.kind === kind).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ text: _t, ...d }) => ({ ...d }));
+  }
+  async document(id: number) {
+    const d = this.docs.find((x) => x.id === id);
+    return d && { ...d };
+  }
+  async deleteDocument(id: number) {
+    this.docs = this.docs.filter((d) => d.id !== id);
+    this.chunks = this.chunks.filter((c) => c.docId !== id);
+  }
+  private chunkOut(c: { id: number; docId: number; text: string }): StoredChunk {
+    const d = this.docs.find((x) => x.id === c.docId)!;
+    return { id: c.id, docId: c.docId, title: d.title, kind: d.kind, text: c.text };
+  }
+  async searchChunksByVector(vec: Float32Array, k: number) {
+    return this.chunks.map((c) => ({ c, d: l2(vec, c.vec) })).sort((a, b) => a.d - b.d).slice(0, k).map(({ c }) => this.chunkOut(c));
+  }
+  async searchChunksByText(text: string, k: number) {
+    const q = words(text);
+    return this.chunks
+      .map((c) => ({ c, s: words(c.text).filter((w) => q.includes(w)).length }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, k)
+      .map(({ c }) => this.chunkOut(c));
+  }
+  async graph() {
+    return { facts: this.current().map((f) => ({ id: f.id, subject: f.subject, claim: f.claim, source: f.source })), edges: this.d.edges.filter((e) => e.validTo === null).map((e) => ({ id: e.id, from: e.from, relation: e.relation, to: e.to })) };
+  }
+
   async getMeta(key: string) {
     return this.d.meta?.[key] ?? null;
   }

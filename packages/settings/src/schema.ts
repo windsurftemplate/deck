@@ -41,7 +41,7 @@ export interface Settings {
   preset: "cautious" | "balanced" | "autonomous";
   onboarding: { done: boolean };
   /** Command deck view: the 3D station or a simple list (lighter on older machines). */
-  world: { view: "3d" | "list" };
+  world: { view: "3d" | "brain" | "list" };
   /** Push-to-talk in the app. Speech is turned into text on this machine with whisper.cpp; audio is never kept. */
   voice: { enabled: boolean; whisperBin: string; modelPath: string; speakReplies: boolean };
   /** Camera snapshots in chat. The camera is on only while you take a picture; pictures go to your chosen model and are not stored. */
@@ -159,7 +159,7 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
   }
   if (patch.camera?.enabled !== undefined) next.camera.enabled = !!patch.camera.enabled;
   if (patch.world?.view !== undefined) {
-    if (!["3d", "list"].includes(patch.world.view)) throw new SettingsError("world.view", "Choose 3d or list.");
+    if (!["3d", "brain", "list"].includes(patch.world.view)) throw new SettingsError("world.view", "Choose 3d, brain or list.");
     next.world.view = patch.world.view;
   }
   if (patch.general) Object.assign(next.general, pick(patch.general, ["startAtLogin", "runInBackground"]));

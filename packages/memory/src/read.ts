@@ -4,6 +4,8 @@ import type { Embedder, Memory } from "./types.js";
 export interface RetrieveOptions {
   /** Candidates taken from each search before fusion. */
   k?: number;
+  /** Include passages from documents in the second brain (default on). */
+  documents?: boolean;
   /** Rough token budget for the returned text (about 4 characters per token). */
   tokenBudget?: number;
   /** Include episodes as well as facts. */
@@ -32,12 +34,18 @@ export class MemoryReader {
     };
     const factText = (r: { subject: string; claim: string; source: string }) => `${r.subject}: ${r.claim}${r.source === "stated" ? " (stated)" : ""}`;
 
-    const [vf, kf, ve, ke] = await Promise.all([
+    const [vf, kf, ve, ke, vd, kd] = await Promise.all([
       this.store.searchFactsByVector(vec!, k),
       this.store.searchFactsByText(query, k),
       opts.episodes === false ? [] : this.store.searchEpisodesByVector(vec!, k),
       opts.episodes === false ? [] : this.store.searchEpisodesByText(query, k),
+      opts.documents === false ? [] : this.store.searchChunksByVector(vec!, Math.ceil(k / 2)),
+      opts.documents === false ? [] : this.store.searchChunksByText(query, Math.ceil(k / 2)),
     ]);
+    // Document passages rank a little below facts; ids name the document so answers can cite it.
+    const docText = (r: { title: string; text: string }) => `${r.title}: ${r.text.slice(0, 700)}`;
+    vd.forEach((r, i) => bump(`doc:${r.docId}.${r.id}`, i + 1, docText(r)));
+    kd.forEach((r, i) => bump(`doc:${r.docId}.${r.id}`, i + 1, docText(r)));
     vf.forEach((r, i) => bump(`fact:${r.id}`, i, factText(r)));
     kf.forEach((r, i) => bump(`fact:${r.id}`, i, factText(r)));
     ve.forEach((r, i) => bump(`episode:${r.id}`, i + 2, `${r.ts.slice(0, 10)} ${r.summary}`));

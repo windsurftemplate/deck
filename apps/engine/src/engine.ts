@@ -8,13 +8,14 @@ import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
 import { LocalEmbedder } from "@deck/embed-local";
 import { ApprovalQueue, redactSecrets } from "@deck/gate";
-import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder } from "@deck/memory";
+import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder, type Memory } from "@deck/memory";
 import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, webResearch, type ChatModel, type ModelRef } from "@deck/models";
 import { applyUpdate, type DeepPartial, type Settings } from "@deck/settings";
 import { SqliteTrackerStore, Tracker } from "@deck/tracker";
 import { getPack, listPacks } from "@deck/packs";
 import type { Keychain } from "./keychain.js";
 import { Threads } from "./threads.js";
+import { Brain } from "./brain.js";
 
 /** A settings change the owner asked for in chat. Nothing changes until they confirm. */
 export interface Proposal {
@@ -55,6 +56,7 @@ export interface EngineDeps {
   makeModel?: (ref: ModelRef, getKey: () => Promise<string>) => ChatModel;
   webResearch?: typeof webResearch;
   transcriber?: { transcribe(audio: Uint8Array): Promise<string> };
+  osascript?: (script: string) => Promise<string>;
 }
 
 type Turn = { from: "owner" | "agent"; text: string };
@@ -63,6 +65,13 @@ const MEMORY_KEY = "memory.key";
 const AGENT = "chief-of-staff";
 
 /** The agent engine: owns the workspace database, models, the crew and the chat bot. The desktop app talks to it over stdio. */
+/** Facts and past work as plain memory; passages from files and pages wrapped as untrusted data. */
+function formatMemories(ms: Memory[]): string {
+  const docs = ms.filter((m) => m.kind === "doc");
+  const rest = MemoryReader.format(ms.filter((m) => m.kind !== "doc"));
+  return [rest, docs.length ? untrusted("second brain documents", MemoryReader.format(docs)) : ""].filter(Boolean).join("\n");
+}
+
 export class Engine {
   private store!: SqliteMemoryStore;
   private writer!: MemoryWriter;
@@ -76,6 +85,7 @@ export class Engine {
   private bot: ChatBot | null = null;
   private turns: Turn[] = [];
   threads!: Threads;
+  brain!: Brain;
   private stopped = false;
   private proposals = new Map<string, Proposal>();
   private clock: () => Date;
@@ -135,6 +145,7 @@ export class Engine {
     this.reader = new MemoryReader(this.store, embedder);
     this.tracker = new Tracker(new SqliteTrackerStore(this.store.connection), "VP", this.clock);
     this.threads = new Threads(this.store.connection, this.clock);
+    this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
     this.buildRouter();
     this.crew = JSON.parse((await this.store.getMeta("crew.overrides")) ?? "{}") as CrewOverrides;
     // Best effort: planting needs the embedding model, which may still be downloading on a first, offline start.
@@ -399,7 +410,7 @@ export class Engine {
         scope: "memory.read",
         kind: "read",
         describe: (i) => `Search memory: ${str(i.query)}`,
-        run: async (i) => MemoryReader.format(await this.reader.retrieve(str(i.query), { tokenBudget: 600 })) || "Nothing found.",
+        run: async (i) => formatMemories(await this.reader.retrieve(str(i.query), { tokenBudget: 600 })) || "Nothing found.",
       },
       {
         spec: { name: "memory_remember", description: "Save a lasting fact the owner told you (a person, company, preference or decision).", parameters: { type: "object", properties: { subject: { type: "string", description: "Who or what it is about" }, topic: { type: "string", description: "Short label, like role or timing" }, fact: { type: "string" } }, required: ["subject", "fact"] } },
@@ -536,7 +547,7 @@ export class Engine {
     const task = this.board.create({ title: goal, why, doneWhen, scopes: policy.allow, agent });
     this.board.move(task.id, "running");
     const memories = await this.reader.retrieve(goal, { tokenBudget: 600 });
-    const p = buildPrompt({ coreRules: loadCoreRules(), role: this.roleFor(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: MemoryReader.format(memories), working: "" });
+    const p = buildPrompt({ coreRules: loadCoreRules(), role: this.roleFor(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(memories), working: "" });
     try {
       const out = await runAgent({
         agent,
@@ -819,7 +830,7 @@ export class Engine {
       userModel: await this.userModel(),
       skillsIndex: await this.skillsIndex(),
       task: { goal: "Reply to the owner's latest message", why: "The owner is talking to you directly", doneWhen: ["answers the message directly", "cites memory ids when memory is used", "says plainly when something is not known"] },
-      memories: MemoryReader.format(memories),
+      memories: formatMemories(memories),
       working: [recent && `Recent conversation:\n${recent}`, open.length ? `Open issues:\n${open.map((i) => `- ${i.key} ${i.title} (${i.status})`).join("\n")}` : ""].filter(Boolean).join("\n\n"),
     });
     let reply: string;

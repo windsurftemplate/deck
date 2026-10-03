@@ -43,7 +43,7 @@ export interface EpisodeInput {
 
 export interface Memory {
   id: string;
-  kind: "fact" | "episode" | "edge";
+  kind: "fact" | "episode" | "edge" | "doc";
   text: string;
   score: number;
 }

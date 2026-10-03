@@ -10,7 +10,7 @@ export interface DeckState {
 }
 
 /** The 3D command deck with a side panel for the selected station. */
-export function Deck3D({ state, signal, onDecide }: { state: DeckState; signal: { beam?: string; archive?: number; visit?: string }; onDecide: (id: string, approve: boolean) => void }) {
+export function Deck3D({ state, signal, onDecide, onOpenBrain }: { state: DeckState; signal: { beam?: string; archive?: number; visit?: string }; onDecide: (id: string, approve: boolean) => void; onOpenBrain?: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
   const deck = useRef<DeckScene | null>(null);
@@ -100,6 +100,11 @@ export function Deck3D({ state, signal, onDecide }: { state: DeckState; signal: 
             </button>
           </div>
           <p>{s.about}</p>
+          {s.id === "archive" && onOpenBrain && (
+            <button className="primary" type="button" onClick={onOpenBrain}>
+              Open the second brain
+            </button>
+          )}
           {st && (
             <p className={`deck-status ${st}`}>
               {STATUS_TEXT[st]}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Deck3D } from "./deck3d/Deck3D";
+import { BrainView } from "./brain3d/BrainView";
 import { MicButton } from "./Voice";
 import { SnapshotButton, attachFile, type Picture } from "./Camera";
 import { PowerUp } from "./boot/PowerUp";
@@ -19,7 +20,7 @@ export function App() {
   const [crew, setCrew] = useState<Record<string, { status: string; task?: string }>>({});
   const [pending, setPending] = useState<Approval[]>([]);
   const [signal, setSignal] = useState<{ beam?: string; archive?: number; visit?: string }>({});
-  const [view, setView] = useState<"3d" | "list">("3d");
+  const [view, setView] = useState<"3d" | "brain" | "list">("3d");
   const [voiceOn, setVoiceOn] = useState(false);
   const [speak, setSpeak] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
@@ -40,8 +41,7 @@ export function App() {
   };
   const [attachErr, setAttachErr] = useState<string | null>(null);
   useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled))), [showSettings]);
-  const switchView = async () => {
-    const next = view === "3d" ? "list" : "3d";
+  const switchView = async (next: "3d" | "brain" | "list") => {
     setView(next);
     await saveSettings({ world: { view: next } }).catch(() => {});
   };
@@ -114,9 +114,13 @@ export function App() {
       <header className="bar">
         <b>Command deck</b>
         <div className="row">
-          <button className="btn" type="button" onClick={switchView}>
-            {view === "3d" ? "List view" : "3D view"}
-          </button>
+          <div className="seg" role="group" aria-label="View">
+            {([["3d", "Deck"], ["brain", "Brain"], ["list", "List"]] as const).map(([v, label]) => (
+              <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => switchView(v)}>
+                {label}
+              </button>
+            ))}
+          </div>
           <button className="btn" type="button" onClick={() => setShowSettings((v) => !v)} aria-expanded={showSettings}>
             Settings
           </button>
@@ -128,9 +132,12 @@ export function App() {
       {showSettings ? (
         <SettingsPanel onClose={() => setShowSettings(false)} />
       ) : (
-      <div className={`main ${view === "3d" ? "with-deck" : ""}`}>
-        {view === "3d" ? (
+      <div className={`main ${view !== "list" ? "with-deck" : ""}`}>
+        {view === "brain" ? (
+          <BrainView />
+        ) : view === "3d" ? (
           <Deck3D
+            onOpenBrain={() => switchView("brain")}
             state={{ crew, pending, stopped }}
             signal={{ ...(signal.beam ? { beam: signal.beam.split("#")[0]! } : {}), ...(signal.archive ? { archive: signal.archive } : {}), ...(signal.visit ? { visit: signal.visit } : {}) }}
             onDecide={async (id, approve) => {

@@ -3,6 +3,7 @@ import { MemoryReader } from "./read.js";
 import type { MemoryStore } from "./store.js";
 import { HashEmbedder } from "./testing.js";
 import { MemoryWriter } from "./write.js";
+import { chunkText, embedChunks, ingestDocument } from "./docs.js";
 
 /**
  * Behavior every MemoryStore adapter must pass. A new database (Postgres, LanceDB, a server)
@@ -115,6 +116,26 @@ export function memoryStoreContract(name: string, make: (dim: number) => Promise
       expect(await copy.exportAll(true)).toEqual(dump);
       expect(await copy.currentClaims("Acme")).toEqual(["Pilot signed"]);
       await expect(copy.importAll(dump)).rejects.toThrow(/empty store/);
+    });
+    it("stores, finds, updates and deletes documents; recall cites their passages", async () => {
+      const { store, r } = await setup();
+      const emb = new HashEmbedder(DIM);
+      const text = "Acme Corp renewal notes.\n\nThe CISO, Dana Wright, wants SSO before signing. Budget is approved for Q1.\n\nNext step: security review call.";
+      const { id, chunks } = await ingestDocument(store, emb, { title: "Acme notes", kind: "file", source: "acme.md", text }, "2026-10-01T00:00:00Z");
+      expect(chunks).toBe(1);
+      expect((await store.documents()).map((d) => d.title)).toEqual(["Acme notes"]);
+      expect((await store.searchChunksByText("SSO signing", 3))[0]).toMatchObject({ docId: id, title: "Acme notes" });
+      const recall = await r.retrieve("what does Dana want before signing");
+      expect(recall.some((m) => m.id.startsWith(`doc:${id}.`) && m.text.includes("SSO"))).toBe(true);
+      await store.updateDocument(id, { title: "Acme renewal", text: "Dana now also wants audit logs." }, await embedChunks(emb, "Acme renewal", "Dana now also wants audit logs."), "2026-10-02T00:00:00Z");
+      expect(await store.searchChunksByText("SSO", 3)).toHaveLength(0);
+      expect((await store.searchChunksByText("audit logs", 3))[0]!.title).toBe("Acme renewal");
+      await store.deleteDocument(id);
+      expect(await store.documents()).toHaveLength(0);
+      expect(await store.searchChunksByText("audit", 3)).toHaveLength(0);
+      expect(chunkText("short")).toEqual(["short"]);
+      const long = Array.from({ length: 60 }, (_, i) => `Sentence number ${i} about the project.`).join(" ");
+      expect(chunkText(long, 400, 50).every((p) => p.length <= 400)).toBe(true);
     });
   });
 }

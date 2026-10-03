@@ -1,6 +1,6 @@
 import { openMemory, type DB, type OpenOptions } from "./db.js";
 import { ftsQuery } from "./fts.js";
-import type { MemoryDump, MemoryStore, NewFact, SkillStatus, StoredEdge, StoredEpisode, StoredFact, StoredFactRef, StoredSkill } from "./store.js";
+import type { MemoryDump, MemoryStore, NewDocument, StoredChunk, StoredDocument, NewFact, SkillStatus, StoredEdge, StoredEpisode, StoredFact, StoredFactRef, StoredSkill } from "./store.js";
 import type { EpisodeInput } from "./types.js";
 
 /** SQLite adapter: SQLCipher-encrypted file, sqlite-vec for vectors, FTS5 for keywords. */
@@ -135,6 +135,75 @@ export class SqliteMemoryStore implements MemoryStore {
     const q = ftsQuery(text);
     if (!q) return [];
     return this.db.prepare(`SELECT e.id, e.ts, e.summary FROM episodes_fts JOIN episodes e ON e.id = episodes_fts.rowid WHERE episodes_fts MATCH ? ORDER BY bm25(episodes_fts) LIMIT ?`).all(q, k) as StoredEpisode[];
+  }
+
+  private docTables() {
+    if (this.docsReady) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL, source TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS doc_chunks (id INTEGER PRIMARY KEY, doc_id INTEGER NOT NULL REFERENCES documents(id), seq INTEGER NOT NULL, text TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS doc_chunks_by_doc ON doc_chunks(doc_id);
+      CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(text, content='doc_chunks', content_rowid='id');
+      CREATE TRIGGER IF NOT EXISTS doc_chunks_ai AFTER INSERT ON doc_chunks BEGIN INSERT INTO doc_chunks_fts(rowid, text) VALUES (new.id, new.text); END;
+      CREATE TRIGGER IF NOT EXISTS doc_chunks_ad AFTER DELETE ON doc_chunks BEGIN INSERT INTO doc_chunks_fts(doc_chunks_fts, rowid, text) VALUES ('delete', old.id, old.text); END;
+      CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(embedding float[${this.dim}]);`);
+    this.docsReady = true;
+  }
+  private docsReady = false;
+  private insertChunks(docId: number, chunks: { text: string; vec: Float32Array }[]) {
+    chunks.forEach((c, i) => {
+      const id = Number(this.db.prepare("INSERT INTO doc_chunks (doc_id, seq, text) VALUES (?, ?, ?)").run(docId, i, c.text).lastInsertRowid);
+      this.db.prepare("INSERT INTO vec_chunks (rowid, embedding) VALUES (?, ?)").run(BigInt(id), c.vec);
+    });
+  }
+  private dropChunks(docId: number) {
+    for (const r of this.db.prepare("SELECT id FROM doc_chunks WHERE doc_id = ?").all(docId) as { id: number }[]) this.db.prepare("DELETE FROM vec_chunks WHERE rowid = ?").run(BigInt(r.id));
+    this.db.prepare("DELETE FROM doc_chunks WHERE doc_id = ?").run(docId);
+  }
+  async addDocument(d: NewDocument, chunks: { text: string; vec: Float32Array }[], ts: string) {
+    this.docTables();
+    return this.db.transaction(() => {
+      const id = Number(this.db.prepare("INSERT INTO documents (title, kind, source, text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(d.title, d.kind, d.source, d.text, ts, ts).lastInsertRowid);
+      this.insertChunks(id, chunks);
+      return id;
+    })();
+  }
+  async updateDocument(id: number, d: Partial<Pick<NewDocument, "title" | "text">>, chunks: { text: string; vec: Float32Array }[] | null, ts: string) {
+    this.docTables();
+    this.db.transaction(() => {
+      if (d.title !== undefined) this.db.prepare("UPDATE documents SET title = ? WHERE id = ?").run(d.title, id);
+      if (d.text !== undefined) this.db.prepare("UPDATE documents SET text = ? WHERE id = ?").run(d.text, id);
+      this.db.prepare("UPDATE documents SET updated_at = ? WHERE id = ?").run(ts, id);
+      if (chunks) (this.dropChunks(id), this.insertChunks(id, chunks));
+    })();
+  }
+  async documents(kind?: string) {
+    this.docTables();
+    return (this.db.prepare(`SELECT id, title, kind, source, length(text) AS chars, created_at, updated_at FROM documents ${kind ? "WHERE kind = ?" : ""} ORDER BY updated_at DESC`).all(...(kind ? [kind] : [])) as { id: number; title: string; kind: string; source: string; chars: number; created_at: string; updated_at: string }[]).map((r) => ({ id: r.id, title: r.title, kind: r.kind, source: r.source, chars: r.chars, createdAt: r.created_at, updatedAt: r.updated_at }));
+  }
+  async document(id: number) {
+    this.docTables();
+    const r = this.db.prepare("SELECT id, title, kind, source, text, created_at, updated_at FROM documents WHERE id = ?").get(id) as { id: number; title: string; kind: string; source: string; text: string; created_at: string; updated_at: string } | undefined;
+    return r && { id: r.id, title: r.title, kind: r.kind, source: r.source, text: r.text, chars: r.text.length, createdAt: r.created_at, updatedAt: r.updated_at };
+  }
+  async deleteDocument(id: number) {
+    this.docTables();
+    this.db.transaction(() => (this.dropChunks(id), this.db.prepare("DELETE FROM documents WHERE id = ?").run(id)))();
+  }
+  async searchChunksByVector(vec: Float32Array, k: number) {
+    this.docTables();
+    return this.db.prepare("SELECT c.id, c.doc_id AS docId, d.title, d.kind, c.text FROM vec_chunks v JOIN doc_chunks c ON c.id = v.rowid JOIN documents d ON d.id = c.doc_id WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance").all(vec, k) as StoredChunk[];
+  }
+  async searchChunksByText(text: string, k: number) {
+    this.docTables();
+    const q = ftsQuery(text);
+    if (!q) return [];
+    return this.db.prepare("SELECT c.id, c.doc_id AS docId, d.title, d.kind, c.text FROM doc_chunks_fts JOIN doc_chunks c ON c.id = doc_chunks_fts.rowid JOIN documents d ON d.id = c.doc_id WHERE doc_chunks_fts MATCH ? ORDER BY bm25(doc_chunks_fts) LIMIT ?").all(q, k) as StoredChunk[];
+  }
+  async graph() {
+    const facts = this.db.prepare("SELECT id, subject, claim, source FROM facts WHERE valid_to IS NULL").all() as StoredFact[];
+    const edges = this.db.prepare(`SELECT id, from_subj AS "from", relation, to_subj AS "to" FROM edges WHERE valid_to IS NULL`).all() as StoredEdge[];
+    return { facts, edges };
   }
 
   async getMeta(key: string) {
