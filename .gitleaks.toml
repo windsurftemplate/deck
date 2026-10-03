@@ -1,0 +1,19 @@
+# Secret scanning for commits and CI. Uses the built-in rules plus our own.
+title = "deck gitleaks config"
+
+[extend]
+useDefault = true
+
+# VaultProof scoped tokens must never be committed either.
+[[rules]]
+id = "vaultproof-project-token"
+description = "VaultProof scoped project token"
+regex = '''vp-proj-[A-Za-z0-9_\-]{16,}'''
+keywords = ["vp-proj-"]
+
+[allowlist]
+description = "Fake values used in tests and fixtures"
+paths = [
+  '''evals/fixtures/''',
+  '''packages/.*/test/fixtures/''',
+]

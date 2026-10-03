@@ -1,0 +1,7 @@
+# Pinned toolchain so every machine builds the same way.
+# Install mise (https://mise.jdx.dev), then run: mise install
+[tools]
+node = "22"
+pnpm = "9.15.0"
+rust = "1.83"
+gitleaks = "8.21.2"

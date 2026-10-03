@@ -1,0 +1,7 @@
+#!/bin/sh
+# Blocks commits that contain secrets. Install gitleaks via: mise install
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks not found. Run 'mise install' to get it." >&2
+  exit 1
+fi
+gitleaks protect --staged --no-banner --redact --config .gitleaks.toml

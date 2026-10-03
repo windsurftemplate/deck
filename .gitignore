@@ -1,0 +1,31 @@
+# Dependencies and build output
+node_modules/
+dist/
+.turbo/
+apps/desktop/src-tauri/target/
+coverage/
+
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Local memory and data: never commit
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+memory-export*/
+*.memory.json
+data/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
