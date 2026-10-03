@@ -17,7 +17,7 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Not started | All earlier gates still hold |
 
-Code: about  lines of TypeScript, TSX and Rust across 2 apps and 11 packages, 23 commits.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 11 packages, 23 commits.
 Tests (counted): **179 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
