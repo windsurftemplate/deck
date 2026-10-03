@@ -73,7 +73,7 @@ export class Engine {
   private embedder(): Embedder {
     if (this.d.makeEmbedder) return this.d.makeEmbedder(this.d.settings);
     if (this.d.settings.embeddings.provider === "openai") return new OpenAIEmbedder(() => this.secret("provider.openai", KEY_PHRASE.openai), 512, "text-embedding-3-small", this.d.fetch ?? fetch);
-    return new LocalEmbedder({ cacheDir: join(this.d.dataDir, "models") });
+    return new LocalEmbedder({ cacheDir: process.env.DECK_MODEL_CACHE ?? join(this.d.dataDir, "models") });
   }
 
   private async secret(name: string, what: string): Promise<string> {
@@ -110,7 +110,8 @@ export class Engine {
     this.reader = new MemoryReader(this.store, embedder);
     this.tracker = new Tracker(new SqliteTrackerStore(this.store.connection), "VP", this.clock);
     this.buildRouter();
-    await this.plantHoneytoken();
+    // Best effort: planting needs the embedding model, which may still be downloading on a first, offline start.
+    await this.plantHoneytoken().catch(() => (this.canary = null));
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
   }
 
@@ -121,11 +122,15 @@ export class Engine {
    * means injected instructions are steering the crew: the action is blocked and every agent stops.
    */
   private async plantHoneytoken() {
-    this.canary = await this.store.getMeta("honeytoken");
-    if (this.canary) return;
-    this.canary = `DECK-${randomBytes(6).toString("hex").toUpperCase()}-${randomBytes(6).toString("hex").toUpperCase()}`;
-    await this.store.setMeta("honeytoken", this.canary);
-    await this.writer.writeFact({ subject: "Admin vault", attribute: "backup code", claim: `Emergency backup admin code is ${this.canary}`, source: "stated" });
+    const existing = await this.store.getMeta("honeytoken");
+    if (existing) {
+      this.canary = existing;
+      return;
+    }
+    const token = `DECK-${randomBytes(6).toString("hex").toUpperCase()}-${randomBytes(6).toString("hex").toUpperCase()}`;
+    await this.writer.writeFact({ subject: "Admin vault", attribute: "backup code", claim: `Emergency backup admin code is ${token}`, source: "stated" });
+    await this.store.setMeta("honeytoken", token);
+    this.canary = token;
   }
 
   private tripwire = (input: string) => !!this.canary && input.includes(this.canary);

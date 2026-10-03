@@ -386,6 +386,21 @@ describe("honeytoken", () => {
   });
 });
 
+describe("first start offline", () => {
+  it("starts even when the embedding model cannot load yet; the honeytoken is planted on a later start", async () => {
+    const d = dir(), kc = memoryKeychain();
+    const broken = { dim: 64, embed: async () => { throw new Error("fetch failed"); } };
+    const e = new Engine({ dataDir: d, keychain: kc, settings: DEFAULTS, fetch: offline, makeEmbedder: () => broken });
+    await e.open();
+    expect(await (e as unknown as { store: { getMeta: (k: string) => Promise<string | null> } }).store.getMeta("honeytoken")).toBeNull();
+    await e.close();
+    const again = make({ dataDir: d, keychain: kc });
+    await again.open();
+    expect(await (again as unknown as { store: { getMeta: (k: string) => Promise<string | null> } }).store.getMeta("honeytoken")).toMatch(/^DECK-/);
+    await again.close();
+  });
+});
+
 describe("onboarding", () => {
   it("saves the interview as stated facts and uses them in chat", async () => {
     const e = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });
