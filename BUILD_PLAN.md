@@ -35,7 +35,7 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 1.3 | `apps/desktop/src/App.tsx` | Shell UI: chat panel, status, settings stub | Window shows the shell | done (2D) |
 | 1.4 | `apps/desktop/src-tauri/src/engine.rs` | Starts the engine, relays JSON lines, forwards events, stop-all reaches the engine | Round trip with a real Node process | done |
 | 1.5 | Engine packaging | Ship the engine with the app (bundled Node runtime as a Tauri sidecar, signed) | Installed app starts the engine with no Node on the machine | done (Linux installer verified here; macOS and Windows via the release workflow) |
-| 1.6 | Recovery code | Show the workspace key once as a recovery code; restore it on a new machine or after a keychain reset | A wiped keychain plus the code opens the old workspace | todo (needs your decision) |
+| 1.6 | Recovery code | Show the workspace key once as a recovery code; restore it on a new machine or after a keychain reset | A wiped keychain plus the code opens the old workspace | done (Settings > Recovery key; Restore on the power-up screen) |
 ### Step 2: Memory
 
 | # | File | What it does | Done when | Status |
@@ -92,8 +92,7 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 6.1 | `packages/connectors/gmail.ts` | Read inbox, draft (no send yet) | Brief lists today's important emails | done (needs Gmail OAuth to run) |
 | 6.2 | `packages/connectors/calendar.ts` | Read today and tomorrow | Brief lists meetings | done (needs Calendar OAuth to run) |
 | 6.3 | `packages/tracker/src/tracker.ts` | Built-in issue tracker (replaces Linear): keys, priority, labels, history, search | Brief lists open issues | done |
-| 6.4 | `packages/connectors/github.ts` | Read PRs and checks | Brief lists PRs waiting on review | blocked: pick GitHub MCP server |
-
+| 6.4 | `packages/connectors/github.ts` | Read PRs and checks | Brief lists PRs waiting on review | skipped for now |
 ### Step 7: Safety basics
 
 | # | File | What it does | Done when | Status |
@@ -123,6 +122,13 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 |---|------|--------------|-----------|--------|
 | 10.1 | `evals/memory/questions.json` | 5 starter questions with fixture answers | Runs in CI | done (5/5) |
 | 10.2 | `evals/runner.ts` | Scores evals, posts diff on PRs | Regression blocks a PR | doing (score gate in CI done; PR comment todo) |
+
+## Code signing
+
+- Not needed to build and run on your own Mac (apps you build yourself are not quarantined).
+- Needed before sharing installers: without it, macOS blocks the app on first open (workaround: right-click > Open, or remove the quarantine flag) and keychain prompts can repeat after updates. Windows shows a SmartScreen warning.
+- Apple Developer Program ($99 a year) when the app goes beyond a few testers; add the certificate as repo secrets and the release workflow signs and notarizes.
+- Auto-updates use a separate, free Tauri signing key.
 
 ## Database upgrade path
 

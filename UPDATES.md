@@ -2,6 +2,23 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Recovery key, signing decision, GitHub skipped
+
+**Changed**
+- Settings > Recovery key: shows the workspace key on request (grouped for reading, copy button, hides itself after a minute) so it can go into a password manager. Read by the desktop shell straight from the keychain, never through the engine or logs.
+- Power-up: when memory cannot be opened because the key is missing, a Restore box takes the saved key (spaces, dashes and capitals tolerated), puts it back in the keychain, restarts the engine and reruns the checks.
+- Onboarding's last step reminds you to save the recovery key.
+- Encryption stays on (it costs nothing noticeable and keeps emails and memory unreadable if the disk or a backup leaks).
+- GitHub connector skipped for now. Code signing notes added to `BUILD_PLAN.md`.
+
+**Verified**
+- Engine test: a workspace survives a keychain reset when the saved key is restored.
+- Rust test: recovery key format checks. UI test: bad key refused, restore reruns the power-up to all clear, show, copy and hide work.
+- `pnpm check` green; no secrets in the repo.
+
+**Next**
+- Run the app on your Mac and push the repo.
+
 ## 2026-10-02: Engine ships inside the app
 
 **Changed**

@@ -1,21 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { arcPath, coreLit, LABELS, SEGMENTS, statusText, type CheckResult } from "./checks";
 import { runChecks } from "../bridge";
+import { RestoreKey } from "../Recovery";
 
 export function PowerUp({ onDone }: { onDone: () => void }) {
+  const [run, setRun] = useState(0);
   const [results, setResults] = useState<CheckResult[]>([]);
   const [finished, setFinished] = useState(false);
   const [preview, setPreview] = useState(false);
-  const started = useRef(false);
+  const started = useRef(-1);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+    if (started.current === run) return;
+    started.current = run;
+    setResults([]);
+    setFinished(false);
     runChecks((r) => setResults((prev) => [...prev.filter((x) => x.id !== r.id), r])).then((out) => {
       setPreview(out.preview);
       setFinished(true);
     });
-  }, []);
+  }, [run]);
 
   const byId = new Map(results.map((r) => [r.id, r]));
   const issues = results.filter((r) => r.status === "blocking" || r.status === "degraded");
@@ -57,6 +61,7 @@ export function PowerUp({ onDone }: { onDone: () => void }) {
             {r.fix && <p>Fix: {r.fix}</p>}
           </div>
         ))}
+        {results.some((r) => r.id === "memory" && r.status === "blocking" && /key/i.test(r.message)) && <RestoreKey onRestored={() => setRun((n) => n + 1)} />}
         <div className="actions">
           <button className="primary" type="button" disabled={!finished || blocking} onClick={onDone}>
             Continue

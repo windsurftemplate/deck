@@ -111,6 +111,40 @@ fn native_checks(app: AppHandle) -> Vec<CheckResult> {
     out
 }
 
+const MEMORY_KEY: &str = "memory.key";
+
+/// A workspace key is 64 hex characters. Spaces and dashes from a password manager are ignored.
+fn normalize_recovery_key(raw: &str) -> Option<String> {
+    let k: String = raw.chars().filter(|c| !c.is_whitespace() && *c != '-').collect::<String>().to_lowercase();
+    (k.len() == 64 && k.chars().all(|c| c.is_ascii_hexdigit())).then_some(k)
+}
+
+/// Shows the workspace key so the owner can save it in a password manager. Read straight from the keychain,
+/// never through the engine or logs.
+#[tauri::command]
+fn recovery_key_reveal() -> Result<String, String> {
+    entry(MEMORY_KEY)?.get_password().map_err(|_| "No recovery key yet. It is created the first time the crew starts.".to_string())
+}
+
+/// Puts a saved recovery key back into the keychain (new machine, or after a keychain reset).
+#[tauri::command]
+fn recovery_key_restore(key: String) -> Result<(), String> {
+    let k = normalize_recovery_key(&key).ok_or("That is not a recovery key. It is 64 letters and numbers (0-9, a-f).")?;
+    entry(MEMORY_KEY)?.set_password(&k).map_err(|e| e.to_string())
+}
+
+/// Stops the engine and starts it again (after a restore, or if it crashed).
+#[tauri::command]
+async fn engine_restart(app: AppHandle, state: tauri::State<'_, EngineState>) -> Result<(), String> {
+    if let Some(old) = state.0.lock().unwrap().take() {
+        old.stop();
+    }
+    *state.1.lock().unwrap() = None;
+    let client = start_engine(&app, state.1.clone())?;
+    *state.0.lock().unwrap() = Some(std::sync::Arc::new(client));
+    Ok(())
+}
+
 const SETTINGS_FILE: &str = "settings.json";
 const SETTINGS_MAX: usize = 64 * 1024;
 
@@ -259,14 +293,24 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_hint, secret_delete, native_checks, emergency_stop, settings_get, settings_set, engine_call])
+        .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_hint, secret_delete, native_checks, emergency_stop, settings_get, settings_set, engine_call, engine_restart, recovery_key_reveal, recovery_key_restore])
         .run(tauri::generate_context!())
         .expect("error while running deck");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{check_settings_json, last4, valid_name};
+    use super::{check_settings_json, last4, normalize_recovery_key, valid_name};
+
+    #[test]
+    fn recovery_keys_are_64_hex_and_tolerate_formatting() {
+        let k = "ab".repeat(32);
+        assert_eq!(normalize_recovery_key(&k).as_deref(), Some(k.as_str()));
+        assert_eq!(normalize_recovery_key(&format!(" {} ", k.to_uppercase())).as_deref(), Some(k.as_str()));
+        assert_eq!(normalize_recovery_key(&format!("{}-{}", &k[..32], &k[32..])).as_deref(), Some(k.as_str()));
+        assert!(normalize_recovery_key("abc").is_none());
+        assert!(normalize_recovery_key(&"zz".repeat(32)).is_none());
+    }
 
     #[test]
     fn hint_shows_only_the_last_four() {

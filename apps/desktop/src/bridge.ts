@@ -162,3 +162,21 @@ export async function applyProposal(id: string): Promise<string> {
     return `Could not apply: ${String(e)}`;
   }
 }
+
+/** The workspace key, for saving in a password manager. Desktop app only. */
+export async function revealRecoveryKey(): Promise<string> {
+  if (!inTauri) return "preview0000000000000000000000000000000000000000000000000000000000".slice(0, 64);
+  return invoke<string>("recovery_key_reveal");
+}
+
+/** Put a saved recovery key back and restart the engine. Returns an error message or null. */
+export async function restoreRecoveryKey(key: string): Promise<string | null> {
+  if (!inTauri) return "Preview mode: restore works inside the desktop app.";
+  try {
+    await invoke("recovery_key_restore", { key });
+    await invoke("engine_restart");
+    return null;
+  } catch (e) {
+    return String(e);
+  }
+}

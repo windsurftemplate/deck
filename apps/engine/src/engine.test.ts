@@ -52,6 +52,22 @@ describe("engine", () => {
     await expect(make({ dataDir: d, keychain: kc }).open()).rejects.toThrow(/key is missing from the system keychain/);
   });
 
+  it("a saved recovery key opens the workspace again after a keychain reset", async () => {
+    const d = dir(), kc = memoryKeychain();
+    const a = make({ dataDir: d, keychain: kc });
+    await a.open();
+    await a.issues().create({ title: "Survives a keychain reset" });
+    await a.close();
+    const saved = (await kc.get("memory.key"))!;
+    const fresh = memoryKeychain(); // the old keychain is gone
+    await expect(make({ dataDir: d, keychain: fresh }).open()).rejects.toThrow(/missing/);
+    await fresh.set("memory.key", saved); // what the Restore button does
+    const b = make({ dataDir: d, keychain: fresh });
+    await b.open();
+    expect((await b.issues().list()).map((i) => i.title)).toEqual(["Survives a keychain reset"]);
+    await b.close();
+  });
+
   it("startup checks: core waits for a key, then ignites", async () => {
     const kc = memoryKeychain();
     const e = make({ keychain: kc });

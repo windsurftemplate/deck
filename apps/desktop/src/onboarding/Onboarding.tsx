@@ -179,6 +179,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <section className="card">
           <h3>Crew to stations</h3>
           <p className="muted">You are set. Turn on Telegram, VaultProof, or the OpenAI memory model any time in Settings. Nothing was sent or posted during setup.</p>
+          <p className="muted">One thing to do now: save your recovery key in a password manager (Settings &gt; Recovery key). It is the only way to open your memory on a new computer.</p>
           <div className="row">
             <button className="primary" type="button" onClick={finish}>
               Open the command deck
