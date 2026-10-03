@@ -3,5 +3,5 @@
 [tools]
 node = "22"
 pnpm = "9.15.0"
-rust = "1.83"
+rust = "stable"   # some Tauri deps need Rust 1.85 or newer
 gitleaks = "8.21.2"

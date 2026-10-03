@@ -1,0 +1,46 @@
+import type { CheckResult } from "./boot/checks";
+
+/** True inside the Tauri app; false in a plain browser during UI development. */
+export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
+  return tauriInvoke<T>(cmd, args);
+}
+
+export async function listen(event: string, fn: () => void): Promise<() => void> {
+  if (!inTauri) return () => {};
+  const { listen: tauriListen } = await import("@tauri-apps/api/event");
+  return tauriListen(event, fn);
+}
+
+const ENGINE_PENDING = "Agent engine not connected yet. It ships in the next build step.";
+
+/**
+ * Startup checks. Inside the app, Rust answers the native ones (power, keychain);
+ * the rest come from the agent engine once it is wired. In a browser, a labeled preview runs.
+ */
+export async function runChecks(onResult: (r: CheckResult) => void): Promise<{ results: CheckResult[]; preview: boolean }> {
+  const ids = ["power", "keychain", "memory", "gateway", "connectors", "skills", "agents", "scheduler", "chat", "world", "models"];
+  const names: Record<string, string> = { power: "Power", keychain: "Keychain", memory: "Memory", gateway: "Gateway", connectors: "Connectors", skills: "Skills", agents: "Agents", scheduler: "Scheduler", chat: "Chat", world: "World", models: "Models" };
+  const results: CheckResult[] = [];
+  const push = (r: CheckResult) => (results.push(r), onResult(r));
+  const pause = () => new Promise((r) => setTimeout(r, 260));
+
+  if (!inTauri) {
+    for (const id of ids) {
+      await pause();
+      push(id === "models" ? { id, name: names[id]!, status: "waiting", message: "Connect an LLM to ignite the core." } : { id, name: names[id]!, status: "ok", message: "Preview only." });
+    }
+    return { results, preview: true };
+  }
+  const native = await invoke<CheckResult[]>("native_checks");
+  for (const id of ids) {
+    await pause();
+    const n = native.find((r) => r.id === id);
+    push(n ?? { id, name: names[id]!, status: "waiting", message: ENGINE_PENDING });
+  }
+  return { results, preview: false };
+}
+
+export const emergencyStop = () => (inTauri ? invoke<void>("emergency_stop") : Promise.resolve());
