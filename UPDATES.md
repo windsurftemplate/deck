@@ -202,7 +202,7 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - macOS Keychain sharing between the shell and the engine.
 
 ## Waiting on you
-1. Run on your Mac: double-click `Install deck.command`.
+1. Install on your Mac: double-click `Install deck.command` (Windows: `Install deck.cmd`; Linux: `./install-linux.sh`).
 2. Push the repo (VaultProof org or personal) so CI and releases run.
 3. Google sign-in app for Gmail and Calendar.
 4. Jev access; decide on Laya.
@@ -236,6 +236,22 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: One-click installers for Linux and Windows
+
+**Changed**
+- `install-linux.sh`: installs system libraries (apt on Ubuntu and Debian, dnf on Fedora), private Node 22 (checksum verified) and Rust in `~/.deck-tools`, builds a `.deb`, `.rpm` or AppImage to match the distro, installs it, and opens deck. Warns if no system keyring is running. `uninstall-linux.sh` removes it and asks before deleting data.
+- `Install deck.cmd` (Windows, double-click) runs `scripts/install-windows.ps1`: installs the Visual Studio C++ build tools and WebView2 with winget if missing, private Node and Rust in `%LOCALAPPDATA%\deck-tools`, builds the NSIS installer, installs it silently per user, and opens deck. Log in `%LOCALAPPDATA%\deck-install.log`. `Uninstall deck.cmd` removes it and asks before deleting data.
+- Fixed the app identifier: `dev.deck.app` ends in `.app`, which clashes with macOS app bundles. It is now `dev.deck.desktop` (data folder name changes; keychain entries keep the `dev.deck.app` name). No one had installed yet, so nothing moves.
+- README: install steps for all three systems.
+
+**Verified**
+- Linux installer ran end to end here on Ubuntu 24.04: libraries, Node, pnpm, Rust, engine packaging, release build, `.deb` installed (`/usr/bin/deck`, bundled `deck-node` and engine present).
+- Found and fixed along the way: the build machine ran out of disk; the installer now says plainly which step stopped.
+- Windows scripts parse cleanly in real PowerShell 7.4, and the Node download lookup finds the Windows file. Linux scripts pass shellcheck.
+
+**Not verified yet**
+- Running the Windows installer on Windows, and the Mac installer on a Mac.
 
 ## 2026-10-03: One-click Mac installer
 

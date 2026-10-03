@@ -4,7 +4,7 @@ set -uo pipefail
 osascript -e 'tell application "deck" to quit' >/dev/null 2>&1 || true
 sleep 1
 rm -rf /Applications/deck.app && echo "Removed /Applications/deck.app."
-DATA="$HOME/Library/Application Support/dev.deck.app"
+DATA="$HOME/Library/Application Support/dev.deck.desktop"
 read -r -p "Also delete your memory, settings and issues in $DATA? This cannot be undone. Type DELETE to confirm, or press Return to keep them: " ans
 if [ "${ans:-}" = "DELETE" ]; then
   rm -rf "$DATA" && echo "Deleted your data. Keychain entries (memory key, API keys) stay; remove 'dev.deck.app' items in Keychain Access if you want them gone."
