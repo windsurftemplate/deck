@@ -2,6 +2,7 @@
   "agent": "chief-of-staff",
   "allow": [
     "calendar.read",
+    "crew.configure",
     "crew.delegate",
     "drafts.write",
     "github.read",

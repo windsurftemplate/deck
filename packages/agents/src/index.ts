@@ -5,3 +5,4 @@ export { composeBrief, type Brief, type BriefInput } from "./brief.js";
 export { parseModelCommand, describeModels, ROLE_LABEL, PROVIDER_LABEL, type ModelCommand, type Role } from "./commands.js";
 export { runAgent, needsApproval, verifyWork, type Verdict, type AgentTool, type ActionRecord, type ActionKind, type Preset, type RunAgentInput } from "./act.js";
 export { reflect, extractFacts, jsonFrom, skillName, type SkillDraft } from "./learn.js";
+export { LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type CrewOverride, type CrewOverrides, type ToolMode } from "./crew-config.js";

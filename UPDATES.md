@@ -125,6 +125,7 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - **Approvals everywhere**: cards in the app and Telegram stay in sync; finished approved actions are reported; Stop all agents rejects what is waiting and blocks late approvals.
 - **Switch models from chat**: "switch heavy work to Gemini", "which models are you using?"; checks your key and the model list; changes only after you confirm.
 - **Drafts**: saved for review and logged; nothing is sent.
+- **Crew rules you can change**: Settings > Crew (instructions, your rules, tools set to Allowed, Ask me first, or Off, history, undo) and from chat (proposal, then Apply). Changes can only make agents more careful; locked rules are shown read-only. The tool-list "ask first" field, previously ignored, is now honored.
 
 ### Phase 2 verified
 - Provider tests for tool requests and replies (stand-in servers).
@@ -174,6 +175,7 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - The models package imported a Node-only module and broke the app build; now browser-safe.
 - First start without internet could block the engine (honeytoken needed the embedding model); planting is now best effort.
 - Earlier test totals in this log were overstated; corrected.
+- The "ask first" list in agents' tool files was ignored by the approval gate; now honored.
 
 ## Tests by package (counted 2026-10-03)
 
@@ -221,6 +223,23 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Crew rules you can change (Settings and chat)
+
+**Changed**
+- Plan doc: new section "Agent rules: what is fixed and what you can change" (four layers, how they combine, how to change them, limits).
+- `packages/agents/crew-config.ts`: your changes per agent (instructions, your own rules, each tool Allowed, Ask me first, or Off). Validation keeps changes from adding tools an agent does not have built in and keeps the size limits.
+- Gap fixed: the "ask first" list in each agent's tool file was ignored by the gate. It is now honored, together with the preset and your crew rules.
+- Engine: your rules are stored in the encrypted workspace with history (who, when, what, from Settings or chat) and undo. Prompts and permissions use your rules on the next task. Startup check reports how many agents have your rules.
+- From chat: "from now on GTM should never mention pricing in first emails" makes the Chief of Staff propose the change; Apply (or /apply on Telegram) confirms; nothing changes before that.
+- Desktop: Settings > Crew with a tab per agent, instructions editor with Reset to default, your rules (add, remove), tool permissions, the locked rules shown read-only, recent changes, and Undo last change.
+
+**Verified**
+- Agent tests: tools can be narrowed but not widened; size limits; owner rules in the role text; ask-first honored even on Autonomous.
+- Engine tests: Settings change puts the rule in the prompt, removes a switched-off tool, makes a tool wait for approval; history and undo; widening refused; chat proposal applies only on Apply and GTM then follows the new rule.
+- Desktop: Crew screen sends the right change and shows the saved summary and locked rules.
+- `pnpm check` green; no secrets in the repo.
+
 
 ## 2026-10-02: Honeytokens and safety evals
 

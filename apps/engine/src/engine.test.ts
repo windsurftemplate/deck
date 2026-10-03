@@ -11,6 +11,8 @@ import { Engine } from "./engine.js";
 import { memoryKeychain, type Keychain } from "./keychain.js";
 import { handleLine } from "./protocol.js";
 
+const AGENT_ID = "chief-of-staff";
+
 const ANTHROPIC = "sk-ant-" + "api03-" + "k".repeat(40);
 const dir = () => mkdtempSync(join(tmpdir(), "engine-"));
 const sent: ChatRequest[] = [];
@@ -398,6 +400,68 @@ describe("first start offline", () => {
     await again.open();
     expect(await (again as unknown as { store: { getMeta: (k: string) => Promise<string | null> } }).store.getMeta("honeytoken")).toMatch(/^DECK-/);
     await again.close();
+  });
+});
+
+describe("crew rules", () => {
+  const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const tool = (name: string, input: Record<string, unknown>) => ({ text: "", toolCalls: [{ type: "tool_call" as const, id: `c-${Math.random()}`, name, input }], model: "m", stopReason: "tool_use", usage: U });
+  const text = (t: string) => ({ text: t, model: "m", stopReason: "end_turn", usage: U });
+  const setup = (heavy: ReturnType<typeof text>[]) => {
+    const prompts: { system: string; tools: string[] }[] = [];
+    const e = new Engine({
+      dataDir: dir(),
+      keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }),
+      settings: DEFAULTS,
+      fetch: offline,
+      makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => (ref.model.includes("haiku") ? text('{"missing": []}') : (prompts.push({ system: req.system?.map((b) => b.text).join("\n") ?? "", tools: (req.tools ?? []).map((t) => t.name) }), heavy.shift() ?? text("ok"))) as never }),
+    });
+    return { e, prompts };
+  };
+
+  it("Settings changes: rules reach the prompt, tools can be switched off or set to ask, history and undo work", async () => {
+    const { e, prompts } = setup([tool("issues_create", { title: "x" }), text("Waiting for you.")]);
+    await e.open();
+    expect(await e.crewUpdate(AGENT_ID, { rules: ["Never schedule anything before 10am"], tools: { "issues.write": "ask", "drafts.write": "off" } })).toBe('Chief of Staff: added rule: "Never schedule anything before 10am"; issues.write: ask me first; drafts.write: off');
+    const r = await e.chat("make an issue x");
+    expect(prompts[0]!.system).toContain("## Owner rules\n- Never schedule anything before 10am");
+    expect(prompts[0]!.tools).not.toContain("draft_message");
+    expect(r.actions![0]!.status).toBe("waiting");
+    const info = e.crewInfo().find((c) => c.id === AGENT_ID)!;
+    expect(info.tools.find((t) => t.scope === "issues.write")).toMatchObject({ mode: "ask", label: "Create and change issues" });
+    expect(info.locked[0]).toMatch(/always waits for your approval/);
+    expect((await e.crewHistory())[0]).toMatchObject({ agent: AGENT_ID, source: "settings" });
+    expect(await e.crewUndo()).toMatch(/^Undid: Chief of Staff/);
+    expect(e.crewInfo().find((c) => c.id === AGENT_ID)!.rules).toEqual([]);
+    await e.close();
+  });
+
+  it("refuses changes that would widen an agent's tools", async () => {
+    const { e } = setup([]);
+    await e.open();
+    await expect(e.crewUpdate("gtm", { tools: { "crew.delegate": "allowed" } })).rejects.toThrow(/can only limit tools/);
+    await expect(e.crewUpdate("nobody", {})).rejects.toThrow(/no crew member/);
+    await e.close();
+  });
+
+  it("from chat: the Chief of Staff proposes, nothing changes until Apply, then GTM follows the new rule", async () => {
+    const { e, prompts } = setup([
+      tool("propose_crew_change", { agent: "gtm", add_rule: "Never mention pricing in first emails" }),
+      text("I proposed that rule for GTM. Press Apply to confirm."),
+      tool("delegate", { agent: "gtm", goal: "Draft a first email to Dana", done_when: ["a draft exists"] }),
+      text("Drafted."),
+      text("GTM drafted it."),
+    ]);
+    await e.open();
+    const r = await e.chat("From now on GTM should never mention pricing in first emails");
+    expect(r.proposal!.summary).toBe('GTM: added rule: "Never mention pricing in first emails"');
+    expect(e.crewInfo().find((c) => c.id === "gtm")!.rules).toEqual([]);
+    expect((await e.applyProposal(r.proposal!.id)).summary).toBe('Done: GTM: added rule: "Never mention pricing in first emails".');
+    await e.chat("Have GTM draft a first email to Dana");
+    expect(prompts.find((p) => p.system.includes("# Role: GTM"))!.system).toContain("- Never mention pricing in first emails");
+    expect((await e.crewHistory())[0]!.source).toBe("chat");
+    await e.close();
   });
 });
 

@@ -35,6 +35,15 @@ evals/                memory, task and safety suites (fake fixtures only)
 docs/decisions/       architecture decision records
 ```
 
+## Agent rules: four layers
+
+1. Locked-on safety in code (approval for external actions, secret scanner, untrusted wrapper, honeytoken, no sub-delegation, step limit). Not editable at runtime.
+2. Built-in defaults: `packages/agents/core-rules.md`, `<agent>/prompt.md`, `<agent>/tools.json`.
+3. Owner crew rules in the encrypted workspace (Settings > Crew or chat proposals): can replace instructions, add rules, and set tools to allowed, ask or off. They can only narrow tools, never add them.
+4. Approved skills.
+
+When changing layer 2, keep role files under the size limit and never add send, delete, merge or payment scopes to an agent without review.
+
 ## Modular by design
 
 Every outside dependency sits behind an interface (a port) with swappable adapters. Logic never imports a database driver or vendor SDK directly.

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, type ActionRecord, type AgentTool } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
 import { ChatBot, TelegramClient, type BotActions } from "@deck/chat";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
@@ -19,7 +19,25 @@ export interface Proposal {
   id: string;
   summary: string;
   patch: DeepPartial<Settings>;
+  /** Set when the proposal changes an agent's rules instead of settings. */
+  crew?: { agent: string; override: CrewOverride };
 }
+
+const SCOPE_LABEL: Record<string, string> = {
+  "issues.read": "Read issues",
+  "issues.write": "Create and change issues",
+  "memory.read": "Search memory",
+  "memory.write": "Save facts to memory",
+  "drafts.write": "Write drafts for you",
+  "skills.read": "Use approved skills",
+  "crew.delegate": "Hand work to the crew",
+  "crew.configure": "Propose changes to crew rules",
+  "calendar.read": "Read your calendar",
+  "gmail.read": "Read your email",
+  "github.read": "Read GitHub",
+  "tasks.create": "Create tasks",
+  "tasks.assign": "Assign tasks",
+};
 
 export interface EngineDeps {
   dataDir: string;
@@ -110,12 +128,78 @@ export class Engine {
     this.reader = new MemoryReader(this.store, embedder);
     this.tracker = new Tracker(new SqliteTrackerStore(this.store.connection), "VP", this.clock);
     this.buildRouter();
+    this.crew = JSON.parse((await this.store.getMeta("crew.overrides")) ?? "{}") as CrewOverrides;
     // Best effort: planting needs the embedding model, which may still be downloading on a first, offline start.
     await this.plantHoneytoken().catch(() => (this.canary = null));
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
   }
 
   private canary: string | null = null;
+  private crew: CrewOverrides = {};
+  private toolProposals: Proposal[] = [];
+
+  private policyFor(agent: string) {
+    return effectivePolicy(loadPolicy(agent), this.crew[agent]);
+  }
+  private roleFor(agent: string) {
+    return effectiveRole(loadRole(agent), this.crew[agent]);
+  }
+
+  /** Every agent's rules for Settings > Crew: defaults, your changes, tools with their mode, and the locked rules. */
+  crewInfo() {
+    return [AGENT, ...Object.keys(Engine.CREW)].map((id) => {
+      const base = loadPolicy(id);
+      const o = this.crew[id] ?? {};
+      return {
+        id,
+        name: id === AGENT ? "Chief of Staff" : Engine.CREW[id]!,
+        defaultInstructions: loadRole(id),
+        instructions: o.instructions ?? null,
+        rules: o.rules ?? [],
+        tools: base.allow.map((scope) => ({ scope, label: SCOPE_LABEL[scope] ?? scope, mode: (o.tools?.[scope] ?? (base.requiresApproval.includes(scope) ? "ask" : "allowed")) as ToolMode })),
+        locked: LOCKED_RULES,
+      };
+    });
+  }
+
+  /** Saves your changes to one agent, with history. Throws a plain message if the change is not allowed. */
+  async crewUpdate(agent: string, override: CrewOverride, source: "settings" | "chat" = "settings"): Promise<string> {
+    if (agent !== AGENT && !Engine.CREW[agent]) throw new Error(`There is no crew member called ${agent}.`);
+    const clean: CrewOverride = {
+      ...(override.instructions?.trim() ? { instructions: override.instructions.trim() } : {}),
+      ...(override.rules?.length ? { rules: override.rules.map((r) => r.trim()).filter(Boolean) } : {}),
+      ...(override.tools && Object.keys(override.tools).length ? { tools: override.tools } : {}),
+    };
+    const err = validateOverride(loadPolicy(agent), clean);
+    if (err) throw new Error(err);
+    const before = this.crew[agent] ?? {};
+    const name = agent === AGENT ? "Chief of Staff" : Engine.CREW[agent]!;
+    const summary = describeOverrideChange(name, before, clean);
+    this.crew = { ...this.crew, [agent]: clean };
+    await this.store.setMeta("crew.overrides", JSON.stringify(this.crew));
+    const history = JSON.parse((await this.store.getMeta("crew.history")) ?? "[]") as unknown[];
+    history.push({ ts: this.clock().toISOString(), agent, summary, source, before });
+    await this.store.setMeta("crew.history", JSON.stringify(history.slice(-100)));
+    await this.writer.logEpisode({ agent: "owner", kind: "crew-rules", summary });
+    this.emit("crew", { agent, summary });
+    return summary;
+  }
+
+  async crewHistory() {
+    return (JSON.parse((await this.store.getMeta("crew.history")) ?? "[]") as { ts: string; agent: string; summary: string; source: string }[]).map(({ ts, agent, summary, source }) => ({ ts, agent, summary, source })).reverse();
+  }
+
+  /** Undo the most recent change to crew rules. */
+  async crewUndo(): Promise<string> {
+    const history = JSON.parse((await this.store.getMeta("crew.history")) ?? "[]") as { agent: string; summary: string; before: CrewOverride }[];
+    const last = history.pop();
+    if (!last) return "Nothing to undo.";
+    this.crew = { ...this.crew, [last.agent]: last.before };
+    await this.store.setMeta("crew.overrides", JSON.stringify(this.crew));
+    await this.store.setMeta("crew.history", JSON.stringify(history));
+    this.emit("crew", { agent: last.agent, summary: `Undid: ${last.summary}` });
+    return `Undid: ${last.summary}`;
+  }
 
   /**
    * Plants a fake "backup code" in memory once. Nothing legitimate ever uses it, so any action that carries it
@@ -206,8 +290,10 @@ export class Engine {
       connectors: async () => ({ status: "off", message: "No accounts connected yet (Gmail and Calendar come with sign-in)." }),
       skills: async () => ({ status: "ok", message: "No skills yet. They are learned from approved work." }),
       agents: async () => {
-        buildPrompt({ coreRules: loadCoreRules(), role: loadRole(AGENT), userModel: "", skillsIndex: [], task: { goal: "check", why: "check", doneWhen: ["check"] }, memories: "", working: "" });
-        return { status: "ok", message: "Chief of Staff loaded." };
+        const all = [AGENT, ...Object.keys(Engine.CREW)];
+        for (const a of all) buildPrompt({ coreRules: loadCoreRules(), role: this.roleFor(a), userModel: "", skillsIndex: [], task: { goal: "check", why: "check", doneWhen: ["check"] }, memories: "", working: "" });
+        const changed = all.filter((a) => this.crew[a] && Object.keys(this.crew[a]!).length).length;
+        return { status: "ok", message: `${all.length} crew members loaded${changed ? `, ${changed} with your rules` : ""}.` };
       },
       scheduler: async () => ({ status: "ok", message: this.bot ? "Morning briefing scheduled for 08:00." : "Running. Morning briefing goes out once chat is on." }),
       chat: async () => {
@@ -340,6 +426,43 @@ export class Engine {
     if (agent === AGENT)
       extra.push({
         spec: {
+          name: "propose_crew_change",
+          description: "When the owner asks to change how an agent behaves (a new rule, or asking first, or switching a tool off), propose the change. The owner confirms with Apply; nothing changes before that.",
+          parameters: {
+            type: "object",
+            properties: {
+              agent: { type: "string", enum: [AGENT, ...Object.keys(Engine.CREW)] },
+              add_rule: { type: "string", description: "A rule in the owner's words, like: Never mention pricing in first emails" },
+              remove_rule: { type: "string", description: "Exact text of an existing owner rule to remove" },
+              tool_scope: { type: "string", description: "A tool scope the agent has, like issues.write" },
+              tool_mode: { type: "string", enum: ["allowed", "ask", "off"] },
+            },
+            required: ["agent"],
+          },
+        },
+        scope: "crew.configure",
+        kind: "read", // only proposes; the owner applies it
+        describe: (i) => `Propose a rule change for ${str(i.agent)}`,
+        run: async (i) => {
+          const target = str(i.agent);
+          const cur = this.crew[target] ?? {};
+          const next: CrewOverride = structuredClone(cur);
+          if (i.add_rule) next.rules = [...(next.rules ?? []), str(i.add_rule)];
+          if (i.remove_rule) next.rules = (next.rules ?? []).filter((r) => r !== str(i.remove_rule));
+          if (i.tool_scope && i.tool_mode) next.tools = { ...(next.tools ?? {}), [str(i.tool_scope)]: str(i.tool_mode) as ToolMode };
+          if (target !== AGENT && !Engine.CREW[target]) return `There is no crew member called ${target}.`;
+          const err = validateOverride(loadPolicy(target), next);
+          if (err) return `Cannot propose that: ${err}`;
+          const summary = describeOverrideChange(target === AGENT ? "Chief of Staff" : Engine.CREW[target]!, cur, next);
+          const p: Proposal = { id: randomBytes(3).toString("hex"), summary, patch: {}, crew: { agent: target, override: next } };
+          this.proposals.set(p.id, p);
+          this.toolProposals.push(p);
+          return `Proposed: ${summary}. Tell the owner to press Apply to confirm; nothing has changed yet.`;
+        },
+      });
+    if (agent === AGENT)
+      extra.push({
+        spec: {
           name: "delegate",
           description: "Hand a task to a crew member and get their checked report back. gtm: leads, outreach drafts. ops: tracker cleanup, admin drafts. code: engineering breakdowns and decisions.",
           parameters: { type: "object", properties: { agent: { type: "string", enum: Object.keys(Engine.CREW) }, goal: { type: "string" }, why: { type: "string" }, done_when: { type: "array", items: { type: "string" }, description: "Checks that prove the task is finished" } }, required: ["agent", "goal", "done_when"] },
@@ -358,11 +481,11 @@ export class Engine {
     if (!name) return `There is no crew member called ${agent}.`;
     if (this.stopped) return "Agents are stopped.";
     if (!doneWhen.length) doneWhen = ["the goal is met and the report says what changed"];
-    const policy = loadPolicy(agent);
+    const policy = this.policyFor(agent);
     const task = this.board.create({ title: goal, why, doneWhen, scopes: policy.allow, agent });
     this.board.move(task.id, "running");
     const memories = await this.reader.retrieve(goal, { tokenBudget: 600 });
-    const p = buildPrompt({ coreRules: loadCoreRules(), role: loadRole(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: MemoryReader.format(memories), working: "" });
+    const p = buildPrompt({ coreRules: loadCoreRules(), role: this.roleFor(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: MemoryReader.format(memories), working: "" });
     try {
       const out = await runAgent({
         agent,
@@ -523,6 +646,14 @@ export class Engine {
   async applyProposal(id: string): Promise<{ applied: boolean; summary: string; settings: Settings }> {
     const p = this.proposals.get(id);
     if (!p) return { applied: false, summary: "That change expired or was already applied.", settings: this.d.settings };
+    if (p.crew) {
+      this.proposals.delete(id);
+      try {
+        return { applied: true, summary: `Done: ${await this.crewUpdate(p.crew.agent, p.crew.override, "chat")}.`, settings: this.d.settings };
+      } catch (err) {
+        return { applied: false, summary: (err as Error).message, settings: this.d.settings };
+      }
+    }
     const next = applyUpdate(this.d.settings, p.patch);
     const file = join(this.d.dataDir, "settings.json");
     writeFileSync(`${file}.tmp`, JSON.stringify(next, null, 2));
@@ -547,7 +678,7 @@ export class Engine {
     const recent = this.turns.slice(-10).map((t) => `${t.from === "owner" ? "Owner" : "You"}: ${t.text}`).join("\n");
     const p = buildPrompt({
       coreRules: loadCoreRules(),
-      role: loadRole(AGENT),
+      role: this.roleFor(AGENT),
       userModel: await this.userModel(),
       skillsIndex: await this.skillsIndex(),
       task: { goal: "Reply to the owner's latest message", why: "The owner is talking to you directly", doneWhen: ["answers the message directly", "cites memory ids when memory is used", "says plainly when something is not known"] },
@@ -557,7 +688,8 @@ export class Engine {
     let reply: string;
     let actions: ActionRecord[] = [];
     try {
-      const policy = loadPolicy(AGENT);
+      const policy = this.policyFor(AGENT);
+      this.toolProposals = [];
       const out = await runAgent({
         agent: AGENT,
         chat: (req) => this.router.chat("heavy", AGENT, req),
@@ -582,7 +714,8 @@ export class Engine {
     this.turns.push({ from: "owner", text: clean }, { from: "agent", text: reply });
     this.turns = this.turns.slice(-40);
     await this.writer.logEpisode({ agent: AGENT, kind: "chat", summary: `Owner: ${clean.slice(0, 300)} | Reply: ${reply.slice(0, 300)}` });
-    return { reply, memories: memories.map((m) => m.id), redacted: findings.map((f) => f.name), ...(actions.length ? { actions } : {}) };
+    const proposal = this.toolProposals.at(-1);
+    return { reply, memories: memories.map((m) => m.id), redacted: findings.map((f) => f.name), ...(actions.length ? { actions } : {}), ...(proposal ? { proposal } : {}) };
   }
 
   /** Onboarding interview answers become stated facts about the owner. Empty answers are skipped. */

@@ -6,6 +6,7 @@ import { EmbeddingsCard, TelegramCard } from "./ChatAndMemory";
 import { ModelRoles } from "./ModelRoles";
 import { RecoveryCard } from "./Recovery";
 import { LearningCard } from "./Learning";
+import { CrewCard } from "./Crew";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [s, setS] = useState<Settings | null>(null);
@@ -51,6 +52,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <ModelRoles s={s} onSaved={setS} />
       <EmbeddingsCard s={s} onSaved={setS} />
       <TelegramCard s={s} onSaved={setS} />
+      <CrewCard />
       <LearningCard />
       <RecoveryCard />
       <div className="card">

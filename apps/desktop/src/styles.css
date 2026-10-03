@@ -90,3 +90,9 @@ select { font: inherit; font-size: 15px; color: var(--text); background: var(--v
 .member.failed .st { color: var(--warn); }
 .skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .skills li { border-top: 1px solid var(--seam); padding-top: 8px; font-size: 15px; }
+.rules, .locked, .history { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; color: var(--text); font-size: 15px; }
+.rules li { display: flex; justify-content: space-between; gap: 10px; align-items: center; border-top: 1px solid var(--seam); padding-top: 6px; }
+.locked li::before { content: "🔒 "; }
+.tools { border-collapse: collapse; width: 100%; color: var(--text); font-size: 15px; }
+.tools td { padding: 6px 0; border-top: 1px solid var(--seam); }
+.tools td:last-child { text-align: right; }

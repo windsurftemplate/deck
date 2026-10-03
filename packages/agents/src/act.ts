@@ -146,7 +146,9 @@ async function handle(call: ToolCallBlock, i: RunAgentInput, allowed: AgentTool[
       return { tool: call.name, summary, status: "failed", result: (err as Error).message };
     }
   };
-  if (!needsApproval(tool.kind, i.preset)) {
+  // Approval if the preset or kind says so, or the agent's tool list (or the owner's crew rules) says "ask first".
+  const askFirst = decideTool(i.policy, i.taskScopes, tool.scope) === "approval";
+  if (!askFirst && !needsApproval(tool.kind, i.preset)) {
     const r = await execute();
     log.push(r);
     return reply(r.status === "done" ? r.result! : `Failed: ${r.result}`, r.status === "failed");
