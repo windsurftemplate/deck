@@ -1,3 +1,4 @@
+import { sseJson } from "./stream.js";
 import { ModelError, blocksOf, type ChatMessage, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type ToolCallBlock } from "./types.js";
 import { AnthropicDirect, type ProviderId } from "./direct.js";
 
@@ -71,7 +72,7 @@ export class OpenAICompatible implements ChatModel {
     private o: { provider: "openai" | "openrouter"; baseUrl: string; getKey: () => Promise<string>; fetch?: Fetch; timeoutMs?: number },
   ) {}
 
-  async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
+  async chat(req: ChatRequest, signal?: AbortSignal, onText?: (delta: string) => void): Promise<ChatResponse> {
     const messages = openaiMessages(req);
     const tools = req.tools?.length ? { tools: req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) } : {};
     const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${await this.o.getKey()}` };
@@ -79,12 +80,13 @@ export class OpenAICompatible implements ChatModel {
     const res = await send(
       this.o.fetch ?? fetch,
       `${this.o.baseUrl.replace(/\/$/, "")}/chat/completions`,
-      { method: "POST", headers, body: JSON.stringify({ model: this.id, messages, ...tools, max_completion_tokens: req.maxTokens, ...(req.temperature !== undefined ? { temperature: req.temperature } : {}) }) },
+      { method: "POST", headers, body: JSON.stringify({ model: this.id, messages, ...tools, max_completion_tokens: req.maxTokens, ...(req.temperature !== undefined ? { temperature: req.temperature } : {}), ...(onText ? { stream: true, stream_options: { include_usage: true } } : {}) }) },
       this.o.provider,
       this.id,
       this.o.timeoutMs ?? 120_000,
       signal,
     );
+    if (onText) return openaiStream(res, this.id, onText);
     const j = (await res.json()) as {
       model?: string;
       choices: { message: { content: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }; finish_reason: string | null }[];
@@ -110,6 +112,35 @@ export class OpenAICompatible implements ChatModel {
   }
 }
 
+/** Rebuilds an OpenAI chat completion from its stream, passing text deltas on. */
+async function openaiStream(res: Response, model: string, onText: (d: string) => void): Promise<ChatResponse> {
+  let text = "", stop: string | null = null, usage = { prompt_tokens: 0, completion_tokens: 0, prompt_tokens_details: { cached_tokens: 0 } };
+  const calls: { id: string; name: string; args: string }[] = [];
+  for await (const e of sseJson(res)) {
+    const ch = (e.choices as { delta?: { content?: string; tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[] }; finish_reason?: string }[] | undefined)?.[0];
+    if (ch?.delta?.content) (text += ch.delta.content), onText(ch.delta.content);
+    for (const tc of ch?.delta?.tool_calls ?? []) {
+      const c = (calls[tc.index] ??= { id: "", name: "", args: "" });
+      if (tc.id) c.id = tc.id;
+      if (tc.function?.name) c.name += tc.function.name;
+      if (tc.function?.arguments) c.args += tc.function.arguments;
+    }
+    if (ch?.finish_reason) stop = ch.finish_reason;
+    if (e.usage) usage = { ...usage, ...(e.usage as object) };
+  }
+  const toolCalls: ToolCallBlock[] = calls.filter(Boolean).map((c) => {
+    let input: Record<string, unknown>;
+    try {
+      input = JSON.parse(c.args || "{}") as Record<string, unknown>;
+    } catch {
+      input = { _unparsed: c.args };
+    }
+    return { type: "tool_call", id: c.id, name: c.name, input };
+  });
+  const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
+  return { text, ...(toolCalls.length ? { toolCalls } : {}), model, stopReason: stop, usage: { inputTokens: usage.prompt_tokens - cached, outputTokens: usage.completion_tokens, cacheReadTokens: cached, cacheWriteTokens: 0 } };
+}
+
 /** Google Gemini generateContent API. */
 export class GeminiDirect implements ChatModel {
   constructor(
@@ -117,7 +148,7 @@ export class GeminiDirect implements ChatModel {
     private o: { getKey: () => Promise<string>; fetch?: Fetch; timeoutMs?: number },
   ) {}
 
-  async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
+  async chat(req: ChatRequest, signal?: AbortSignal, onText?: (delta: string) => void): Promise<ChatResponse> {
     const body = {
       ...(req.system?.length ? { systemInstruction: { parts: [{ text: req.system.map((b) => b.text).join("\n\n") }] } } : {}),
       contents: geminiContents(req),
@@ -126,13 +157,30 @@ export class GeminiDirect implements ChatModel {
     };
     const res = await send(
       this.o.fetch ?? fetch,
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.id)}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.id)}:${onText ? "streamGenerateContent?alt=sse" : "generateContent"}`,
       { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": await this.o.getKey() }, body: JSON.stringify(body) },
       "gemini",
       this.id,
       this.o.timeoutMs ?? 120_000,
       signal,
     );
+    if (onText) {
+      // Each streamed chunk carries new parts; merge them into one response.
+      const parts: { text?: string; thought?: boolean; functionCall?: { name: string; args?: Record<string, unknown> } }[] = [];
+      let finish: string | undefined, um: { promptTokenCount?: number; candidatesTokenCount?: number; cachedContentTokenCount?: number } = {};
+      for await (const e of sseJson(res)) {
+        const c = (e.candidates as { content?: { parts?: typeof parts }; finishReason?: string }[] | undefined)?.[0];
+        for (const p of c?.content?.parts ?? []) {
+          if (p.text && !p.thought) onText(p.text);
+          parts.push(p);
+        }
+        if (c?.finishReason) finish = c.finishReason;
+        if (e.usageMetadata) um = e.usageMetadata as typeof um;
+      }
+      const cachedS = um.cachedContentTokenCount ?? 0;
+      const tc: ToolCallBlock[] = parts.filter((p) => p.functionCall).map((p) => ({ type: "tool_call", id: `call_${globalThis.crypto.randomUUID().slice(0, 8)}`, name: p.functionCall!.name, input: p.functionCall!.args ?? {}, meta: p }));
+      return { text: parts.filter((p) => !p.thought && !p.functionCall).map((p) => p.text ?? "").join(""), ...(tc.length ? { toolCalls: tc } : {}), model: this.id, stopReason: finish ?? null, usage: { inputTokens: (um.promptTokenCount ?? 0) - cachedS, outputTokens: um.candidatesTokenCount ?? 0, cacheReadTokens: cachedS, cacheWriteTokens: 0 } };
+    }
     const j = (await res.json()) as {
       candidates?: { content?: { parts?: { text?: string; thought?: boolean; functionCall?: { name: string; args?: Record<string, unknown> } }[] }; finishReason?: string }[];
       usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; cachedContentTokenCount?: number };

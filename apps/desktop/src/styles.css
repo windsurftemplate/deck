@@ -136,3 +136,16 @@ select { font: inherit; font-size: 15px; color: var(--text); background: var(--v
 .thumb { display: grid; gap: 4px; justify-items: center; }
 .thumb img { width: 88px; height: 66px; object-fit: cover; border-radius: 6px; border: 1px solid var(--seam); }
 .attach { display: inline-flex; align-items: center; }
+.chat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.chat-head h2 { margin: 0; font-size: 15px; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.threads { list-style: none; margin: 0 0 10px; padding: 8px; display: grid; gap: 4px; max-height: 45vh; overflow: auto; background: var(--hull); border: 1px solid var(--seam); border-radius: 10px; }
+.threads li { display: flex; gap: 6px; align-items: center; }
+.threads li.on .thread { border-color: var(--ion); }
+.thread { flex: 1; min-width: 0; text-align: left; font: inherit; font-size: 14px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 6px; padding: 6px 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+.thread .muted { font-size: 12px; flex: none; }
+.threads .btn { font-size: 12px; padding: 4px 8px; }
+.dots { display: inline-flex; gap: 5px; padding: 4px 0; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--ion); opacity: .3; animation: dot 1.2s infinite ease-in-out; }
+.dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes dot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .dots i { animation: none; opacity: .8; } }

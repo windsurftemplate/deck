@@ -511,6 +511,38 @@ describe("research agent", () => {
   });
 });
 
+describe("saved chats and streaming", () => {
+  it("keeps each chat's history, names it from the first message, and streams reply text", async () => {
+    const events: { ev: string; data: { delta?: string; threadId?: string } }[] = [];
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const seen: string[] = [];
+    const e = new Engine({
+      dataDir: dir(),
+      keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }),
+      settings: DEFAULTS,
+      fetch: offline,
+      emit: (ev, data) => events.push({ ev, data: data as { delta?: string } }),
+      makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req, _s, onText) => { seen.push(JSON.stringify(req.messages)); onText?.("Hel"); onText?.("lo"); return { text: "Hello", model: ref.model, stopReason: "end_turn", usage: U }; } }),
+    });
+    await e.open();
+    const a = await e.chat("Plan the Acme pilot kickoff for next week");
+    expect(events.filter((x) => x.ev === "chat.delta").map((x) => x.data.delta).join("")).toBe("Hello");
+    await e.chat("And who should attend?", [], a.threadId);
+    expect(seen.at(-1)).toContain("Owner: Plan the Acme pilot kickoff for next week");
+    const b = await e.chat("Separate topic");
+    expect(b.threadId).not.toBe(a.threadId);
+    expect(seen.at(-1)).toContain("# Working state\\n(starting)"); // a new chat starts with no history (memory can still recall)
+    const list = e.threads.list();
+    expect(list.map((t) => t.title)).toEqual(["Separate topic", "Plan the Acme pilot kickoff for next"]);
+    expect(e.threads.messages(a.threadId!).map((m) => m.role)).toEqual(["owner", "agent", "owner", "agent"]);
+    e.threads.rename(a.threadId!, "Acme pilot");
+    e.threads.remove(b.threadId!);
+    expect(e.threads.list().map((t) => t.title)).toEqual(["Acme pilot"]);
+    await e.close();
+  });
+});
+
 describe("camera snapshots", () => {
   it("sends pictures to the model only when snapshots are on, and never stores them", async () => {
     const off = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });

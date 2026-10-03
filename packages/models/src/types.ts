@@ -73,7 +73,8 @@ export interface ChatResponse {
 /** One provider model behind the Gateway. */
 export interface ChatModel {
   id: string;
-  chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse>;
+  /** onText, when given, receives reply text as it is written (streaming). The full response is still returned. */
+  chat(req: ChatRequest, signal?: AbortSignal, onText?: (delta: string) => void): Promise<ChatResponse>;
 }
 
 /** Prices in US dollars per million tokens, set in Settings > Models. */

@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Deck3D } from "./deck3d/Deck3D";
 import { MicButton } from "./Voice";
 import { SnapshotButton, attachFile, type Picture } from "./Camera";
 import { PowerUp } from "./boot/PowerUp";
+import { listThreads, threadMessages, deleteThread, renameThread, type Thread } from "./bridge";
 import { applyProposal, decideApproval, emergencyStop, listen, loadSettings, onEngineEvent, pendingApprovals, saveSettings, sendChat, type ActionRecord, type Approval, type Proposal } from "./bridge";
 import { Onboarding } from "./onboarding/Onboarding";
 import { SettingsPanel } from "./SettingsPanel";
 
-type Line = { from: "you" | "agent" | "system"; text: string; proposal?: Proposal; approval?: Approval; actions?: ActionRecord[]; settled?: boolean };
+type Line = { from: "you" | "agent" | "system"; text: string; typing?: boolean; proposal?: Proposal; approval?: Approval; actions?: ActionRecord[]; settled?: boolean };
 
 export function App() {
   const [phase, setPhase] = useState<"boot" | "onboarding" | "shell">("boot");
@@ -23,6 +24,20 @@ export function App() {
   const [speak, setSpeak] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [pictures, setPictures] = useState<Picture[]>([]);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [threadId, setThreadId] = useState<string | undefined>(undefined);
+  const [showChats, setShowChats] = useState(false);
+  const threadRef = useRef<string | undefined>(undefined);
+  threadRef.current = threadId;
+  const refreshThreads = () => void listThreads().then(setThreads);
+  useEffect(refreshThreads, []);
+  const openThread = async (id: string | undefined) => {
+    setThreadId(id);
+    setShowChats(false);
+    if (!id) return setLog([{ from: "system", text: "New chat. Ask anything." }]);
+    const msgs = await threadMessages(id);
+    setLog(msgs.map((m) => ({ from: m.role === "owner" ? "you" : "agent", text: m.text })));
+  };
   const [attachErr, setAttachErr] = useState<string | null>(null);
   useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled))), [showSettings]);
   const switchView = async () => {
@@ -50,6 +65,18 @@ export function App() {
         // Handoffs on the deck: walk to Command to take a task (created) and to report (done or not finished).
         if (d.task?.agent && (d.type === "task.created" || ["done", "failed"].includes(d.task.status))) setSignal((s) => ({ ...s, visit: `${d.task!.agent}#${Date.now()}` }));
       }
+      if (event === "chat.delta") {
+        const d = data as { threadId: string; delta: string };
+        // Text arrives word by word; it goes into the reply that is being written.
+        setLog((l) => {
+          const i = l.findIndex((x) => x.typing);
+          if (i < 0) return l;
+          const next = [...l];
+          next[i] = { ...next[i]!, from: "agent", text: (next[i]!.text === "" ? "" : next[i]!.text) + d.delta };
+          return next;
+        });
+      }
+      if (event === "threads") refreshThreads();
       if (event === "security") {
         setStopped(true);
         setLog((l) => [...l, { from: "system", text: (data as { message: string }).message }]);
@@ -133,12 +160,49 @@ export function App() {
         </aside>
         )}
         <section className="chat" aria-label="Chat with the Chief of Staff">
-          <h2>Chat</h2>
+          <div className="chat-head">
+            <h2>{threads.find((t) => t.id === threadId)?.title ?? "New chat"}</h2>
+            <div className="row">
+              <button className="btn" type="button" onClick={() => (setShowChats((v) => !v), refreshThreads())} aria-expanded={showChats}>
+                Chats
+              </button>
+              <button className="btn" type="button" onClick={() => openThread(undefined)}>
+                New chat
+              </button>
+            </div>
+          </div>
+          {showChats && (
+            <ul className="threads" aria-label="Past chats">
+              {threads.length === 0 && <li className="muted">No saved chats yet.</li>}
+              {threads.map((t) => (
+                <li key={t.id} className={t.id === threadId ? "on" : ""}>
+                  <button type="button" className="thread" onClick={() => openThread(t.id)}>
+                    {t.title}
+                    <span className="muted">{t.updatedAt.slice(0, 10)}</span>
+                  </button>
+                  <button type="button" className="btn" aria-label={`Rename ${t.title}`} onClick={async () => { const n = prompt("Rename chat", t.title); if (n) { await renameThread(t.id, n); refreshThreads(); } }}>
+                    Rename
+                  </button>
+                  <button type="button" className="btn" aria-label={`Delete ${t.title}`} onClick={async () => { if (confirm(`Delete "${t.title}"? Memory keeps what the crew learned.`)) { await deleteThread(t.id); if (t.id === threadId) void openThread(undefined); refreshThreads(); } }}>
+                    Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="log" aria-live="polite">
             {log.map((l, i) => (
               <div key={i} className={`msg ${l.from}`}>
                 {l.from === "you" ? "You: " : ""}
-                {l.text}
+                {l.typing && !l.text ? (
+                  <span className="dots" role="status" aria-label="Writing a reply">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                ) : (
+                  l.text
+                )}
                 {l.actions && l.actions.length > 0 && (
                   <ul className="actions-done">
                     {l.actions.map((a, k) => (
@@ -212,13 +276,14 @@ export function App() {
               if (!draft.trim()) return;
               const text = draft.trim();
               const pics = pictures;
-              setLog((l) => [...l, { from: "you", text: pics.length ? `${text} (${pics.length} picture${pics.length > 1 ? "s" : ""})` : text }, { from: "system", text: "Thinking…" }]);
+              setLog((l) => [...l, { from: "you", text: pics.length ? `${text} (${pics.length} picture${pics.length > 1 ? "s" : ""})` : text }, { from: "agent", text: "", typing: true }]);
               setDraft("");
               setPictures([]);
-              sendChat(text, pics.map(({ mediaType, data }) => ({ mediaType, data }))).then((r) => {
+              sendChat(text, pics.map(({ mediaType, data }) => ({ mediaType, data })), threadRef.current).then((r) => {
+                if (r.threadId && r.threadId !== threadRef.current) setThreadId(r.threadId);
                 if (speak && "speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(r.reply.slice(0, 1200)));
                 return r;
-              }).then((r) => setLog((l) => [...l.slice(0, -1), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.actions?.length ? { actions: r.actions.filter((a) => a.status !== "waiting") } : {}) }]));
+              }).then((r) => setLog((l) => [...l.filter((x) => !x.typing), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.actions?.length ? { actions: r.actions.filter((a) => a.status !== "waiting") } : {}) }]));
             }}
           >
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message the Chief of Staff, or say: switch heavy work to Gemini" aria-label="Message" />

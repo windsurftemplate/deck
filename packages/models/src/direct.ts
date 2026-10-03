@@ -1,3 +1,4 @@
+import { sseJson } from "./stream.js";
 import { ModelError, blocksOf, type Block, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type ToolCallBlock } from "./types.js";
 
 export type ProviderId = "anthropic" | "openai" | "gemini" | "openrouter";
@@ -37,9 +38,9 @@ export class AnthropicDirect implements ChatModel {
   }
   private timeoutMs: number;
 
-  async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
+  async chat(req: ChatRequest, signal?: AbortSignal, onText?: (delta: string) => void): Promise<ChatResponse> {
     const key = await this.getKey();
-    const body = anthropicBody(this.id, req);
+    const body = { ...anthropicBody(this.id, req), ...(onText ? { stream: true } : {}) };
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     signal?.addEventListener("abort", () => ctrl.abort(), { once: true });
@@ -58,8 +59,48 @@ export class AnthropicDirect implements ChatModel {
     }
     if (res.status === 401) throw new ModelError("anthropic: the API key was rejected. Check it in Settings > Models.", 401, false);
     if (!res.ok) throw new ModelError(`anthropic: ${this.id} returned ${res.status}`, res.status, res.status === 429 || res.status >= 500);
-    return anthropicResponse(await res.json());
+    return onText ? anthropicStream(res, this.id, onText) : anthropicResponse(await res.json());
   }
+}
+
+/** Rebuilds a full Anthropic response from its event stream, passing text deltas on as they arrive. */
+export async function anthropicStream(res: Response, model: string, onText: (d: string) => void): Promise<ChatResponse> {
+  const blocks: { type: string; text?: string; id?: string; name?: string; json?: string }[] = [];
+  let stop: string | null = null;
+  const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  for await (const e of sseJson(res)) {
+    const t = e.type as string;
+    if (t === "message_start") Object.assign(usage, ((e.message as { usage?: object })?.usage ?? {}));
+    else if (t === "content_block_start") {
+      const b = e.content_block as { type: string; id?: string; name?: string };
+      blocks[e.index as number] = { type: b.type, ...(b.id ? { id: b.id } : {}), ...(b.name ? { name: b.name } : {}), text: "", json: "" };
+    } else if (t === "content_block_delta") {
+      const d = e.delta as { type: string; text?: string; partial_json?: string };
+      const b = blocks[e.index as number];
+      if (!b) continue;
+      if (d.type === "text_delta" && d.text) (b.text += d.text), onText(d.text);
+      if (d.type === "input_json_delta" && d.partial_json) b.json += d.partial_json;
+    } else if (t === "message_delta") {
+      stop = ((e.delta as { stop_reason?: string })?.stop_reason ?? stop) as string | null;
+      Object.assign(usage, e.usage ?? {});
+    } else if (t === "error") throw new ModelError(`anthropic: ${(e.error as { message?: string })?.message ?? "stream error"}`, 500, true);
+  }
+  const toolCalls: ToolCallBlock[] = blocks.filter((b) => b?.type === "tool_use").map((b) => {
+    let input: Record<string, unknown> = {};
+    try {
+      input = b.json ? (JSON.parse(b.json) as Record<string, unknown>) : {};
+    } catch {
+      input = { _unparsed: b.json };
+    }
+    return { type: "tool_call", id: b.id!, name: b.name!, input };
+  });
+  return {
+    text: blocks.filter((b) => b?.type === "text").map((b) => b.text).join(""),
+    ...(toolCalls.length ? { toolCalls } : {}),
+    model,
+    stopReason: stop,
+    usage: { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, cacheReadTokens: usage.cache_read_input_tokens, cacheWriteTokens: usage.cache_creation_input_tokens },
+  };
 }
 
 /** Anthropic Messages request body, shared by direct and Gateway calls. */

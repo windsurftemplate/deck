@@ -96,10 +96,11 @@ export function reloadEngine() {
 
 /** Send a message to the Chief of Staff through the engine. */
 export type Proposal = { id: string; summary: string };
-export async function sendChat(text: string, images: { mediaType: string; data: string }[] = []): Promise<{ reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }> {
+export type ChatResult = { reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[]; threadId?: string };
+export async function sendChat(text: string, images: { mediaType: string; data: string }[] = [], threadId?: string): Promise<ChatResult> {
   if (!inTauri) return { reply: "Preview mode: the agent engine only runs inside the desktop app.", redacted: [] };
   try {
-    return await invoke<{ reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }>("engine_call", { method: "chat.send", params: { text, images } });
+    return await invoke<ChatResult>("engine_call", { method: "chat.send", params: { text, images, ...(threadId ? { threadId } : {}) } });
   } catch (e) {
     return { reply: `Agent engine unavailable: ${String(e)}`, redacted: [] };
   }
@@ -202,3 +203,9 @@ export async function decideApproval(id: string, approve: boolean): Promise<stri
     return String(e);
   }
 }
+
+export type Thread = { id: string; title: string; updatedAt: string };
+export const listThreads = async () => (await engineCall<Thread[]>("threads.list").catch(() => null)) ?? [];
+export const threadMessages = async (id: string) => (await engineCall<{ role: "owner" | "agent"; text: string }[]>("threads.messages", { id }).catch(() => null)) ?? [];
+export const renameThread = (id: string, title: string) => engineCall("threads.rename", { id, title });
+export const deleteThread = (id: string) => engineCall("threads.delete", { id });

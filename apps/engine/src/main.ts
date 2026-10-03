@@ -31,7 +31,11 @@ async function main() {
   const handlers: Record<string, Handler> = {
     ping: async () => "pong",
     checks: () => engine.checks(),
-    "chat.send": (p) => engine.chat(String((p as { text?: string })?.text ?? ""), ((p as { images?: { mediaType: string; data: string }[] })?.images ?? []).slice(0, 5)),
+    "chat.send": (p) => engine.chat(String((p as { text?: string })?.text ?? ""), ((p as { images?: { mediaType: string; data: string }[] })?.images ?? []).slice(0, 5), (p as { threadId?: string })?.threadId),
+    "threads.list": async () => engine.threads.list(),
+    "threads.messages": async (p) => engine.threads.messages(String((p as { id?: string })?.id ?? "")),
+    "threads.rename": async (p) => engine.threads.rename(String((p as { id?: string })?.id ?? ""), String((p as { title?: string })?.title ?? "")),
+    "threads.delete": async (p) => engine.threads.remove(String((p as { id?: string })?.id ?? "")),
     brief: () => engine.brief(),
     status: async () => engine.status(),
     kill: async (p) => engine.kill((p as { agent?: string })?.agent ?? "all"),

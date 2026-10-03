@@ -59,14 +59,14 @@ export class ModelRouter {
     if (cap !== undefined && (this.spent.byAgent.get(agent) ?? 0) >= cap) throw new SpendCapError(`${agent} reached its daily cap of $${cap}`);
   }
 
-  async chat(role: Role, agent: string, req: ChatRequest, signal?: AbortSignal): Promise<RouteResult> {
+  async chat(role: Role, agent: string, req: ChatRequest, signal?: AbortSignal, onText?: (delta: string) => void): Promise<RouteResult> {
     const chain = this.cfg.roles[role];
     if (!chain?.length) throw new Error(`models: no model assigned to role ${role}`);
     this.checkCaps(agent);
     const attempts: RouteResult["attempts"] = [];
     for (const id of chain) {
       try {
-        const res = await this.cfg.models[id]!.chat(req, signal);
+        const res = await this.cfg.models[id]!.chat(req, signal, onText);
         const price = this.cfg.prices[id];
         const costUsd = price ? costOf(res.usage, price) : null;
         const used = res.usage.inputTokens + res.usage.outputTokens + res.usage.cacheReadTokens + res.usage.cacheWriteTokens;

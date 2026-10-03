@@ -34,7 +34,9 @@ export function needsApproval(kind: ActionKind, preset: Preset): boolean {
 
 export interface RunAgentInput {
   agent: string;
-  chat: (req: ChatRequest) => Promise<ChatResponse>;
+  chat: (req: ChatRequest, onText?: (delta: string) => void) => Promise<ChatResponse>;
+  /** Reply text as it is written, across turns (a blank line separates turns). */
+  onText?: (delta: string) => void;
   system: TextBlock[];
   /** Earlier turns, then the new message last. */
   messages: ChatRequest["messages"];
@@ -100,8 +102,21 @@ export async function runAgent(i: RunAgentInput): Promise<{ text: string; action
   const actions: ActionRecord[] = [];
   const max = i.maxTurns ?? 6;
   let retried = false;
+  // Streamed text: a blank line between turns, so text before and after tool use reads as paragraphs.
+  let anyText = false;
+  let newTurn = false;
+  const onText =
+    i.onText &&
+    ((d: string) => {
+      if (!d) return;
+      if (newTurn && anyText) i.onText!("\n\n");
+      newTurn = false;
+      anyText = true;
+      i.onText!(d);
+    });
   for (let turn = 1; turn <= max; turn++) {
-    const res = await i.chat({ system: i.system, messages, tools: allowed.map((t) => t.spec), maxTokens: i.maxTokens ?? 900 });
+    newTurn = turn > 1;
+    const res = await i.chat({ system: i.system, messages, tools: allowed.map((t) => t.spec), maxTokens: i.maxTokens ?? 900 }, onText);
     const calls = res.toolCalls ?? [];
     if (!calls.length) {
       const text = res.text.trim();

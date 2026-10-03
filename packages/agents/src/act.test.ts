@@ -134,3 +134,17 @@ describe("honeytoken tripwire", () => {
     expect(s.seen).toHaveLength(1);
   });
 });
+
+describe("streaming through the loop", () => {
+  it("passes text on as it arrives, with a break between turns", async () => {
+    const turns: ChatResponse[] = [{ ...call("issues_list", {}), text: "Checking." }, say("Done.")];
+    const out: string[] = [];
+    const chat = async (_r: ChatRequest, onText?: (d: string) => void) => {
+      const t = turns.shift()!;
+      if (t.text) onText?.(t.text);
+      return t;
+    };
+    await runAgent(base(chat, { onText: (d) => out.push(d) }));
+    expect(out.join("")).toBe("Checking.\n\nDone.");
+  });
+});
