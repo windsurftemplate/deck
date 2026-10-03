@@ -36,6 +36,7 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 1.4 | `apps/desktop/src-tauri/src/engine.rs` | Starts the engine, relays JSON lines, forwards events, stop-all reaches the engine | Round trip with a real Node process | done |
 | 1.5 | Engine packaging | Ship the engine with the app (bundled Node runtime as a Tauri sidecar, signed) | Installed app starts the engine with no Node on the machine | done (Linux installer verified here; macOS and Windows via the release workflow) |
 | 1.6 | Recovery code | Show the workspace key once as a recovery code; restore it on a new machine or after a keychain reset | A wiped keychain plus the code opens the old workspace | done (Settings > Recovery key; Restore on the power-up screen) |
+| 1.7 | `Install deck.command`, `Uninstall deck.command` | One-click Mac install: Command Line Tools, private Node and Rust in ~/.deck-tools, build, copy to Applications, open | Double-click installs and opens deck on a Mac | done (not yet run on a Mac) |
 ### Step 2: Memory
 
 | # | File | What it does | Done when | Status |

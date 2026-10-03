@@ -202,7 +202,7 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - macOS Keychain sharing between the shell and the engine.
 
 ## Waiting on you
-1. Run on your Mac: `pnpm install`, `pnpm --filter @deck/engine build`, `pnpm --filter @deck/desktop tauri dev`.
+1. Run on your Mac: double-click `Install deck.command`.
 2. Push the repo (VaultProof org or personal) so CI and releases run.
 3. Google sign-in app for Gmail and Calendar.
 4. Jev access; decide on Laya.
@@ -236,6 +236,20 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: One-click Mac installer
+
+**Changed**
+- `Install deck.command` (double-click in Finder): checks Apple's Command Line Tools (offers to install), downloads a private Node 22 into `~/.deck-tools` (checksum verified), enables pnpm, installs a private Rust, builds the engine and the app, replaces `/Applications/deck.app`, and opens it. Logs to `~/Library/Logs/deck-install.log`; stops with a plain reason if a step fails. Your data and keys are kept.
+- `Uninstall deck.command`: removes the app; deletes your data only if you type DELETE; optionally removes the build tools.
+- Installer builds are signed ad hoc so they run on Apple Silicon; real signing still comes from the release workflow when certificates are added.
+- README: install steps.
+
+**Verified**
+- Both scripts pass `bash -n` and shellcheck; the Node download lookup finds the Apple Silicon and Intel files; the build flags match the Tauri CLI.
+
+**Not verified yet**
+- A full run on a Mac (it can only run there).
 
 ## 2026-10-03: Crew motion on handoffs, push-to-talk
 
