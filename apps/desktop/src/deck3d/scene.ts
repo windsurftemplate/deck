@@ -665,7 +665,7 @@ export class DeckScene {
       }
       sc.tex.needsUpdate = true;
     };
-    const n = (x: number) => x.toLocaleString("en-US");
+    const n = (x: number) => (Number.isFinite(x) ? x : 0).toLocaleString("en-US");
     draw("command", "Today", [["Working on", n(st.running)], ["Waiting for you", n(st.waiting)], ["Done", n(st.done)]]);
     draw("engineering", "Issues", [["Open", n(st.issuesOpen)]]);
     draw("comms", "Drafts", [["Ready to review", n(st.drafts)]]);

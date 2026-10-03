@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Deck3D } from "./deck3d/Deck3D";
+import { Search, PanelRight, PanelRightClose } from "lucide-react";
+import { Nav, PAGES, type View } from "./ui/Nav";
+import { Palette } from "./ui/Palette";
+import { StatusBar } from "./ui/StatusBar";
+import { Toaster, toast } from "./ui/toast";
+import { Kbd } from "./ui/states";
 import type { DeckStats } from "./deck3d/scene";
 import { BrainView } from "./brain3d/BrainView";
 import { CommandCenter } from "./pages/CommandCenter";
@@ -27,12 +33,16 @@ export function App() {
   const [crew, setCrew] = useState<Record<string, { status: string; task?: string }>>({});
   const [pending, setPending] = useState<Approval[]>([]);
   const [signal, setSignal] = useState<{ beam?: string; archive?: number; visit?: string }>({});
-  type View = "3d" | "brain" | "center" | "channel" | "automations" | "tools" | "list";
+
   const [view, setView] = useState<View>("3d");
   const [voiceOn, setVoiceOn] = useState(false);
   const [speak, setSpeak] = useState(false);
   const [handsFree, setHandsFree] = useState<{ on: boolean; word: string }>({ on: false, word: "deck" });
   const [busy, setBusy] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [model, setModel] = useState("");
   const [cameraOn, setCameraOn] = useState(false);
   const [pictures, setPictures] = useState<Picture[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -44,7 +54,7 @@ export function App() {
   const [stats, setStats] = useState<DeckStats | null>(null);
   useEffect(() => {
     if (view !== "3d") return;
-    const load = () => void engineCall<DeckStats>("deck.stats").then((x) => x && setStats(x)).catch(() => {});
+    const load = () => void engineCall<DeckStats>("deck.stats").then((x) => x && typeof x.tokens === "number" && setStats(x)).catch(() => {});
     load();
     const t = setInterval(load, 8000);
     return () => clearInterval(t);
@@ -58,7 +68,7 @@ export function App() {
     setLog(msgs.map((m) => ({ from: m.role === "owner" ? "you" : "agent", text: m.text })));
   };
   const [attachErr, setAttachErr] = useState<string | null>(null);
-  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled), setHandsFree({ on: s.voice.enabled && s.voice.handsFree, word: s.voice.wakeWord }), setNotifications(s.notifications.enabled))), [showSettings]);
+  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled), setHandsFree({ on: s.voice.enabled && s.voice.handsFree, word: s.voice.wakeWord }), setNotifications(s.notifications.enabled), setModel(s.models.heavy.model))), [showSettings]);
   /** Sends a message to the Chief of Staff and resolves with the reply (used by the box and by hands-free voice). */
   const sendMessage = async (text: string, speakIt: boolean): Promise<string> => {
     const pics = pictures;
@@ -103,6 +113,7 @@ export function App() {
         if (d.task?.agent && (d.type === "task.created" || ["done", "failed"].includes(d.task.status))) setSignal((s) => ({ ...s, visit: `${d.task!.agent}#${Date.now()}` }));
       }
       if (event === "approval" && (data as Approval).status === "pending") void notify("Needs your approval", (data as Approval).summary);
+      if (event === "automation") toast(`Automation: ${(data as { name: string }).name}`, String((data as { result?: string }).result ?? "").slice(0, 160), "info");
       if (event === "notify") void notify((data as { title: string }).title, (data as { body: string }).body);
       if (event === "security") void notify("Security alert", "Agents were stopped. Open deck to see why.");
       if (event === "learning") void notify("Learning report", String((data as { report?: string }).report ?? ""));
@@ -141,6 +152,24 @@ export function App() {
     return () => off();
   }, []);
 
+  // Keyboard: ⌘K search, ⌘1-7 pages, ⌘N new chat, ⌘J chat panel, ⌘, settings.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      const page = PAGES.find((p) => p.key === k);
+      if (k === "k") (e.preventDefault(), setPaletteOpen((v) => !v));
+      else if (page) (e.preventDefault(), setShowSettings(false), void switchViewRef.current(page.id));
+      else if (k === "n") (e.preventDefault(), void openThreadRef.current(undefined), setChatOpen(true));
+      else if (k === "j") (e.preventDefault(), setChatOpen((v) => !v));
+      else if (k === ",") (e.preventDefault(), setShowSettings((v) => !v));
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
+  const switchViewRef = useRef<(v: View) => Promise<void>>(async () => {});
+  const openThreadRef = useRef<(id: string | undefined) => Promise<void>>(async () => {});
+
   if (phase === "boot") return <PowerUp onDone={() => loadSettings().then((s) => setPhase(s.onboarding.done ? "shell" : "onboarding"))} />;
   if (phase === "onboarding") return <Onboarding onDone={() => setPhase("shell")} />;
 
@@ -148,27 +177,31 @@ export function App() {
     await emergencyStop();
     setStopped(true);
     setLog((l) => [...l, { from: "system", text: "All agents stopped." }]);
+    toast("All agents stopped", "Pending approvals were rejected. Resume from the sidebar when ready.", "info");
   };
+  const resumeAll = async () => {
+    await engineCall("resume").catch(() => {});
+    setStopped(false);
+    toast("Agents resumed");
+  };
+  switchViewRef.current = switchView;
+  openThreadRef.current = openThread;
+  const title = showSettings ? "Settings" : (PAGES.find((p) => p.id === view)?.label ?? "Deck");
 
   return (
-    <div className="shell">
-      <header className="bar">
-        <b>Command deck</b>
-        <div className="row">
-          <div className="seg" role="group" aria-label="View">
-            {([["3d", "Deck"], ["brain", "Brain"], ["center", "Command center"], ["channel", "Crew chat"], ["automations", "Automations"], ["tools", "Tools"], ["list", "List"]] as const).map(([v, label]) => (
-              <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => switchView(v)}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <button className="btn" type="button" onClick={() => setShowSettings((v) => !v)} aria-expanded={showSettings}>
-            Settings
-          </button>
-          <button className="danger" type="button" onClick={stopAll} disabled={stopped}>
-            {stopped ? "Stopped" : "Stop all agents"}
-          </button>
-        </div>
+    <div className={`app ${navCollapsed ? "nav-min" : ""} ${chatOpen ? "" : "no-chat"}`}>
+      <Nav view={view} onView={(v) => (setShowSettings(false), void switchView(v))} onSettings={() => setShowSettings((v) => !v)} settingsOpen={showSettings} collapsed={navCollapsed} onCollapse={() => setNavCollapsed((v) => !v)} stopped={stopped} onStop={stopAll} onResume={resumeAll} waiting={pending.length} />
+      <div className="content">
+      <header className="topbar">
+        <h1 className="page-title">{title}</h1>
+        <button type="button" className="search-btn" onClick={() => setPaletteOpen(true)}>
+          <Search size={14} aria-hidden="true" />
+          <span>Search or jump to</span>
+          <Kbd>{/Mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K"}</Kbd>
+        </button>
+        <button type="button" className="icon-btn" aria-label={chatOpen ? "Hide chat" : "Show chat"} title={chatOpen ? "Hide chat (⌘J)" : "Show chat (⌘J)"} onClick={() => setChatOpen((v) => !v)}>
+          {chatOpen ? <PanelRightClose size={16} /> : <PanelRight size={16} />}
+        </button>
       </header>
       {showSettings ? (
         <SettingsPanel onClose={() => setShowSettings(false)} />
@@ -192,6 +225,7 @@ export function App() {
             signal={{ ...(signal.beam ? { beam: signal.beam.split("#")[0]! } : {}), ...(signal.archive ? { archive: signal.archive } : {}), ...(signal.visit ? { visit: signal.visit } : {}) }}
             onDecide={async (id, approve) => {
               const msg = await decideApproval(id, approve);
+              toast(approve ? "Approved" : "Rejected", msg.replace(/^(Approved|Rejected): /, ""), approve ? "success" : "info");
               setLog((l) => [...l, { from: "system", text: msg }]);
             }}
           />
@@ -358,6 +392,26 @@ export function App() {
         </section>
       </div>
       )}
+      </div>
+      <StatusBar stopped={stopped} model={model} tokens={stats?.tokens ?? 0} cap={stats?.tokenCap ?? 1} waiting={pending.length} micOn={false} onWaiting={() => (setShowSettings(false), void switchView("3d"))} />
+      <Palette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onView={(v) => (setShowSettings(false), void switchView(v))}
+        actions={{
+          newChat: () => (void openThread(undefined), setChatOpen(true)),
+          openThread: (id) => (void openThread(id), setChatOpen(true)),
+          settings: () => setShowSettings(true),
+          stop: stopAll,
+          resume: resumeAll,
+          stopped,
+          toggleChat: () => setChatOpen((v) => !v),
+          learn: () => void engineCall<string>("learn.now").then((r) => toast("Learning finished", r ?? undefined)).catch((e) => toast("Learning failed", String(e), "error")),
+          tune: () => void (async () => { const out: string[] = []; for (const a of ["gtm", "ops", "code", "research"]) out.push((await engineCall<string>("learn.tune", { agent: a }).catch((e) => String(e))) ?? ""); toast("Prompt tuning finished", out.join(" "), "info"); })(),
+          openDoc: () => (setShowSettings(false), void switchView("brain")),
+        }}
+      />
+      <Toaster />
     </div>
   );
 }

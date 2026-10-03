@@ -17,7 +17,7 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 38 commits.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 39 commits.
 Tests (counted): **212 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
@@ -255,10 +255,34 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 36. `feat: automations (recurring jobs from a page or from chat, with results everywhere)`
 37. `feat: documents become facts nightly; prompt tuning tested on practice tasks and adopted only with approval`
 38. `feat: hands-free voice with a wake word, and desktop notifications`
+39. `feat: professional UI pass (sidebar, command menu, status bar, toasts, states, tokens)`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Professional UI pass
+
+**Research** (what professional desktop tools do, summarized)
+- Consistency first: one icon family, one spacing scale, restrained color; erratic spacing and mixed fonts read as amateur.
+- Tool-like structure: a fixed left sidebar with a clear current-page marker, a calm header, keyboard-first use with a command menu (Linear and similar tools).
+- Dark mode depth: raise surfaces by making them slightly lighter with faint white borders instead of shadows; off-white text; one accent plus a semantic set (success, warning, danger, info).
+- Data: aligned (tabular) figures wherever numbers appear; skeletons shaped like the content instead of spinners; empty states that explain and offer one action; small trend lines beside key numbers.
+
+**Changed**
+- Layout: left sidebar (Deck, Brain, Command center, Crew chat, Automations, Tools, List view, then Settings and Stop all agents or Resume agents), with an accent bar on the current page, an approvals count on Deck, and a collapse to icons. A slim top bar shows the page title, a search box and a chat panel toggle.
+- ⌘K (Ctrl K on Windows and Linux) command menu: every page, actions (new chat, show or hide chat, settings, run learning, tune prompts, add to the brain, stop or resume agents), your saved chats and second brain documents, with arrow keys and Enter.
+- Shortcuts: ⌘1 to ⌘7 pages, ⌘N new chat, ⌘J chat panel, ⌘, settings.
+- Status bar: agents ready or stopped, current model, share of today's tokens with a meter, approvals waiting (click to go to the deck).
+- Toasts for approvals, rejections, stops, resumes, automation results, learning and tuning.
+- Design tokens: four surface levels, faint borders, off-white text, one accent with a soft tint, semantic colors; Inter for text, Chakra Petch only for the brand and page titles, JetBrains Mono for times, ids and keys; aligned figures in numbers, tables and charts; right-aligned number columns.
+- Buttons, inputs and focus rings unified; styled scrollbars and selection; subtle page and toast entrances (off with reduced motion).
+- Command center: skeleton while loading, trend lines and change against the earlier half of the period on key numbers. Crew chat, Automations and the Brain library and notes have empty states with one action. Icons in the Talk button.
+- One title per page (the top bar), no repeated headings.
+
+**Verified**
+- Desktop with a stand-in engine: command center, command menu search and jump, chat panel toggle, deck at full width; no console errors. Fixed along the way: a wall-screen crash when numbers were missing.
+- 212 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-03: Automations, smarter learning, hands-free voice, notifications
 

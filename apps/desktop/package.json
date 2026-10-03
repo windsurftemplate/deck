@@ -19,7 +19,10 @@
     "@deck/settings": "workspace:*",
     "@deck/models": "workspace:*",
     "three": "^0.170.0",
-    "@tauri-apps/plugin-notification": "^2.2.0"
+    "@tauri-apps/plugin-notification": "^2.2.0",
+    "lucide-react": "^0.460.0",
+    "@fontsource/inter": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { engineCall, inTauri } from "../bridge";
+import { FileText, NotebookPen } from "lucide-react";
+import { Empty } from "../ui/states";
 import { BrainScene, type BrainLink, type BrainNode } from "./scene";
 
 type Doc = { id: number; title: string; kind: string; source: string; chars: number; updatedAt: string };
@@ -209,7 +211,7 @@ export function BrainView() {
               </div>
             </div>
             <ul className="doclist">
-              {notes.length === 0 && <li className="muted">No notes yet.</li>}
+              {notes.length === 0 && <li><Empty icon={NotebookPen} title="No notes yet" hint="Write one above. Link notes with [[Note title]]." /></li>}
               {notes.map((d) => (
                 <li key={d.id}>
                   <button type="button" className="thread" onClick={async () => { const full = await engineCall<{ id: number; title: string; text: string }>("brain.document", { id: d.id }); if (full) setNote({ id: full.id, title: full.title, text: full.text }); }}>
@@ -224,7 +226,7 @@ export function BrainView() {
 
         {tab === "library" && (
           <ul className="doclist">
-            {docs.length === 0 && <li className="muted">Nothing added yet.</li>}
+            {docs.length === 0 && <li><Empty icon={FileText} title="Nothing added yet" hint="Drop files on the map, paste text, add a web page or import your notes." action={<button className="btn" type="button" onClick={() => setTab("add")}>Add something</button>} /></li>}
             {docs.map((d) => (
               <li key={d.id}>
                 <button type="button" className="thread" onClick={() => setSelected(`d:${d.id}`)}>

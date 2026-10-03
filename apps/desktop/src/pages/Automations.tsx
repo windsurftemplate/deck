@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { engineCall, onEngineEvent } from "../bridge";
+import { CalendarClock } from "lucide-react";
+import { Empty } from "../ui/states";
 
 type Auto = { id: string; name: string; agent: string; instruction: string; at: string; days: number[]; enabled: boolean; schedule: string; lastRun?: string; lastResult?: string };
 const WHO: [string, string][] = [["chief-of-staff", "Chief of Staff"], ["gtm", "GTM"], ["ops", "Operations"], ["code", "Engineering"], ["research", "Research"]];
@@ -48,9 +50,6 @@ export function Automations() {
 
   return (
     <section className="page" aria-label="Automations">
-      <div className="page-head">
-        <h2>Automations</h2>
-      </div>
       <p className="muted">Jobs the crew does on a schedule while the app is open. You can also ask in chat: "every Monday at 9, have GTM review the pipeline." Results land in chat, Crew chat, a notification and Telegram if it is on.</p>
       <div className="panels">
         <section className="card">
@@ -96,7 +95,7 @@ export function Automations() {
         </section>
         <section className="card">
           <h3>Scheduled</h3>
-          {list.length === 0 && <p className="muted">Nothing scheduled yet.</p>}
+          {list.length === 0 && <Empty icon={CalendarClock} title="Nothing scheduled yet" hint="Create a job on the left, or ask in chat: every Monday at 9, have GTM review the pipeline." />}
           <ul className="autos">
             {list.map((a) => (
               <li key={a.id} className={a.enabled ? "" : "off"}>

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { engineCall, onEngineEvent } from "../bridge";
+import { MessagesSquare } from "lucide-react";
+import { Empty } from "../ui/states";
 
 type Msg = { id: number; ts: string; channel: string; sender: string; recipient: string; kind: string; text: string; taskId?: string };
 type Discussion = { id: string; topic: string; agents: string[]; createdAt: string; status: string };
@@ -66,7 +68,6 @@ export function CrewChannel() {
   return (
     <section className="page channel" aria-label="Crew chat">
       <aside className="channel-side">
-        <h2>Crew chat</h2>
         <button type="button" className={`thread ${channel === "activity" ? "on" : ""}`} onClick={() => setChannel("activity")}>
           Live activity
           <span className="muted">handoffs, tools, reports</span>
@@ -121,7 +122,7 @@ export function CrewChannel() {
           </label>
         </div>
         <div className="feed" aria-live="polite">
-          {shown.length === 0 && <p className="muted">{channel === "activity" ? "Nothing yet. When the Chief of Staff hands work to the crew, every step shows up here." : "Waiting for the first message…"}</p>}
+          {shown.length === 0 && (channel === "activity" ? <Empty icon={MessagesSquare} title="No crew activity yet" hint="When the Chief of Staff hands work to the crew, every handoff, tool call, report and check shows up here." /> : <p className="muted">Waiting for the first message…</p>)}
           {shown.map((m) => {
             const w = who(m.sender);
             const to = m.recipient === "crew" ? "" : who(m.recipient).name;

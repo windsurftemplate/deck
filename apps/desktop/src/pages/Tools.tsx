@@ -47,9 +47,6 @@ export function Tools({ openSettings, openBrain }: { openSettings: () => void; o
 
   return (
     <section className="page" aria-label="Tools">
-      <div className="page-head">
-        <h2>Tools</h2>
-      </div>
       <div className="tools-grid">
         {tools.map((t) => (
           <article key={t.id} className="card tool">

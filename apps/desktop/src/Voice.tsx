@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Mic, Square } from "lucide-react";
 import { SettingsError, type Settings } from "@deck/settings";
 import { engineCall, saveSettings } from "./bridge";
 
@@ -53,7 +54,7 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
   return (
     <>
       <button className={state === "recording" ? "danger" : "btn"} type="button" onClick={state === "recording" ? stop : start} disabled={state === "working"} aria-pressed={state === "recording"} aria-label={state === "recording" ? "Stop recording" : "Talk"}>
-        {state === "recording" ? "● Stop" : state === "working" ? "Listening…" : "Talk"}
+        {state === "recording" ? <><Square size={13} aria-hidden="true" /> Stop</> : state === "working" ? "Listening…" : <><Mic size={14} aria-hidden="true" /> Talk</>}
       </button>
       {state === "recording" && (
         <span className="mic-on" role="status">
