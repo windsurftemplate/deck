@@ -42,6 +42,8 @@ export interface Settings {
   onboarding: { done: boolean };
   /** Command deck view: the 3D station or a simple list (lighter on older machines). */
   world: { view: "3d" | "list" };
+  /** Push-to-talk in the app. Speech is turned into text on this machine with whisper.cpp; audio is never kept. */
+  voice: { enabled: boolean; whisperBin: string; modelPath: string };
   /** Telegram front door. The bot token lives in the keychain as "chat.telegram". */
   chat: { telegram: { enabled: boolean; ownerChatIds: number[] } };
   general: { startAtLogin: boolean; runInBackground: boolean };
@@ -57,6 +59,7 @@ export const DEFAULTS: Settings = {
   preset: "balanced",
   onboarding: { done: false },
   world: { view: "3d" },
+  voice: { enabled: false, whisperBin: "", modelPath: "" },
   chat: { telegram: { enabled: false, ownerChatIds: [] } },
   general: { startAtLogin: true, runInBackground: true },
   vaultproof: { enabled: false, mcpUrl: "", sessionSecret: "vaultproof.session" },
@@ -145,6 +148,11 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
     next.preset = patch.preset;
   }
   if (patch.onboarding?.done !== undefined) next.onboarding.done = !!patch.onboarding.done;
+  if (patch.voice) {
+    for (const k of ["whisperBin", "modelPath"] as const) if (patch.voice[k] !== undefined) next.voice[k] = String(patch.voice[k]).trim();
+    if (patch.voice.enabled !== undefined) next.voice.enabled = !!patch.voice.enabled;
+    if (next.voice.enabled && (!next.voice.whisperBin || !next.voice.modelPath)) throw new SettingsError("voice", "Set the whisper.cpp program and model file before turning voice on.");
+  }
   if (patch.world?.view !== undefined) {
     if (!["3d", "list"].includes(patch.world.view)) throw new SettingsError("world.view", "Choose 3d or list.");
     next.world.view = patch.world.view;
@@ -169,7 +177,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

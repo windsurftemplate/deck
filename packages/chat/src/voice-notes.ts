@@ -18,7 +18,7 @@ export class WhisperCppTranscriber {
   async transcribe(audio: Uint8Array): Promise<string> {
     const dir = await mkdtemp(join(tmpdir(), "deck-voice-"));
     try {
-      const ogg = join(dir, "in.ogg"), wav = join(dir, "in.wav"), out = join(dir, "out");
+      const ogg = join(dir, "in.audio"), wav = join(dir, "in.wav"), out = join(dir, "out");
       await writeFile(ogg, audio);
       await run(this.opts.ffmpegBin ?? "ffmpeg", ["-loglevel", "error", "-i", ogg, "-ar", "16000", "-ac", "1", wav], { timeout: 60_000 });
       await run(this.opts.whisperBin, ["-m", this.opts.modelPath, "-f", wav, "-l", this.opts.language ?? "auto", "-otxt", "-of", out, "-np"], { timeout: 120_000 });

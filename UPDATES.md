@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Not started | All earlier gates still hold |
 
-Code: about 7,800 lines of TypeScript, TSX and Rust across 2 apps and 10 packages, 17 commits.
-Tests (counted): **177 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 7,800 lines of TypeScript, TSX and Rust across 2 apps and 11 packages, 23 commits.
+Tests (counted): **179 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -154,7 +154,8 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 ## Phase 4: World and research (started)
 - 3D command deck in the chosen Kenney look, driven by live engine events, with approvals on the deck and a List view toggle.
 - Research agent with web research through the model's own search tool, a daily cap, a crew track-record review, and a weekly self-review.
-- Still open: crew walking on real handoffs, voice and camera in the app, sandbox PRs (needs repository access).
+- Crew walk to Command on real handoffs; voice push-to-talk with local whisper.cpp.
+- Still open: camera snapshots, camera tours and a 3D power-up, sandbox PRs (needs repository access).
 
 ## Decisions made along the way
 - General app with VaultProof as the first workspace pack; codename `deck` until a name is chosen.
@@ -188,7 +189,7 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 | Package | Tests | Package | Tests |
 |---|---|---|---|
 | agents | 33 | tracker | 12 |
-| engine | 28 | settings | 10 |
+| engine | 29 | settings | 11 |
 | models | 27 | gate | 8 |
 | memory | 23 | connectors | 7 |
 | core | 16 | chat | 5 |
@@ -210,8 +211,8 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 ## Commit history
 1. `chore: repo scaffold (BUILD_PLAN step 0)`
 2. `docs: build plan and updates log, step 0 done`
-3. `feat: memory, models, core, agents, connectors, gate, chat, startup checks, evals`
-4. `feat: desktop shell, boot checks UI, Rust tray and keychain`
+3. `feat: memory, models, core, agents, connectors, gate, chat, startup checks, evals (BUILD_PLAN steps 2-8, 9.1, 10)`
+4. `feat: desktop shell, boot checks UI, Rust tray and keychain; docs: build plan and updates`
 5. `feat: VaultProof MCP setting and connection check; Gateway API on hold`
 6. `feat: API key settings in keychain, direct Claude client, built-in issue tracker`
 7. `refactor: storage behind MemoryStore and TrackerStore ports with contract suites and migration`
@@ -225,10 +226,33 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 15. `feat: Phase 3 learning loop: skills, reflection, nightly learning, feedback`
 16. `feat: honeytoken tripwire and safety eval suite`
 17. `fix: honeytoken planting never blocks start; engine uses the shared model cache`
+18. `docs: detailed build report for phases 0 to 3`
+19. `feat: crew rules editable in Settings and from chat; honor tool-list ask-first`
+20. `feat: crew rules you can change (Settings > Crew and chat proposals); ask-first in tool lists honored`
+21. `feat: research agent with web research on Claude, OpenAI and Gemini; weekly self-review`
+22. `feat: 3D command deck (Kenney station) driven by live events; docs for phase 4`
+23. `feat: crew motion on handoffs and push-to-talk voice`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Crew motion on handoffs, push-to-talk
+
+**Changed**
+- 3D deck: when a crew member takes a task from the Chief of Staff, and when it reports back (done or not finished), it walks to Command and back, legs swinging. Skipped when reduced motion is on.
+- Voice push-to-talk (off by default): a Talk button next to Send; a red "Microphone on" badge while recording; Esc or Stop ends it; it stops itself after 2 minutes; the microphone turns off as soon as recording ends. Speech is turned into text on this machine with whisper.cpp and put in the message box for you to check before sending. The audio is deleted right after.
+- Settings > Voice: whisper.cpp program and model paths, on/off. Startup check reports off, ready, or which path is missing. Telegram voice notes use the same setup.
+- macOS microphone permission text added (`Info.plist`).
+
+**Verified**
+- Engine: transcription only when voice is on; empty audio refused; startup check flags missing paths.
+- Desktop with a fake microphone: Talk shows the badge, Stop sends the audio, the text lands in the message box, the badge goes away.
+- 3D deck render: a handoff starts the walk.
+- 179 TypeScript tests and 6 Rust tests pass (counted); `pnpm check` green; no secrets in the repo.
+
+**Not verified yet**
+- Real whisper.cpp transcription (needs it installed on your Mac).
 
 ## 2026-10-03: Phase 4: research agent and the 3D command deck
 

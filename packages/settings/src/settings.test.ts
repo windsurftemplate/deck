@@ -75,3 +75,9 @@ it("preset and onboarding", () => {
   expect(applyUpdate(DEFAULTS, { preset: "cautious", onboarding: { done: true } })).toMatchObject({ preset: "cautious", onboarding: { done: true } });
   expect(() => applyUpdate(DEFAULTS, { preset: "yolo" as "cautious" })).toThrow(/cautious, balanced or autonomous/);
 });
+
+it("voice is off by default and needs whisper.cpp paths to turn on", () => {
+  expect(DEFAULTS.voice.enabled).toBe(false);
+  expect(() => applyUpdate(DEFAULTS, { voice: { enabled: true } })).toThrow(/whisper.cpp/);
+  expect(applyUpdate(DEFAULTS, { voice: { enabled: true, whisperBin: "/opt/whisper-cli", modelPath: "/opt/ggml-base.en.bin" } }).voice.enabled).toBe(true);
+});

@@ -42,6 +42,7 @@ async function main() {
     "issues.get": (p) => engine.issues().get(p as never),
     "profile.save": (p) => engine.saveProfile((p ?? {}) as Record<string, string>),
     "models.test": () => engine.testModel(),
+    "voice.transcribe": (p) => engine.transcribe(String((p as { audio?: string })?.audio ?? "")),
     "crew.info": async () => engine.crewInfo(),
     "crew.update": (p) => engine.crewUpdate(String((p as { agent?: string })?.agent ?? ""), ((p as { override?: object })?.override ?? {}) as never, "settings"),
     "crew.history": () => engine.crewHistory(),

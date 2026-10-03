@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Deck3D } from "./deck3d/Deck3D";
+import { MicButton } from "./Voice";
 import { PowerUp } from "./boot/PowerUp";
 import { applyProposal, decideApproval, emergencyStop, listen, loadSettings, onEngineEvent, pendingApprovals, saveSettings, sendChat, type ActionRecord, type Approval, type Proposal } from "./bridge";
 import { Onboarding } from "./onboarding/Onboarding";
@@ -15,9 +16,10 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [crew, setCrew] = useState<Record<string, { status: string; task?: string }>>({});
   const [pending, setPending] = useState<Approval[]>([]);
-  const [signal, setSignal] = useState<{ beam?: string; archive?: number }>({});
+  const [signal, setSignal] = useState<{ beam?: string; archive?: number; visit?: string }>({});
   const [view, setView] = useState<"3d" | "list">("3d");
-  useEffect(() => void loadSettings().then((s) => setView(s.world.view)), []);
+  const [voiceOn, setVoiceOn] = useState(false);
+  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled))), [showSettings]);
   const switchView = async () => {
     const next = view === "3d" ? "list" : "3d";
     setView(next);
@@ -40,6 +42,8 @@ export function App() {
       if (event === "deck") {
         const d = data as { type: string; task?: { agent: string | null; status: string; title: string } };
         if ((d.type === "task.created" || d.type === "task.updated") && d.task?.agent) setCrew((c) => ({ ...c, [d.task!.agent!]: { status: d.task!.status, task: d.task!.title } }));
+        // Handoffs on the deck: walk to Command to take a task (created) and to report (done or not finished).
+        if (d.task?.agent && (d.type === "task.created" || ["done", "failed"].includes(d.task.status))) setSignal((s) => ({ ...s, visit: `${d.task!.agent}#${Date.now()}` }));
       }
       if (event === "security") {
         setStopped(true);
@@ -96,7 +100,7 @@ export function App() {
         {view === "3d" ? (
           <Deck3D
             state={{ crew, pending, stopped }}
-            signal={{ ...(signal.beam ? { beam: signal.beam.split("#")[0]! } : {}), ...(signal.archive ? { archive: signal.archive } : {}) }}
+            signal={{ ...(signal.beam ? { beam: signal.beam.split("#")[0]! } : {}), ...(signal.archive ? { archive: signal.archive } : {}), ...(signal.visit ? { visit: signal.visit } : {}) }}
             onDecide={async (id, approve) => {
               const msg = await decideApproval(id, approve);
               setLog((l) => [...l, { from: "system", text: msg }]);
@@ -195,6 +199,7 @@ export function App() {
             }}
           >
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message the Chief of Staff, or say: switch heavy work to Gemini" aria-label="Message" />
+            {voiceOn && <MicButton onText={(t) => setDraft((d) => (d ? `${d} ${t}` : t))} />}
             <button className="btn" type="submit">Send</button>
           </form>
         </section>

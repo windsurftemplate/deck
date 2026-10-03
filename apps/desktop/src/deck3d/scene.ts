@@ -19,8 +19,15 @@ const PLACE: Record<string, { c: [number, number]; face: [number, number]; crew?
   vault: { c: [5.5, 4], face: [7, 4.8], crew: [6.3, 4.2] },
 };
 
+type Step = THREE.Vector3 | { wait: number } | { face: true };
+
 interface Crew {
   mesh: THREE.Group;
+  legL: THREE.Mesh;
+  legR: THREE.Mesh;
+  home: THREE.Vector3;
+  face: [number, number];
+  path: Step[];
   ring: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>;
   lamp: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
   bob: number;
@@ -276,7 +283,7 @@ export class DeckScene {
     a.position.set(p.crew![0], FLOOR_Y, p.crew![1]);
     a.rotation.y = Math.atan2(p.face[0] - a.position.x, p.face[1] - a.position.z);
     this.world.add(a);
-    this.crew[id] = { mesh: a, ring, lamp, bob: Math.random() * 6 };
+    this.crew[id] = { mesh: a, ring, lamp, legL, legR, home: a.position.clone(), face: p.face, path: [], bob: Math.random() * 6 };
   }
 
   private apply(id: string) {
@@ -415,7 +422,35 @@ export class DeckScene {
       const st = this.status[id];
       if (st === "needs") cr.ring.material.color.setHex(STATUS_COLOR.needs).multiplyScalar(0.55 + Math.sin(t * 5) * 0.45);
       if (st === "blocked") cr.ring.material.color.setHex(Math.sin(t * 8) > 0 ? STATUS_COLOR.blocked : 0x4a2020);
-      cr.mesh.position.y = FLOOR_Y + (this.reduce ? 0 : Math.max(0, Math.sin(t * 1.6 + cr.bob)) * 0.012);
+      const m = cr.mesh;
+      if (cr.path.length && !this.reduce) {
+        const step = cr.path[0]!;
+        if ("wait" in step) {
+          step.wait -= dt;
+          if (step.wait <= 0) cr.path.shift();
+        } else if ("face" in step) {
+          m.rotation.y = Math.atan2(cr.face[0] - m.position.x, cr.face[1] - m.position.z);
+          cr.path.shift();
+        } else {
+          const dir = step.clone().sub(m.position);
+          dir.y = 0;
+          const dist = dir.length();
+          if (dist < 0.04) cr.path.shift();
+          else {
+            dir.normalize();
+            m.position.addScaledVector(dir, Math.min(dist, dt * 1.6));
+            m.rotation.y = Math.atan2(dir.x, dir.z);
+          }
+        }
+        const sw = Math.sin(t * 12) * 0.35;
+        cr.legL.rotation.x = sw;
+        cr.legR.rotation.x = -sw;
+        m.position.y = FLOOR_Y + Math.abs(Math.sin(t * 12)) * 0.02;
+      } else {
+        if (cr.path.length) cr.path = [];
+        cr.legL.rotation.x = cr.legR.rotation.x = 0;
+        m.position.y = FLOOR_Y + (this.reduce ? 0 : Math.max(0, Math.sin(t * 1.6 + cr.bob)) * 0.012);
+      }
     }
     for (let i = this.beams.length - 1; i >= 0; i--) {
       const b = this.beams[i]!;
@@ -481,6 +516,22 @@ export class DeckScene {
     const spark = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe29a }));
     this.scene.add(line, spark);
     this.beams.push({ line, spark, curve, t: 0 });
+  }
+
+  /**
+   * A crew member walks to Command and back: picking up a task from the Chief of Staff, or reporting back.
+   * Skipped with reduced motion, and for the Chief of Staff, who is already at Command.
+   */
+  visitCommand(station: string) {
+    const cr = this.crew[station];
+    if (!cr || station === "command" || cr.path.length || this.reduce) return;
+    const c = PLACE[station]!.c;
+    const sx = Math.sign(c[0] || 1);
+    const door = Math.abs(c[0]) > 3 ? new THREE.Vector3(sx * 3, FLOOR_Y, c[1]) : new THREE.Vector3(c[0], FLOOR_Y, Math.sign(c[1]) * 2);
+    const hub = new THREE.Vector3(sx * 0.8, FLOOR_Y, 0);
+    const cmdDoor = new THREE.Vector3(0, FLOOR_Y, -2);
+    const cmd = new THREE.Vector3(sx * 0.9, FLOOR_Y, -3.6);
+    cr.path = [door, hub, cmdDoor, cmd, { wait: 1.6 }, cmdDoor.clone(), hub.clone(), door.clone(), cr.home.clone(), { face: true }];
   }
 
   /** Archive lights up: memory learned something. */

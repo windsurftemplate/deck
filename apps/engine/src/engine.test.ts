@@ -511,6 +511,22 @@ describe("research agent", () => {
   });
 });
 
+describe("voice", () => {
+  it("transcribes only when turned on, and refuses empty audio", async () => {
+    const off = make({});
+    await off.open();
+    await expect(off.transcribe("AAAA")).rejects.toThrow(/Voice is off/);
+    await off.close();
+    const settings = { ...DEFAULTS, voice: { enabled: true, whisperBin: "/nope/whisper", modelPath: "/nope/model.bin" } };
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain(), settings, fetch: offline, makeEmbedder: () => new HashEmbedder(64), transcriber: { transcribe: async (a) => (a.length === 3 ? " make an issue for the Acme follow-up " : "") } });
+    await e.open();
+    expect(await e.transcribe(Buffer.from([1, 2, 3]).toString("base64"))).toBe("make an issue for the Acme follow-up");
+    await expect(e.transcribe("")).rejects.toThrow(/empty or too long/);
+    expect((await e.checks()).find((c) => c.id === "voice")).toMatchObject({ status: "degraded", message: expect.stringMatching(/not found/) });
+    await e.close();
+  });
+});
+
 describe("onboarding", () => {
   it("saves the interview as stated facts and uses them in chat", async () => {
     const e = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });

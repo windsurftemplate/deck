@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:f
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
-import { ChatBot, TelegramClient, type BotActions } from "@deck/chat";
+import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
 import { LocalEmbedder } from "@deck/embed-local";
@@ -52,6 +52,7 @@ export interface EngineDeps {
   makeEmbedder?: (s: Settings) => Embedder;
   makeModel?: (ref: ModelRef, getKey: () => Promise<string>) => ChatModel;
   webResearch?: typeof webResearch;
+  transcriber?: { transcribe(audio: Uint8Array): Promise<string> };
 }
 
 type Turn = { from: "owner" | "agent"; text: string };
@@ -329,7 +330,12 @@ export class Engine {
         }
       },
       decision: async () => ({ status: "off", message: "Jev and Laya are not set up yet; built-in rules decide for now." }),
-      voice: async () => ({ status: "off", message: "Voice and camera are off." }),
+      voice: async () => {
+        const v = s.voice;
+        if (!v.enabled) return { status: "off", message: "Voice is off." };
+        const missing = [v.whisperBin, v.modelPath].filter((p) => !existsSync(p));
+        return missing.length ? { status: "degraded", message: `Voice is on but not found: ${missing.join(", ")}`, fix: "Check the whisper.cpp paths in Settings > Voice." } : { status: "ok", message: "Push-to-talk ready (speech stays on this machine)." };
+      },
     };
     const results = await runStartupChecks(probes, (r) => this.emit("check", r));
     return results.filter((r) => r.id !== "world");
@@ -643,6 +649,16 @@ export class Engine {
     return [`Tasks: ${done} done, ${failed.length} not finished (this session).`, failed.length ? `Not finished:\n${failed.join("\n")}` : "", rejected.length ? `Rejected by the owner:\n${rejected.join("\n")}` : "No rejected actions recorded.", skills.length ? `Skills in trouble:\n${skills.join("\n")}` : ""].filter(Boolean).join("\n\n");
   }
 
+  /** Push-to-talk: speech to text on this machine. The audio is deleted right after. */
+  async transcribe(audioBase64: string): Promise<string> {
+    const v = this.d.settings.voice;
+    if (!v.enabled) throw new Error("Voice is off. Turn it on in Settings > Voice.");
+    const audio = Buffer.from(audioBase64, "base64");
+    if (!audio.length || audio.length > 20_000_000) throw new Error("That recording is empty or too long (2 minutes at most).");
+    const t = this.d.transcriber ?? new WhisperCppTranscriber({ whisperBin: v.whisperBin, modelPath: v.modelPath });
+    return (await t.transcribe(new Uint8Array(audio))).trim();
+  }
+
   /** Recent drafts for the owner to review. */
   recentDrafts() {
     return this.drafts;
@@ -866,6 +882,7 @@ export class Engine {
       reject: (id) => this.decide(id, false),
       undo: () => "Nothing to undo.",
       kill: (a) => this.kill(a),
+      ...(this.d.settings.voice.enabled ? { transcribe: (audio: Uint8Array) => this.transcribe(Buffer.from(audio).toString("base64")) } : {}),
       message: async (text) => {
         const r = await this.chat(text);
         return r.proposal ? `${r.reply}\nReply /apply ${r.proposal.id} to confirm.` : r.reply;

@@ -10,7 +10,7 @@ export interface DeckState {
 }
 
 /** The 3D command deck with a side panel for the selected station. */
-export function Deck3D({ state, signal, onDecide }: { state: DeckState; signal: { beam?: string; archive?: number }; onDecide: (id: string, approve: boolean) => void }) {
+export function Deck3D({ state, signal, onDecide }: { state: DeckState; signal: { beam?: string; archive?: number; visit?: string }; onDecide: (id: string, approve: boolean) => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
   const deck = useRef<DeckScene | null>(null);
@@ -62,6 +62,10 @@ export function Deck3D({ state, signal, onDecide }: { state: DeckState; signal: 
   useEffect(() => {
     if (signal.archive) deck.current?.pulseArchive();
   }, [signal.archive]);
+  useEffect(() => {
+    const st = signal.visit && stationForAgent(signal.visit.split("#")[0]!);
+    if (st) deck.current?.visitCommand(st.id);
+  }, [signal.visit]);
   useEffect(() => {
     deck.current?.focus(selected);
   }, [selected]);

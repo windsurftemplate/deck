@@ -160,8 +160,8 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 |---|------|-----------|--------|
 | P4.1 | 3D command deck from the Kenney Space Station Kit (CC0): 8 stations, crew astronauts, live status rings and tags, station panel with Approve and Reject, vault beams on approvals, archive lights when the crew learns, core dims when stopped; List view toggle | Stations follow live engine events | done |
 | P4.2 | Research agent: web research through Claude, OpenAI or Gemini search with sources (untrusted, 25 a day), crew track-record review, weekly self-review on Mondays | A delegated research task returns sourced findings | done |
-| P4.3 | Crew walking between stations, camera tours, 3D power-up | Motion follows real handoffs | todo |
-| P4.4 | Voice push-to-talk and camera snapshots in the app | Off by default; indicators always on | todo |
+| P4.3 | Crew walk to Command when they take a task and when they report back | Motion follows real handoffs | done (camera tours and 3D power-up later) |
+| P4.4 | Voice push-to-talk in the app (local whisper.cpp) and camera snapshots | Off by default; indicators always on | voice done; camera todo (needs image input in the model layer) |
 | P4.5 | Research agent builds and tests changes in a sandbox and opens PRs | Needs repository access | blocked: GitHub skipped |
 
 ## Code signing
