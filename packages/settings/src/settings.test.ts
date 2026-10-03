@@ -81,3 +81,9 @@ it("voice is off by default and needs whisper.cpp paths to turn on", () => {
   expect(() => applyUpdate(DEFAULTS, { voice: { enabled: true } })).toThrow(/whisper.cpp/);
   expect(applyUpdate(DEFAULTS, { voice: { enabled: true, whisperBin: "/opt/whisper-cli", modelPath: "/opt/ggml-base.en.bin" } }).voice.enabled).toBe(true);
 });
+
+it("Jev settings: https address only, off by default", () => {
+  expect(DEFAULTS.tools.jev).toEqual({ enabled: false, baseUrl: "" });
+  expect(() => applyUpdate(DEFAULTS, { tools: { jev: { baseUrl: "http://jev.example" } } })).toThrow(/https/);
+  expect(applyUpdate(DEFAULTS, { tools: { jev: { baseUrl: "https://api.jev.example/v1" } } }).tools.jev.baseUrl).toBe("https://api.jev.example/v1");
+});

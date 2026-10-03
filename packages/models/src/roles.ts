@@ -9,6 +9,8 @@ export interface RouterConfig {
   /** Daily caps: dollars (for priced models) and tokens (always). */
   caps: { total?: number; perAgent?: Record<string, number>; tokens?: number };
   clock?: () => Date;
+  /** Called after every successful model call (for the usage history). */
+  onUsage?: (u: { agent: string; model: string; inputTokens: number; outputTokens: number; tokens: number; costUsd: number | null }) => void;
 }
 
 export interface RouteResult extends ChatResponse {
@@ -76,6 +78,7 @@ export class ModelRouter {
           this.spent.byAgent.set(agent, (this.spent.byAgent.get(agent) ?? 0) + costUsd);
         }
         attempts.push({ model: id });
+        this.cfg.onUsage?.({ agent, model: id, inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens, tokens: used, costUsd });
         return { ...res, costUsd, attempts };
       } catch (err) {
         attempts.push({ model: id, error: (err as Error).message });

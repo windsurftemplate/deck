@@ -46,6 +46,8 @@ export interface Settings {
   voice: { enabled: boolean; whisperBin: string; modelPath: string; speakReplies: boolean };
   /** Camera snapshots in chat. The camera is on only while you take a picture; pictures go to your chosen model and are not stored. */
   camera: { enabled: boolean };
+  /** Outside tools the crew can use. Keys live in the OS keychain, never here. */
+  tools: { jev: { enabled: boolean; baseUrl: string } };
   /** Telegram front door. The bot token lives in the keychain as "chat.telegram". */
   chat: { telegram: { enabled: boolean; ownerChatIds: number[] } };
   general: { startAtLogin: boolean; runInBackground: boolean };
@@ -63,6 +65,7 @@ export const DEFAULTS: Settings = {
   world: { view: "3d" },
   voice: { enabled: false, whisperBin: "", modelPath: "", speakReplies: false },
   camera: { enabled: false },
+  tools: { jev: { enabled: false, baseUrl: "" } },
   chat: { telegram: { enabled: false, ownerChatIds: [] } },
   general: { startAtLogin: true, runInBackground: true },
   vaultproof: { enabled: false, mcpUrl: "", sessionSecret: "vaultproof.session" },
@@ -158,6 +161,15 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
     if (next.voice.enabled && (!next.voice.whisperBin || !next.voice.modelPath)) throw new SettingsError("voice", "Set the whisper.cpp program and model file before turning voice on.");
   }
   if (patch.camera?.enabled !== undefined) next.camera.enabled = !!patch.camera.enabled;
+  if (patch.tools?.jev) {
+    const j = patch.tools.jev;
+    if (j.baseUrl !== undefined) {
+      const u = String(j.baseUrl).trim();
+      if (u && !/^https:\/\/[^\s/@]+(\/[^\s]*)?$/.test(u)) throw new SettingsError("tools.jev.baseUrl", "Use an https address, without a username or password.");
+      next.tools.jev.baseUrl = u;
+    }
+    if (j.enabled !== undefined) next.tools.jev.enabled = !!j.enabled;
+  }
   if (patch.world?.view !== undefined) {
     if (!["3d", "brain", "list"].includes(patch.world.view)) throw new SettingsError("world.view", "Choose 3d, brain or list.");
     next.world.view = patch.world.view;
@@ -182,7 +194,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

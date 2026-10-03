@@ -511,6 +511,56 @@ describe("research agent", () => {
   });
 });
 
+describe("crew channel and command center", () => {
+  it("records handoffs, tool calls, reports, checks, approvals and usage; runs a crew discussion", async () => {
+    const msgs: { sender: string; kind: string; channel: string }[] = [];
+    let n = 0;
+    const U = { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const e = new Engine({
+      dataDir: dir(),
+      keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }),
+      settings: DEFAULTS,
+      fetch: offline,
+      emit: (ev, data) => ev === "crew.message" && msgs.push(data as { sender: string; kind: string; channel: string }),
+      makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({
+        id: ref.model,
+        chat: async (req) => {
+          const sys = JSON.stringify(req.system ?? "");
+          if (sys.includes("Sum up the crew discussion")) return { text: "Agree on SSO first.", model: ref.model, stopReason: "end_turn", usage: U };
+          if (sys.includes("Crew discussion")) return { text: `Point ${++n}.`, model: ref.model, stopReason: "end_turn", usage: U };
+          if (JSON.stringify(req.messages).includes("Done when") && (req.tools?.length ?? 0) > 0 && n++ === 0) return { text: "", toolCalls: [{ type: "tool_call", id: "t1", name: "issues_create", input: { title: "SSO for Acme" } }], model: ref.model, stopReason: "tool_use", usage: U };
+          return { text: '{"passed": true, "missing": []}', model: ref.model, stopReason: "end_turn", usage: U };
+        },
+      }),
+    });
+    await e.open();
+    await e.delegate("code", "Plan SSO for Acme", "Acme asked", ["an issue exists"]);
+    const feed = e.crewMessages("activity").map((m) => `${m.sender}>${m.kind}`);
+    expect(feed.slice(0, 2)).toEqual(["chief-of-staff>handoff", "code>tool"]);
+    expect(feed).toContain("code>report");
+    expect(feed).toContain("verifier>check");
+    const { approval } = e.approvals.request({ agent: "gtm", summary: "Send email to Dana", detail: "", scope: "gmail.send" });
+    e.decide(approval.id, false);
+    expect(e.crewMessages("activity").slice(-2).map((m) => `${m.sender}>${m.kind}: ${m.text}`)).toEqual(["gtm>approval: Needs your approval: Send email to Dana", "owner>decision: Rejected: Send email to Dana"]);
+    n = 0;
+    let started = "";
+    const d = await e.crewDiscuss("Should we build SSO before the Acme pilot?", ["gtm", "code"], 2, (id) => (started = id));
+    expect(started).toBe(d.id);
+    const talk = e.crewMessages(`discussion:${d.id}`).map((m) => `${m.sender}: ${m.text}`);
+    expect(talk).toEqual(["owner: Should we build SSO before the Acme pilot?", "gtm: Point 1.", "code: Point 2.", "gtm: Point 3.", "code: Point 4.", "chief-of-staff: Agree on SSO first."]);
+    expect(e.discussions()[0]).toMatchObject({ id: d.id, status: "done", agents: ["gtm", "code"] });
+    const a = await e.analytics(7);
+    expect(a.dates).toHaveLength(7);
+    expect(a.tokens.at(-1)).toBeGreaterThan(0);
+    expect(a.byAgent.map((x) => x.k)).toEqual(expect.arrayContaining(["code", "verifier", "gtm"]));
+    expect(a.crew.find((c) => c.agent === "code")).toMatchObject({ done: 1, checked: 1 });
+    expect(a.approvals).toEqual({ approved: 0, rejected: 1 });
+    expect(msgs.length).toBeGreaterThan(8);
+    await e.close();
+  });
+});
+
 describe("deck screens", () => {
   it("reports live numbers for the station's wall screens", async () => {
     const e = make({});

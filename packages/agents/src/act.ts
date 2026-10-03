@@ -35,6 +35,8 @@ export function needsApproval(kind: ActionKind, preset: Preset): boolean {
 export interface RunAgentInput {
   agent: string;
   chat: (req: ChatRequest, onText?: (delta: string) => void) => Promise<ChatResponse>;
+  /** Each tool call as it happens (for the crew channel). */
+  onAction?: (a: ActionRecord) => void;
   /** Reply text as it is written, across turns (a blank line separates turns). */
   onText?: (delta: string) => void;
   system: TextBlock[];
@@ -103,6 +105,10 @@ export async function runAgent(i: RunAgentInput): Promise<{ text: string; action
   const max = i.maxTurns ?? 6;
   let retried = false;
   // Streamed text: a blank line between turns, so text before and after tool use reads as paragraphs.
+  const record = (a: ActionRecord) => {
+    actions.push(a);
+    i.onAction?.(a);
+  };
   let anyText = false;
   let newTurn = false;
   const onText =
@@ -132,7 +138,7 @@ export async function runAgent(i: RunAgentInput): Promise<{ text: string; action
     messages.push({ role: "assistant", content: assistant });
     const tripped = calls.find((c) => i.tripwire?.(JSON.stringify(c.input)));
     if (tripped) {
-      actions.push({ tool: tripped.name, summary: `Blocked ${tripped.name}: it carried a planted secret`, status: "denied" });
+      record({ tool: tripped.name, summary: `Blocked ${tripped.name}: it carried a planted secret`, status: "denied" });
       i.onTripwire?.(tripped.name);
       return { text: "Stopped: an action tried to use a planted secret, which means something in the input was trying to misuse the crew. All agents are stopped; the owner has been told.", actions, turns: turn };
     }
@@ -143,11 +149,16 @@ export async function runAgent(i: RunAgentInput): Promise<{ text: string; action
   return { text: `I stopped after ${max} steps without finishing. Here is what I did so far.`, actions, turns: max };
 }
 
+function logAction(log: ActionRecord[], i: RunAgentInput, a: ActionRecord) {
+  log.push(a);
+  i.onAction?.(a);
+}
+
 async function handle(call: ToolCallBlock, i: RunAgentInput, allowed: AgentTool[], log: ActionRecord[]): Promise<Block> {
   const reply = (content: string, isError = false): Block => ({ type: "tool_result", id: call.id, name: call.name, content, ...(isError ? { isError } : {}) });
   const tool = allowed.find((t) => t.spec.name === call.name);
   if (!tool) {
-    log.push({ tool: call.name, summary: `Tried ${call.name}`, status: "denied" });
+    logAction(log, i, { tool: call.name, summary: `Tried ${call.name}`, status: "denied" });
     return reply(`Not allowed: ${call.name} is not one of your tools for this task.`, true);
   }
   const gaps = missing(tool.spec, call.input);
@@ -165,11 +176,11 @@ async function handle(call: ToolCallBlock, i: RunAgentInput, allowed: AgentTool[
   const askFirst = decideTool(i.policy, i.taskScopes, tool.scope) === "approval";
   if (!askFirst && !needsApproval(tool.kind, i.preset)) {
     const r = await execute();
-    log.push(r);
+    logAction(log, i, r);
     return reply(r.status === "done" ? r.result! : `Failed: ${r.result}`, r.status === "failed");
   }
   const { approval, decision } = i.approvals.request({ agent: i.agent, summary, detail: JSON.stringify(call.input, null, 2), scope: tool.scope });
-  log.push({ tool: call.name, summary, status: "waiting", approvalId: approval.id });
+  logAction(log, i, { tool: call.name, summary, status: "waiting", approvalId: approval.id });
   void decision.then(async (a) => {
     if (a.status === "approved") i.onLater?.(await execute());
     else i.onLater?.({ tool: call.name, summary, status: "denied", approvalId: a.id, result: a.status === "expired" ? "approval expired" : "rejected by the owner" });

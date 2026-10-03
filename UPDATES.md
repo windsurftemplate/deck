@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 34 commits.
-Tests (counted): **201 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 35 commits.
+Tests (counted): **203 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -251,10 +251,31 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 32. `feat: streaming replies with typing dots on all providers; saved chats sidebar`
 33. `feat: second brain (files, text, links, Obsidian, Notion, Apple Notes, notes) with 3D map; document recall marked untrusted`
 34. `feat: livelier station (space, props, live screens, crew at consoles)`
+35. `feat: command center analytics, crew chat with discussions, tools page with Jev key`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Command center, crew chat, tools page
+
+**Changed**
+- History in the encrypted workspace: every model call (agent, model, tokens, cost), every finished task (checked or not), and every crew message.
+- Command center page: tokens today against the cap, tasks finished and not finished, share independently checked, approvals waiting and approval rate; tokens per day; tokens by model and by agent; crew work per day; a performance table per agent; second brain growth; issues opened and closed. 7, 30 or 90 days. Refreshes every 15 seconds.
+- Crew chat page: a live feed of the crew working: the Chief of Staff handing work over, each tool call as it happens, the report back, the verifier's check, approvals and your decisions. Filter by agent.
+- Crew discussions: give a topic and pick who joins; crew members take turns (1 to 3 rounds), each sees what was said, then the Chief of Staff sums up agreements, disagreements and next steps. Talk only: no tools, nothing sent. You can add to a discussion while it runs. Discussions are saved and logged to memory.
+- Tools page: state of every integration (Jev, web research, Telegram, VaultProof, voice, camera, Gmail and Calendar, second brain imports) with shortcuts to set each up, and a table of which agent can use what.
+- Jev: API key saved in the OS keychain (`tool.jev`) and an https API address in settings. It connects once Jev's API docs are added.
+- Header: Deck, Brain, Command center, Crew chat, Tools, List.
+
+**Verified**
+- Engine: a delegated task produces handoff, tool, report and check messages in order; an approval and a rejection appear; a two-round discussion runs in turn and ends with a summary; analytics count tokens by agent, checked tasks and rejections.
+- Settings: Jev address must be https.
+- Desktop with a stand-in engine: the command center charts, the activity feed, a discussion, saving a Jev key to the keychain.
+- 203 TypeScript tests and 6 Rust tests pass (counted); `pnpm check` green; no secrets in the repo.
+
+**Waiting on you**
+- Jev's API docs, to connect routing.
 
 ## 2026-10-03: Streaming chat, saved chats, second brain, livelier station
 

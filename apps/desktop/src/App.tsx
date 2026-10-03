@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Deck3D } from "./deck3d/Deck3D";
 import type { DeckStats } from "./deck3d/scene";
 import { BrainView } from "./brain3d/BrainView";
+import { CommandCenter } from "./pages/CommandCenter";
+import { CrewChannel } from "./pages/CrewChannel";
+import { Tools } from "./pages/Tools";
 import { MicButton } from "./Voice";
 import { SnapshotButton, attachFile, type Picture } from "./Camera";
 import { PowerUp } from "./boot/PowerUp";
@@ -21,7 +24,8 @@ export function App() {
   const [crew, setCrew] = useState<Record<string, { status: string; task?: string }>>({});
   const [pending, setPending] = useState<Approval[]>([]);
   const [signal, setSignal] = useState<{ beam?: string; archive?: number; visit?: string }>({});
-  const [view, setView] = useState<"3d" | "brain" | "list">("3d");
+  type View = "3d" | "brain" | "center" | "channel" | "tools" | "list";
+  const [view, setView] = useState<View>("3d");
   const [voiceOn, setVoiceOn] = useState(false);
   const [speak, setSpeak] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
@@ -50,9 +54,10 @@ export function App() {
   };
   const [attachErr, setAttachErr] = useState<string | null>(null);
   useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled))), [showSettings]);
-  const switchView = async (next: "3d" | "brain" | "list") => {
+  const switchView = async (next: View) => {
     setView(next);
-    await saveSettings({ world: { view: next } }).catch(() => {});
+    // The station, brain and list views are remembered; the other pages open from the header.
+    if (next === "3d" || next === "brain" || next === "list") await saveSettings({ world: { view: next } }).catch(() => {});
   };
 
   // Approvals and finished actions arrive from the engine at any time.
@@ -124,7 +129,7 @@ export function App() {
         <b>Command deck</b>
         <div className="row">
           <div className="seg" role="group" aria-label="View">
-            {([["3d", "Deck"], ["brain", "Brain"], ["list", "List"]] as const).map(([v, label]) => (
+            {([["3d", "Deck"], ["brain", "Brain"], ["center", "Command center"], ["channel", "Crew chat"], ["tools", "Tools"], ["list", "List"]] as const).map(([v, label]) => (
               <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => switchView(v)}>
                 {label}
               </button>
@@ -144,6 +149,12 @@ export function App() {
       <div className={`main ${view !== "list" ? "with-deck" : ""}`}>
         {view === "brain" ? (
           <BrainView />
+        ) : view === "center" ? (
+          <CommandCenter />
+        ) : view === "channel" ? (
+          <CrewChannel />
+        ) : view === "tools" ? (
+          <Tools openSettings={() => setShowSettings(true)} openBrain={() => switchView("brain")} />
         ) : view === "3d" ? (
           <Deck3D
             onOpenBrain={() => switchView("brain")}

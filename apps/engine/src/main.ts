@@ -44,6 +44,16 @@ async function main() {
     "brain.delete": (p) => engine.brain.remove(Number((p as { id?: number })?.id)),
     "brain.graph": () => engine.brain.graph(),
     "deck.stats": () => engine.deckStats(),
+    "tools.list": () => engine.toolsList(),
+    "analytics.get": (p) => engine.analytics(Number((p as { days?: number })?.days ?? 30)),
+    "crew.messages": async (p) => { const q = p as { channel?: string; limit?: number; before?: number }; return engine.crewMessages(String(q?.channel ?? "activity"), q?.limit, q?.before); },
+    "crew.discussions": async () => engine.discussions(),
+    // Starts a discussion and answers at once with its id; messages arrive as events while the crew talks.
+    "crew.discuss": (p) => {
+      const q = p as { topic?: string; agents?: string[]; rounds?: number };
+      return new Promise((resolve, reject) => void engine.crewDiscuss(String(q?.topic ?? ""), q?.agents, q?.rounds, (id) => resolve({ id })).catch(reject));
+    },
+    "crew.interject": async (p) => { const q = p as { id?: string; text?: string }; return engine.interject(String(q?.id ?? ""), String(q?.text ?? "")); },
     "threads.list": async () => engine.threads.list(),
     "threads.messages": async (p) => engine.threads.messages(String((p as { id?: string })?.id ?? "")),
     "threads.rename": async (p) => engine.threads.rename(String((p as { id?: string })?.id ?? ""), String((p as { title?: string })?.title ?? "")),

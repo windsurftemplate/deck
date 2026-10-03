@@ -197,6 +197,9 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P5.7 | Chat like a chat app: replies stream word by word with typing dots (Claude, OpenAI, Gemini); saved chats sidebar with rename and delete | Text appears as it is written; each chat keeps its own history | done |
 | P5.8 | Second brain: drop files (PDF, Word, Markdown, text, HTML), paste text, add web pages, import Obsidian, Notion and Apple Notes, write notes; all searchable by the crew; 3D map of what it knows | Added content is recalled in chat, marked untrusted | done |
 | P5.9 | Station life: asteroid in space with a ringed planet, extra props, blinking lights and beacon, live wall screens (tasks, issues, drafts, memory, tokens, approvals), crew typing at glowing consoles while working, idle crew walking around | Screens show engine numbers; working crew types | done |
+| P5.10 | Command center: tokens per day, by model and agent, crew work per day, crew performance table, approvals, brain growth, issues opened and closed (7, 30 or 90 days) | Numbers come from the usage, task and message history | done |
+| P5.11 | Crew chat: live feed of handoffs, tool calls, reports, checks, approvals and decisions; crew discussions you start (talk only) with a Chief of Staff summary; you can add to a discussion | Every step of delegated work appears in order | done |
+| P5.12 | Tools page: every integration's state; Jev key (keychain) and API address; who can use what | Jev key saved; connection waits for Jev's API docs | done (Jev API todo) |
 | P5.6 | Hands-free voice: spoken replies done (computer's built-in voice); wake word todo | Off by default; mic indicator always on | partly done |
 
 ## How to use this file
