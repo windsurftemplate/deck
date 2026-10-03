@@ -1,2 +1,5 @@
 target/
 gen/schemas/
+# Made by scripts/package-engine.mjs
+resources/engine/
+binaries/

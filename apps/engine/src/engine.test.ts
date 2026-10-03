@@ -39,6 +39,19 @@ describe("engine", () => {
     await again.close();
   });
 
+  it("refuses to start when the keychain cannot keep the key, and never replaces a lost key", async () => {
+    const forgetful: Keychain = { get: async () => null, set: async () => {}, remove: async () => {} };
+    const d = dir();
+    await expect(make({ dataDir: d, keychain: forgetful }).open()).rejects.toThrow(/keychain is not available/);
+    expect(existsSync(join(d, "workspace.db"))).toBe(false);
+    const kc = memoryKeychain();
+    const e = make({ dataDir: d, keychain: kc });
+    await e.open();
+    await e.close();
+    await kc.remove("memory.key");
+    await expect(make({ dataDir: d, keychain: kc }).open()).rejects.toThrow(/key is missing from the system keychain/);
+  });
+
   it("startup checks: core waits for a key, then ignites", async () => {
     const kc = memoryKeychain();
     const e = make({ keychain: kc });

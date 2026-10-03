@@ -67,6 +67,9 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(`engine failed to start: ${(err as Error).message}\n`);
+  const message = (err as Error).message;
+  // Tell the app why, so the power-up screen can show it instead of a generic failure.
+  process.stdout.write(JSON.stringify({ event: "fatal", data: { message } }) + "\n");
+  process.stderr.write(`engine failed to start: ${message}\n`);
   process.exit(1);
 });

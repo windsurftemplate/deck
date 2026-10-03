@@ -55,6 +55,11 @@ export async function runChecks(onResult: (r: CheckResult) => void): Promise<{ r
       push({ id, name: "World", status: "ok", message: "2D deck ready." });
       continue;
     }
+    if (!fromEngine && id === "memory") {
+      // Without the engine there is no memory: say why, and stop the power-up here.
+      push({ id, name: "Memory", status: "blocking", message: engineError, fix: "Fix the cause above, then restart the app." });
+      continue;
+    }
     const r = fromEngine?.find((x) => x.id === id) ?? native.find((x) => x.id === id);
     push(r ?? (id === "gateway" ? vaultproof : { id, name: names[id]!, status: "waiting", message: engineError }));
   }

@@ -2,6 +2,30 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Engine ships inside the app
+
+**Changed**
+- `scripts/package-engine.mjs`: builds the engine, copies it with production dependencies only (flat, no symlinks), prunes what never runs (other platforms' binaries, GPU runtimes, browser runtimes, docs, tests, source maps), and copies the Node runtime as the `deck-node` sidecar. Engine bundle 103 MB plus Node 125 MB (down from 774 MB).
+- Desktop: finds the engine in this order: developer override, the installed app's bundled engine and Node, then the workspace build. `tauri.bundle.conf.json` adds the sidecar and engine to installers only, so `tauri dev` and tests do not need them. macOS entitlements for the bundled Node runtime.
+- `.github/workflows/release.yml`: tag `v*` builds macOS (Apple Silicon and Intel), Windows and Linux installers into a draft GitHub Release. Signing secrets are optional for test builds.
+- Workspace key safety: the engine never makes a new key for an existing workspace (that would lock the data away), and refuses to start if the keychain cannot keep the key. The power-up screen shows the exact reason and stops.
+
+**Verified**
+- Built a real Linux installer (.deb, 80 MB), installed it, and launched it on a virtual display: the app started the bundled `deck-node` with the bundled engine, created the encrypted workspace, and the engine exited with the app.
+- The bundled engine run from a clean folder with no workspace or system Node: local embedding model loaded, chat recall worked.
+- Found and fixed a real bug on this machine: its keychain forgot the key between launches. The engine now explains this instead of failing with "wrong key".
+- 145 TypeScript tests and 5 Rust tests pass; `pnpm check` green; no secrets in the repo.
+
+**Not verified yet**
+- macOS and Windows installers (the release workflow builds them on their own runners), and macOS signing and notarization (needs your Apple Developer certificate as repo secrets).
+
+**Open**
+- Recovery code (step 1.6): if a keychain is wiped, today the workspace cannot be opened. A one-time recovery code shown at setup would fix that.
+- GitHub connector; Google sign-in for Gmail and Calendar.
+
+**Next**
+- Run the app on your Mac and push the repo.
+
 ## 2026-10-02: Switch models from the chat box
 
 **Changed**

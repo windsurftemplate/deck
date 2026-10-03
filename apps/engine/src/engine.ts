@@ -82,12 +82,23 @@ export class Engine {
   /** Opens (or creates) the encrypted workspace. Re-embeds memory if the embedding model changed. */
   async open(): Promise<void> {
     mkdirSync(this.d.dataDir, { recursive: true });
+    const path = join(this.d.dataDir, "workspace.db");
     let key = await this.d.keychain.get(MEMORY_KEY);
+    if (!key && existsSync(path)) {
+      // Never make a new key for an existing workspace: that would lock the old data away for good.
+      throw new Error("The workspace exists but its encryption key is missing from the system keychain. Restore the keychain entry, or move workspace.db aside to start fresh.");
+    }
     if (!key) {
       key = randomBytes(32).toString("hex");
-      await this.d.keychain.set(MEMORY_KEY, key);
+      try {
+        await this.d.keychain.set(MEMORY_KEY, key);
+      } catch {
+        /* checked below */
+      }
+      if ((await this.d.keychain.get(MEMORY_KEY)) !== key) {
+        throw new Error("The system keychain is not available, so the encryption key cannot be stored safely. Unlock or install a keychain (on Linux, a Secret Service such as GNOME Keyring), then start again.");
+      }
     }
-    const path = join(this.d.dataDir, "workspace.db");
     const embedder = this.embedder();
     const was = existsSync(path) ? storedDim(path, key) : null;
     if (was !== null && was !== embedder.dim) await this.reembed(path, key, was, embedder);

@@ -158,34 +158,53 @@ fn emergency_stop(app: AppHandle, state: tauri::State<'_, EngineState>) -> Resul
 }
 
 /// The running agent engine, if it started.
-struct EngineState(Mutex<Option<std::sync::Arc<EngineClient>>>, Mutex<Option<String>>);
+struct EngineState(Mutex<Option<std::sync::Arc<EngineClient>>>, std::sync::Arc<Mutex<Option<String>>>);
 
 /// Forward a request to the agent engine. Slow work (model calls) runs off the UI thread.
 #[tauri::command]
 async fn engine_call(state: tauri::State<'_, EngineState>, method: String, params: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
     // Take a handle and release the lock, so a slow call never blocks other calls.
-    let client = state.0.lock().unwrap().clone().ok_or_else(|| state.1.lock().unwrap().clone().unwrap_or_else(|| "the agent engine is not running".into()))?;
+    let why = state.1.clone();
+    let reason = move || why.lock().unwrap().clone();
+    let client = state.0.lock().unwrap().clone().ok_or_else(|| reason().unwrap_or_else(|| "the agent engine is not running".into()))?;
     let timeout = if method == "chat.send" || method == "brief" || method == "checks" || method == "reload" { Duration::from_secs(180) } else { Duration::from_secs(30) };
-    tauri::async_runtime::spawn_blocking(move || client.call(&method, params.unwrap_or(serde_json::Value::Null), timeout))
+    let res = tauri::async_runtime::spawn_blocking(move || client.call(&method, params.unwrap_or(serde_json::Value::Null), timeout))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    // If the engine died, report the reason it gave rather than a generic error.
+    res.map_err(|e| if e.contains("stopped") || e.contains("not running") { reason().unwrap_or(e) } else { e })
 }
 
-/// Where the engine lives. Dev builds use the workspace copy; set DECK_ENGINE_ENTRY to override.
-fn engine_entry() -> std::path::PathBuf {
-    std::env::var("DECK_ENGINE_ENTRY").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/dist/main.js"))
+/// Where the engine and its Node runtime live, in this order:
+/// 1. DECK_ENGINE_ENTRY / DECK_NODE (overrides for development)
+/// 2. the installed app: engine in the resources folder, Node as the bundled `deck-node` sidecar
+/// 3. a development checkout: the workspace build and the system `node`
+fn engine_paths(app: &AppHandle) -> (std::path::PathBuf, String) {
+    if let Ok(entry) = std::env::var("DECK_ENGINE_ENTRY") {
+        return (entry.into(), std::env::var("DECK_NODE").unwrap_or_else(|_| "node".into()));
+    }
+    let bundled_entry = app.path().resource_dir().ok().map(|d| d.join("engine").join("dist").join("main.js"));
+    let bundled_node = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join(if cfg!(windows) { "deck-node.exe" } else { "deck-node" })));
+    if let (Some(entry), Some(node)) = (bundled_entry, bundled_node) {
+        if entry.exists() && node.exists() {
+            return (entry, node.display().to_string());
+        }
+    }
+    (std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/dist/main.js"), std::env::var("DECK_NODE").unwrap_or_else(|_| "node".into()))
 }
 
-fn start_engine(app: &AppHandle) -> Result<EngineClient, String> {
-    let entry = engine_entry();
+fn start_engine(app: &AppHandle, fatal: std::sync::Arc<Mutex<Option<String>>>) -> Result<EngineClient, String> {
+    let (entry, node) = engine_paths(app);
     if !entry.exists() {
         return Err(format!("agent engine not built yet ({}). Run: pnpm --filter @deck/engine build", entry.display()));
     }
     let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
-    let node = std::env::var("DECK_NODE").unwrap_or_else(|_| "node".into());
     let handle = app.clone();
     EngineClient::spawn(&node, &[entry.display().to_string(), data.display().to_string()], Box::new(move |v| {
+        if v.get("event").and_then(|e| e.as_str()) == Some("fatal") {
+            *fatal.lock().unwrap() = v["data"]["message"].as_str().map(String::from);
+        }
         let _ = handle.emit("engine-event", v);
     }))
 }
@@ -193,10 +212,10 @@ fn start_engine(app: &AppHandle) -> Result<EngineClient, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(EngineState(Mutex::new(None), Mutex::new(None)))
+        .manage(EngineState(Mutex::new(None), std::sync::Arc::new(Mutex::new(None))))
         .setup(|app| {
             let state = app.state::<EngineState>();
-            match start_engine(app.handle()) {
+            match start_engine(app.handle(), state.1.clone()) {
                 Ok(c) => *state.0.lock().unwrap() = Some(std::sync::Arc::new(c)),
                 Err(e) => *state.1.lock().unwrap() = Some(e),
             };

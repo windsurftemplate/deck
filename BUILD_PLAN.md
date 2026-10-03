@@ -34,8 +34,8 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 1.2 | `apps/desktop/src-tauri/src/main.rs` | Tray icon, background mode, keychain plugin | App keeps running with window closed | done (run on your Mac to confirm tray and keychain) |
 | 1.3 | `apps/desktop/src/App.tsx` | Shell UI: chat panel, status, settings stub | Window shows the shell | done (2D) |
 | 1.4 | `apps/desktop/src-tauri/src/engine.rs` | Starts the engine, relays JSON lines, forwards events, stop-all reaches the engine | Round trip with a real Node process | done |
-| 1.5 | Engine packaging | Ship the engine with the app (bundled Node runtime as a Tauri sidecar, signed) | Installed app starts the engine with no Node on the machine | todo |
-
+| 1.5 | Engine packaging | Ship the engine with the app (bundled Node runtime as a Tauri sidecar, signed) | Installed app starts the engine with no Node on the machine | done (Linux installer verified here; macOS and Windows via the release workflow) |
+| 1.6 | Recovery code | Show the workspace key once as a recovery code; restore it on a new machine or after a keychain reset | A wiped keychain plus the code opens the old workspace | todo (needs your decision) |
 ### Step 2: Memory
 
 | # | File | What it does | Done when | Status |

@@ -77,4 +77,9 @@ mise install       # toolchain
 pnpm install       # dependencies, also installs the secret-scan git hook
 pnpm check         # lint, typecheck, test across all packages
 pnpm secrets       # scan the whole repo for secrets
+node scripts/package-engine.mjs                          # bundle the engine + Node runtime for this platform
+pnpm --filter @deck/desktop tauri dev                    # run the app (uses the workspace engine)
+pnpm --filter @deck/desktop tauri build -- --config src-tauri/tauri.bundle.conf.json   # installer with the engine inside
 ```
+
+Releases: push a tag like `v0.2.0`; `.github/workflows/release.yml` builds macOS (Apple Silicon and Intel), Windows and Linux installers into a draft GitHub Release.
