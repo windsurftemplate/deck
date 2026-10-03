@@ -23,6 +23,14 @@ export class Activity {
       CREATE TABLE IF NOT EXISTS discussions (id TEXT PRIMARY KEY, topic TEXT NOT NULL, agents TEXT NOT NULL, created_at TEXT NOT NULL, status TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS crew_messages_by_channel ON crew_messages(channel, id);
       CREATE INDEX IF NOT EXISTS usage_by_ts ON usage_log(ts);`);
+    // Practice cases for prompt tuning need each task's goal context.
+    for (const col of ["why TEXT", "done_when TEXT"]) {
+      try {
+        db.exec(`ALTER TABLE task_log ADD COLUMN ${col}`);
+      } catch {
+        /* already there */
+      }
+    }
   }
   private now() {
     return this.clock().toISOString();
@@ -32,8 +40,15 @@ export class Activity {
     this.db.prepare("INSERT INTO usage_log (ts, agent, model, input, output, tokens, cost) VALUES (?, ?, ?, ?, ?, ?, ?)").run(this.now(), u.agent, u.model, u.inputTokens, u.outputTokens, u.tokens, u.costUsd);
   }
 
-  logTask(t: { id: string; agent: string; title: string; status: string; checked?: boolean; note?: string }) {
-    this.db.prepare("INSERT INTO task_log (ts, task_id, agent, title, status, checked, note) VALUES (?, ?, ?, ?, ?, ?, ?)").run(this.now(), t.id, t.agent, t.title.slice(0, 300), t.status, t.checked ? 1 : 0, t.note?.slice(0, 500) ?? null);
+  logTask(t: { id: string; agent: string; title: string; status: string; checked?: boolean; note?: string; why?: string; doneWhen?: string[] }) {
+    this.db.prepare("INSERT INTO task_log (ts, task_id, agent, title, status, checked, note, why, done_when) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(this.now(), t.id, t.agent, t.title.slice(0, 300), t.status, t.checked ? 1 : 0, t.note?.slice(0, 500) ?? null, t.why?.slice(0, 500) ?? null, t.doneWhen ? JSON.stringify(t.doneWhen.slice(0, 8)) : null);
+  }
+
+  /** Recent finished tasks for an agent, as practice cases (newest first, one per goal). */
+  practiceCases(agent: string, n: number): { goal: string; why: string; doneWhen: string[]; status: string; checked: boolean; note: string | null }[] {
+    const rows = this.db.prepare("SELECT title, why, done_when, status, checked, note FROM task_log WHERE agent = ? AND done_when IS NOT NULL AND status IN ('done','failed') ORDER BY id DESC LIMIT 60").all(agent) as { title: string; why: string | null; done_when: string; status: string; checked: number; note: string | null }[];
+    const seen = new Set<string>();
+    return rows.filter((r) => !seen.has(r.title) && (seen.add(r.title), true)).slice(0, n).map((r) => ({ goal: r.title, why: r.why ?? "", doneWhen: JSON.parse(r.done_when) as string[], status: r.status, checked: r.checked === 1, note: r.note }));
   }
 
   post(m: Omit<CrewMessage, "id" | "ts">): CrewMessage {

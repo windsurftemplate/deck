@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { engineCall, inTauri } from "./bridge";
 
 type Mode = "allowed" | "ask" | "off";
-type Member = { id: string; name: string; defaultInstructions: string; instructions: string | null; rules: string[]; tools: { scope: string; label: string; mode: Mode }[]; locked: string[] };
+type Member = { id: string; name: string; defaultInstructions: string; instructions: string | null; rules: string[]; learned: string | null; tools: { scope: string; label: string; mode: Mode }[]; locked: string[] };
 type Change = { ts: string; agent: string; summary: string; source: string };
 
 /** Settings > Crew: each agent's instructions, your rules, and tool permissions. Locked safety rules are shown, not editable. */
@@ -119,6 +119,16 @@ export function CrewCard() {
           </tbody>
         </table>
       </div>
+
+      {m.learned && (
+        <div className="field">
+          Learned guidance (tested on practice tasks, approved by you)
+          <pre className="learned">{m.learned}</pre>
+          <button className="btn" type="button" onClick={async () => { await engineCall("crew.update", { agent: m.id, override: { instructions: m.instructions ?? undefined, rules: m.rules, tools: Object.fromEntries(m.tools.map((t) => [t.scope, t.mode])), learned: "" } }).catch(() => {}); void load(); }}>
+            Remove learned guidance
+          </button>
+        </div>
+      )}
 
       <div className="field">
         Always on (cannot be changed)

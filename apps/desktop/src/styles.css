@@ -251,3 +251,4 @@ select { font: inherit; font-size: 15px; color: var(--text); background: var(--v
 .auto-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .autos .result { white-space: pre-wrap; font-size: 13px; color: var(--muted); max-height: 200px; overflow: auto; }
 .bar .seg { flex-wrap: wrap; }
+.learned { white-space: pre-wrap; font: inherit; font-size: 14px; margin: 4px 0; padding: 8px 10px; border-left: 3px solid var(--ion); background: var(--void); }

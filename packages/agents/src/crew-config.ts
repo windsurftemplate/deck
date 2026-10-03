@@ -11,6 +11,16 @@ export interface CrewOverride {
   rules?: string[];
   /** Per tool scope: keep allowed, ask first, or switch off. Only scopes the agent has built in. */
   tools?: Record<string, ToolMode>;
+  /** Guidance learned by prompt tuning, adopted only after it beat the current prompt on tests and the owner approved. */
+  learned?: string;
+}
+
+/** Learned guidance may advise on how to work, never loosen safety. */
+export function checkLearned(text: string): string | null {
+  if (!text.trim()) return "Learned guidance is empty.";
+  if (text.length > 1200) return "Learned guidance must be under 1,200 characters.";
+  if (/\b(skip|bypass|ignore|without)\b[^.\n]{0,40}\b(approval|owner|rules?|verif\w*|check)/i.test(text) || /\b(send|delete|pay|merge)\b[^.\n]{0,30}\b(directly|automatically|without)/i.test(text)) return "Learned guidance cannot loosen approvals, checks or rules.";
+  return null;
 }
 
 export type CrewOverrides = Record<string, CrewOverride>;
@@ -37,6 +47,10 @@ export function validateOverride(base: ToolPolicy, o: CrewOverride): string | nu
     if (o.rules.length > 20) return "Keep it to 20 rules or fewer.";
     if (o.rules.some((r) => !r.trim() || r.length > 300)) return "Each rule needs text and must be under 300 characters.";
   }
+  if (o.learned !== undefined) {
+    const err = checkLearned(o.learned);
+    if (err) return err;
+  }
   for (const [scope, mode] of Object.entries(o.tools ?? {})) {
     if (!["allowed", "ask", "off"].includes(mode)) return `Unknown setting "${mode}" for ${scope}.`;
     if (!base.allow.includes(scope)) return `${base.agent} does not have ${scope} built in; rules can only limit tools, not add them.`;
@@ -59,13 +73,15 @@ export function effectivePolicy(base: ToolPolicy, o: CrewOverride = {}): ToolPol
 export function effectiveRole(defaultRole: string, o: CrewOverride = {}): string {
   const role = o.instructions?.trim() || defaultRole.trim();
   const rules = (o.rules ?? []).map((r) => r.trim()).filter(Boolean);
-  return rules.length ? `${role}\n\n## Owner rules\n${rules.map((r) => `- ${r}`).join("\n")}` : role;
+  const learned = o.learned?.trim();
+  return [role, rules.length ? `## Owner rules\n${rules.map((r) => `- ${r}`).join("\n")}` : "", learned ? `## Learned guidance (tested, approved by the owner)\n${learned}` : ""].filter(Boolean).join("\n\n");
 }
 
 /** One line describing a change, for history and confirm cards. */
 export function describeOverrideChange(agentName: string, before: CrewOverride, after: CrewOverride): string {
   const parts: string[] = [];
   if ((before.instructions ?? "") !== (after.instructions ?? "")) parts.push(after.instructions ? "edited instructions" : "reset instructions to default");
+  if ((before.learned ?? "") !== (after.learned ?? "")) parts.push(after.learned ? "adopted tuned guidance" : "removed tuned guidance");
   const added = (after.rules ?? []).filter((r) => !(before.rules ?? []).includes(r));
   const removed = (before.rules ?? []).filter((r) => !(after.rules ?? []).includes(r));
   if (added.length) parts.push(`added rule${added.length > 1 ? "s" : ""}: ${added.map((r) => `"${r}"`).join(", ")}`);

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, draftGuidance, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
 import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
@@ -108,8 +108,8 @@ export class Engine {
     this.scheduler = new Scheduler(this.bus, this.clock);
     this.bus.on("*", (e) => {
       this.emit("deck", e);
-      const ev = e as { type?: string; task?: { id: string; agent?: string; title: string; status: string; note?: string } };
-      if (ev.type === "task.updated" && ev.task?.agent && ["done", "failed", "cancelled"].includes(ev.task.status)) this.activity?.logTask({ id: ev.task.id, agent: ev.task.agent, title: ev.task.title, status: ev.task.status, checked: /^Checked/.test(ev.task.note ?? ""), ...(ev.task.note ? { note: ev.task.note } : {}) });
+      const ev = e as { type?: string; task?: { id: string; agent?: string; title: string; status: string; note?: string; why?: string; doneWhen?: string[] } };
+      if (ev.type === "task.updated" && ev.task?.agent && ["done", "failed", "cancelled"].includes(ev.task.status)) this.activity?.logTask({ id: ev.task.id, agent: ev.task.agent, title: ev.task.title, status: ev.task.status, checked: /^Checked/.test(ev.task.note ?? ""), ...(ev.task.note ? { note: ev.task.note } : {}), ...(ev.task.why ? { why: ev.task.why } : {}), ...(ev.task.doneWhen ? { doneWhen: ev.task.doneWhen } : {}) });
     });
   }
 
@@ -167,6 +167,16 @@ export class Engine {
     await this.plantHoneytoken().catch(() => (this.canary = null));
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
     this.scheduler.add({
+      name: "weekly-tuning",
+      at: "03:00",
+      days: [0],
+      run: async () => {
+        const out: string[] = [];
+        for (const a of Object.keys(Engine.CREW)) out.push(await this.tune(a).catch((e) => `${a}: ${(e as Error).message}`));
+        this.emit("learning", { report: `Weekly prompt tuning:\n${out.join("\n")}` });
+      },
+    });
+    this.scheduler.add({
       name: "weekly-self-review",
       at: "09:00",
       days: [1],
@@ -200,6 +210,7 @@ export class Engine {
         defaultInstructions: loadRole(id),
         instructions: o.instructions ?? null,
         rules: o.rules ?? [],
+        learned: o.learned ?? null,
         tools: base.allow.map((scope) => ({ scope, label: SCOPE_LABEL[scope] ?? scope, mode: (o.tools?.[scope] ?? (base.requiresApproval.includes(scope) ? "ask" : "allowed")) as ToolMode })),
         locked: LOCKED_RULES,
       };
@@ -214,6 +225,9 @@ export class Engine {
       ...(override.rules?.length ? { rules: override.rules.map((r) => r.trim()).filter(Boolean) } : {}),
       ...(override.tools && Object.keys(override.tools).length ? { tools: override.tools } : {}),
     };
+    // Tuned guidance stays unless the change sets it (an empty string removes it).
+    const learned = "learned" in override ? override.learned?.trim() : this.crew[agent]?.learned;
+    if (learned) clean.learned = learned;
     const err = validateOverride(loadPolicy(agent), clean);
     if (err) throw new Error(err);
     const before = this.crew[agent] ?? {};
@@ -671,7 +685,28 @@ export class Engine {
       cursor = all.at(-1)!.id;
       await this.store.setMeta("learn.episodes", String(cursor));
     }
-    if (counts.new + counts.update) lines.push(`Learned ${counts.new} new facts and updated ${counts.update}.`);
+    // 1b. Facts from documents you added (your own files and notes; web pages are left as reference only).
+    const docCursor = (await this.store.getMeta("learn.docs")) ?? "";
+    const fresh = (await this.store.documents()).filter((d) => d.kind !== "page" && d.updatedAt > docCursor).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).slice(0, 15);
+    let fromDocs = 0;
+    for (const d of fresh) {
+      const full = await this.store.document(d.id);
+      if (!full) continue;
+      try {
+        const facts = await extractFacts({ chat: (req) => this.router.chat("cheap", "learning", req), episodes: [{ kind: `document "${full.title}"`, summary: full.text.slice(0, 7000) }] });
+        for (const f of facts) {
+          const k = (await this.writer.writeFact(f)).verdict.kind;
+          counts[k]++;
+          if (k === "new" || k === "update") fromDocs++;
+        }
+        await this.store.setMeta("learn.docs", d.updatedAt);
+      } catch (err) {
+        lines.push(`Stopped reading documents: ${(err as Error).message}`);
+        break;
+      }
+    }
+    if (fromDocs) lines.push(`${fromDocs} of them came from ${fresh.length} document${fresh.length > 1 ? "s" : ""} you added.`);
+    if (counts.new + counts.update) lines.unshift(`Learned ${counts.new} new facts and updated ${counts.update}.`);
     if (counts.contradicts) lines.push(`${counts.contradicts} new claims conflict with what you told me; they are waiting for you.`);
     // 2. Feedback since last time.
     const fbCursor = Number((await this.store.getMeta("learn.feedback")) ?? 0);
@@ -702,6 +737,49 @@ export class Engine {
 
   async skillsList() {
     return this.store.skills();
+  }
+
+  /**
+   * Prompt tuning for one crew member: draft guidance from its misses, run practice tasks with and without it
+   * (nothing is changed or sent in practice), and ask the owner to adopt it only if it clearly scores better.
+   */
+  async tune(agent: string, opts: { cases?: number } = {}): Promise<string> {
+    const name = Engine.CREW[agent];
+    if (!name) return `There is no crew member called ${agent}.`;
+    if (this.stopped) return "Agents are stopped.";
+    const cases = this.activity!.practiceCases(agent, opts.cases ?? 4);
+    const misses = [
+      ...cases.filter((c) => c.status === "failed" || !c.checked).map((c) => `Task "${c.goal}": ${c.note ?? "not checked"}`),
+      ...(await this.store.feedbackSince(0)).filter((f) => f.agent === agent && f.verdict === "reject").slice(-10).map((f) => `Owner rejected: ${f.reason ?? f.actionId}`),
+    ];
+    if (misses.length < 2 || cases.length < 2) return `${name}: not enough misses or past tasks to tune yet.`;
+    const cur = this.crew[agent] ?? {};
+    const guidance = await draftGuidance({ chat: (req) => this.router.chat("heavy", "tuning", req), agentName: name, role: this.roleFor(agent), ...(cur.learned ? { current: cur.learned } : {}), evidence: misses });
+    if (!guidance) return `${name}: no useful guidance found.`;
+    this.say({ sender: "learning", recipient: agent, kind: "note", text: `Testing new guidance on ${cases.length} practice tasks:\n${guidance}` });
+    const practice = async (learned: string | undefined, c: (typeof cases)[number]) => {
+      const { learned: _old, ...base } = cur;
+      const role = effectiveRole(loadRole(agent), learned ? { ...base, learned } : base);
+      const p = buildPrompt({ coreRules: loadCoreRules(), role, userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal: c.goal, why: c.why, doneWhen: c.doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(await this.reader.retrieve(c.goal, { tokenBudget: 500 })), working: "(practice run: nothing you do is saved or sent)" });
+      // Practice: reading works; anything that would change or send something only records the attempt.
+      const tools = this.toolsFor(agent).map((t) => (t.kind === "read" && t.spec.name !== "web_research" ? t : { ...t, kind: "read" as const, run: async () => "Recorded (practice run: nothing was changed or sent)." }));
+      const out = await runAgent({ agent, chat: (req) => this.router.chat("heavy", "tuning", req), system: p.system, messages: [{ role: "user", content: p.user }], tools, policy: this.policyFor(agent), taskScopes: this.policyFor(agent).allow, preset: "autonomous", approvals: new ApprovalQueue(() => {}), tripwire: this.tripwire, onTripwire: (t) => this.onTripwire(agent, t), verify: { goal: c.goal, doneWhen: c.doneWhen, chat: (req) => this.router.chat("cheap", "tuning", req) } });
+      return practiceScore(out.verdict, out.turns);
+    };
+    const before: number[] = [], after: number[] = [];
+    for (const c of cases) {
+      before.push(await practice(cur.learned, c));
+      after.push(await practice(guidance, c));
+    }
+    const d = shouldAdopt(before, after);
+    const result = `${name}: practice score ${d.before} with the current prompt, ${d.after} with the new guidance.`;
+    this.say({ sender: "learning", recipient: agent, kind: "check", text: `${result} ${d.adopt ? "Asking the owner to adopt it." : "Not better enough; keeping the current prompt."}` });
+    if (!d.adopt) return `${result} Kept the current prompt.`;
+    const { decision } = this.approvals.request({ agent: "learning", summary: `Adopt tuned guidance for ${name} (practice ${d.before} to ${d.after})`, detail: guidance, scope: "crew.tune" });
+    void decision.then(async (a) => {
+      if (a.status === "approved") await this.crewUpdate(agent, { ...(this.crew[agent] ?? {}), learned: guidance }, "settings").catch(() => {});
+    });
+    return `${result} Waiting for you to approve it.`;
   }
 
   /** Evidence for the weekly self-review. */

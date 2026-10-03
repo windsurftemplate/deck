@@ -41,7 +41,22 @@ export function LearningCard() {
         <button className="btn" type="button" disabled={busy} onClick={run}>
           {busy ? "Learning" : "Run learning now"}
         </button>
+        <button
+          className="btn"
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            const out: string[] = [];
+            for (const a of ["gtm", "ops", "code", "research"]) out.push((await engineCall<string>("learn.tune", { agent: a }).catch((e) => String(e))) ?? "Tuning runs inside the desktop app.");
+            setReport(out.join("\n"));
+            setBusy(false);
+          }}
+        >
+          Tune prompts now
+        </button>
       </div>
+      <p className="muted">Learning also turns the files and notes you add into facts. Tuning drafts guidance from each agent's misses, tests it on practice tasks (nothing is changed or sent), and asks you before using it. It runs on its own every Sunday night.</p>
       {report && <p className="ok" style={{ whiteSpace: "pre-wrap" }}>{report}</p>}
     </div>
   );

@@ -45,6 +45,7 @@ async function main() {
     "brain.graph": () => engine.brain.graph(),
     "deck.stats": () => engine.deckStats(),
     "tools.list": () => engine.toolsList(),
+    "learn.tune": (p) => engine.tune(String((p as { agent?: string })?.agent ?? "")),
     "automations.list": async () => engine.automationsList(),
     "automations.create": async (p) => engine.automationCreate(p as never),
     "automations.update": async (p) => { const q = p as { id?: string; patch?: object }; return engine.automationUpdate(String(q?.id ?? ""), (q?.patch ?? {}) as never); },

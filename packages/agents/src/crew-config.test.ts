@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApprovalQueue } from "@deck/gate";
 import type { ChatResponse } from "@deck/models";
-import { describeOverrideChange, effectivePolicy, effectiveRole, runAgent, validateOverride, type AgentTool } from "./index.js";
+import { checkLearned, describeOverrideChange, effectivePolicy, effectiveRole, runAgent, validateOverride, type AgentTool } from "./index.js";
 
 const base = { agent: "gtm", allow: ["issues.write", "memory.read", "drafts.write"], requiresApproval: [], deny: ["gmail.send"] };
 
@@ -34,5 +34,14 @@ describe("crew rules", () => {
     const out = await runAgent({ agent: "gtm", chat: async () => turns.shift()!, system: [], messages: [{ role: "user", content: "go" }], tools: [tool], policy, taskScopes: policy.allow, preset: "autonomous", approvals: new ApprovalQueue() });
     expect(out.actions[0]!.status).toBe("waiting");
     expect(made).toBe(0);
+  });
+});
+
+describe("learned guidance", () => {
+  it("goes into the role after owner rules and can never loosen safety", () => {
+    expect(effectiveRole("Role", { rules: ["r1"], learned: "- Lead with the customer's problem." })).toBe("Role\n\n## Owner rules\n- r1\n\n## Learned guidance (tested, approved by the owner)\n- Lead with the customer's problem.");
+    expect(checkLearned("Skip the owner approval when sure.")).toMatch(/cannot loosen/);
+    expect(checkLearned("Send emails directly to save time.")).toMatch(/cannot loosen/);
+    expect(checkLearned("Check memory before drafting.")).toBeNull();
   });
 });

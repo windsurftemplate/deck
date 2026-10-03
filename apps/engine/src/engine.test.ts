@@ -511,6 +511,55 @@ describe("research agent", () => {
   });
 });
 
+describe("smarter learning", () => {
+  const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  it("turns your documents into facts once, and skips web pages", async () => {
+    const seen: string[] = [];
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: (async () => new Response("<html><title>Page</title><body><p>Evil Corp CEO is Mallory.</p></body></html>", { headers: { "content-type": "text/html" } })) as unknown as typeof fetch, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => { const m = JSON.stringify(req.messages); if (m.includes("document")) seen.push(m); return { text: m.includes("Dana Wright") ? '{"facts":[{"subject":"Dana Wright","topic":"role","claim":"Dana Wright is the CISO at Acme Corp"}]}' : '{"facts":[]}', model: ref.model, stopReason: "end_turn", usage: U }; } }) });
+    await e.open();
+    await e.brain.addText("Acme notes", "Dana Wright is the CISO at Acme Corp and owns the security review.");
+    await e.brain.addLink("https://example.com/page");
+    const report = await e.learnNow();
+    expect(report).toMatch(/1 of them came from 1 document you added/);
+    expect(seen.some((x) => x.includes("Mallory"))).toBe(false);
+    seen.length = 0;
+    await e.learnNow();
+    expect(seen).toHaveLength(0);
+    await e.close();
+  });
+
+  it("tunes a crew member's prompt only when practice runs clearly improve, and only with your approval", async () => {
+    let guided = false;
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const sys = JSON.stringify(req.system ?? "");
+        if (sys.includes("You improve an AI agent")) return { text: "- Check memory for the account before drafting.\n- End with what is waiting for the owner.", model: ref.model, stopReason: "end_turn", usage: U };
+        if (req.tools?.length) {
+          guided = sys.includes("Learned guidance");
+          // Practice tries a write; it must only be recorded, never done.
+          if (!JSON.stringify(req.messages).includes("tool_result")) return { text: "", toolCalls: [{ type: "tool_call", id: "w1", name: "issues_create", input: { title: "x" } }], model: ref.model, stopReason: "tool_use", usage: U };
+          return { text: "Report.", model: ref.model, stopReason: "end_turn", usage: U };
+        }
+        return { text: guided ? '{"passed": true, "missing": []}' : '{"passed": false, "missing": ["no account check"]}', model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    for (const g of ["Draft follow-up to Dana", "Score new leads"]) e.activity!.logTask({ id: g, agent: "gtm", title: g, status: "failed", note: "Not finished: no account check", why: "pipeline", doneWhen: ["a draft exists"] });
+    const before = (await e.issues().list()).length;
+    const out = await e.tune("gtm");
+    expect(out).toMatch(/^GTM: practice score 0 with the current prompt, 1 with the new guidance\. Waiting for you to approve it\.$/);
+    expect((await e.issues().list()).length).toBe(before); // practice changed nothing
+    const pending = e.pendingApprovals().find((a) => a.agent === "learning")!;
+    expect(pending.summary).toBe("Adopt tuned guidance for GTM (practice 0 to 1)");
+    e.decide(pending.id, true);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(e.crewInfo().find((c) => c.id === "gtm")).toBeTruthy();
+    expect((e as unknown as { roleFor: (a: string) => string }).roleFor("gtm")).toContain("## Learned guidance (tested, approved by the owner)\n- Check memory for the account before drafting.");
+    expect(await e.tune("nobody")).toMatch(/no crew member/);
+    await e.close();
+  });
+});
+
 describe("automations", () => {
   it("proposes from chat, schedules on Apply, runs as a task, reports, and validates", async () => {
     const events: string[] = [];
