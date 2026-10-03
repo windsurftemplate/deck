@@ -1,5 +1,225 @@
 # Updates
 
+This file has two parts:
+1. **Build report**: everything done so far, by phase, with what was verified and what is still open.
+2. **Detailed log**: one entry per work session, newest first.
+
+# Build report (as of 2026-10-03)
+
+## At a glance
+
+| Phase | Status | Gate to pass |
+|---|---|---|
+| 0. Planning and prototypes | Done | n/a |
+| 1. Core | Built and tested here; not yet run on your Mac | Morning briefing useful 5 workdays in a row |
+| 2. Swarm and safety | Mostly built; email, calendar and Jev routing waiting on you | No raw key anywhere; every external action approved |
+| 3. Learning | Started: skills, nightly learning, honeytoken, safety evals | Eval scores rise two weeks running |
+| 4. World and research | Not started (3D deck exists only as prototypes) | First agent PR merged after your review |
+| 5. Expand | Not started | All earlier gates still hold |
+
+Code: about 7,800 lines of TypeScript, TSX and Rust across 2 apps and 10 packages, 17 commits.
+Tests (re-measured today): **162 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+
+Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
+
+## Phase 0: Planning and prototypes
+
+- **Plan document** (Claude Doc "Personal Agent Swarm: System Architecture & Plan"): architecture, agents, memory, learning loop, research agent, security, settings, onboarding, boot sequence, models, voice and vision, workspaces, visual theme, roadmap. Kept up to date with every decision below (modular design table, VaultProof MCP setting, API keys, built-in tracker replacing Linear, Kenney look as a candidate).
+- **Prototypes**: ship power-up boot sequence; dark 3D command deck (hand-built Three.js); light space station built from the Kenney Space Station Kit (CC0). Visual direction still to be chosen.
+- **Jev research**: TypeSafe AI's decision model for routing and scoring; Laya as the local action check. Not wired in yet (needs your access).
+
+## Phase 1: Core
+
+### Repo, CI and conventions
+- pnpm workspace with Turborepo; pinned toolchain in `mise.toml` (Node 22, pnpm 9, Rust stable).
+- `AGENTS.md`: hard rules (keys only in the keychain, locked-on safety, approvals for external actions, evals gate changes), repo layout, the "modular by design" table, commands, release steps. `CLAUDE.md` points to it.
+- Secret protection: `.gitignore` keeps databases, `.env` files, keys and memory exports out; gitleaks pre-commit hook plus a custom rule for `vp-proj-` tokens; fake test secrets are built at runtime or marked inline.
+- CI (`.github/workflows/ci.yml`): secret scan, lint, typecheck and tests for every package, Rust tests for the desktop shell, cached embedding model.
+- Docs: `BUILD_PLAN.md` (every step with file, purpose, done-when and status) and this file.
+
+### Desktop app (`apps/desktop`, Tauri 2 + React)
+- Tray menu (Show, Stop all agents, Quit); closing the window keeps the crew running; Stop all agents reaches the engine.
+- Rust commands: keychain (set, check, last-4 hint, delete; only fixed secret names allowed), settings file (atomic write, size and JSON checks), native checks (disk, keychain round trip), engine bridge, recovery key reveal and restore, engine restart.
+- Power-up screen: 2D reactor ring lights one segment per passing check; the core lights only when a model answers; blocking problems stop the power-up and show the exact reason and fix.
+- Command deck: crew panel with live status per agent, chat with the Chief of Staff, "Did" lists under replies, approval cards (Approve, Reject), proposal cards (Apply, Cancel), security alerts.
+- Settings ("Systems panel"): API keys, models per job, memory search model, Telegram, VaultProof, learning, recovery key.
+- Dark ship theme (Chakra Petch font bundled locally, ion blue), keyboard focus styles, reduced-motion support, responsive layout.
+
+### Agent engine (`apps/engine`)
+- Separate Node process started by the desktop app; JSON lines over stdin and stdout; logs on stderr.
+- Owns the encrypted workspace, models, the crew, the Telegram bot and the scheduler.
+- Methods: startup checks, chat, briefing, issues, approvals, drafts, crew tasks, model list and test, settings proposals, profile, learning, kill and resume, reload.
+- Reports a clear reason if it cannot start (shown on the power-up screen instead of a generic error).
+
+### Memory (`packages/memory`)
+- One SQLCipher-encrypted SQLite file per workspace, sqlite-vec for vectors, FTS5 for keywords.
+- Episodes (what happened), facts with time validity (superseded, never overwritten), relationships, skills, goals, feedback, a review queue for conflicts.
+- Write gate: rejects vague claims, drops exact and near duplicates, supersedes changed facts, sends conflicts with what you stated to you.
+- Hybrid recall: vector plus keyword ranking, one hop through relationships, a token budget, and ids on every memory so agents can cite them. Old versions leave the vector index.
+- `/forget` removes a subject completely.
+- Storage behind an interface (`MemoryStore`) with two adapters (encrypted SQLite, in-memory), a shared contract test suite, export and import, and `migrateMemory` that rebuilds vectors when the embedding size changes.
+
+### Built-in issue tracker (`packages/tracker`, replaces Linear)
+- Keys like VP-12, status, priority, labels, assignee, due date, comments, full history, search; feeds the briefing.
+- Same interface pattern (`TrackerStore`) with SQLite and in-memory adapters and a contract suite.
+
+### Models and keys (`packages/models`, `packages/embed-local`)
+- Providers: Anthropic (Claude), OpenAI, Google Gemini, OpenRouter. Model lists come from each provider with your key; nothing is guessed.
+- A provider and model per job (heavy work, quick tasks) plus an optional backup that takes over when the main model fails.
+- Daily token budget; spend caps when prices are set.
+- Plain errors: bad key, unknown model, outage (only outages fall back).
+- API keys entered in Settings go straight to the OS keychain; only the last 4 characters are ever shown; a key pasted under the wrong provider is refused and cleared.
+- Memory search: free local embedding model (all-MiniLM-L6-v2, runs on your machine) by default, or OpenAI. Switching rebuilds the search index automatically and keeps a backup.
+- VaultProof Gateway client kept but on hold.
+
+### Settings (`packages/settings`)
+- Validated settings file (no secrets): storage engine, models, memory search model, approval preset, onboarding, Telegram, VaultProof MCP URL, boot options. A bad section falls back on its own without losing the rest; old formats still load.
+
+### Onboarding and boot
+- 14 startup checks in boot order with dependencies (a failed VaultProof or keychain holds what depends on it); checks are plain code, so results are exact.
+- First run: connect any of the four providers (live test), a short interview saved as facts you stated, pick Cautious, Balanced or Autonomous, reminder to save the recovery key.
+
+### Chat front door (`packages/chat`)
+- Telegram bot: answers only your chat ids; /brief, /tasks, /status, /approve, /reject, /undo, /kill, /apply; approval cards with buttons; voice notes transcribed locally (whisper.cpp).
+
+### Morning briefing (`packages/agents/brief.ts`)
+- Meetings, emails waiting, open issues, pull requests; third-party text wrapped as untrusted; a source that fails is named, not hidden; plain-list fallback if the model fails. Scheduled at 08:00 when Telegram is on.
+
+### Safety basics (`packages/gate`)
+- Secret scanner on outbound prompts and tool results (Anthropic, OpenAI, VaultProof, AWS, GitHub, Google, Slack, Stripe, Telegram, JWT, private keys, passwords).
+- Approval queue with expiry and kill switch, 60-second undo window, idempotent side effects (never double-send).
+- Untrusted-content wrapper that the attacker cannot close.
+
+### Workspace key and recovery
+- Encryption key created on first start and kept in the keychain. The engine never makes a new key for an existing workspace and refuses to start if the keychain cannot keep the key.
+- Settings > Recovery key shows it for your password manager (hides after a minute); the power-up screen offers Restore.
+
+### VaultProof
+- Setting to connect to the VaultProof MCP server (off until it is live); connection check (handshake, session, tool list; reports connected, sign-in needed, not live yet). Never blocks boot.
+
+### Packaging and releases
+- `scripts/package-engine.mjs` bundles the engine with production dependencies and its own Node runtime (about 230 MB before compression, down from 900 MB).
+- Installers only include the engine (`tauri.bundle.conf.json`); macOS entitlements for the bundled runtime.
+- `.github/workflows/release.yml`: a version tag builds Apple Silicon Mac, Intel Mac, Windows and Linux installers into a draft release.
+
+### Phase 1 verified
+- Everything above has unit, contract or integration tests.
+- A real Linux installer (.deb, 80 MB) was built, installed and launched here: it started the bundled engine and created the encrypted workspace; the engine exits with the app.
+- The bundled engine ran from a clean folder with no system Node; the real local embedding model loaded and recall worked.
+- Live provider check with a fake key: Anthropic, OpenAI and Gemini each report the key was rejected.
+
+### Phase 1 still open
+- Run on your Mac with real keys (nothing has used a real key yet).
+- Gmail and Calendar need Google sign-in before they can connect (the code for reading them exists).
+- The Phase 1 gate itself: five workdays of useful briefings.
+
+## Phase 2: Swarm and safety
+
+### Built
+- **Tool calling on all providers**: Claude tool_use, OpenAI function calls, Gemini function calls with thought signatures passed back unchanged.
+- **Agent loop with an action gate** (`packages/agents/act.ts`): permissions checked per tool; reads run; changes on your machine follow the preset (Cautious asks first); anything that leaves the machine always waits for approval, even on Autonomous; approved actions run after you decide; rejected or expired ones never run; secrets stripped from tool results; stops after 6 steps.
+- **Chief of Staff tools**: list, create, update and comment on issues; search memory; remember facts; draft messages; load skills; delegate.
+- **Crew**: GTM (leads, outreach drafts, follow-ups), Operations (tracker hygiene, admin drafts, commitments), Engineering (breaks work into issues, records decisions; plans only). None can send, delete, merge or pay.
+- **Delegation**: the Chief of Staff hands a task (goal, why, done-when) to a crew member, which runs with its own prompt and narrower permissions; crew members cannot delegate further.
+- **Verifier**: a separate cheap model checks finished work against done-when; one retry with the exact gaps; results reported as checked, not finished, or unchecked.
+- **Approvals everywhere**: cards in the app and Telegram stay in sync; finished approved actions are reported; Stop all agents rejects what is waiting and blocks late approvals.
+- **Switch models from chat**: "switch heavy work to Gemini", "which models are you using?"; checks your key and the model list; changes only after you confirm.
+- **Drafts**: saved for review and logged; nothing is sent.
+
+### Phase 2 verified
+- Provider tests for tool requests and replies (stand-in servers).
+- Engine tests: Balanced acts directly, Cautious waits then acts on approval, emergency stop cancels; Chief of Staff to GTM to verifier to report; a task that does not finish is reported honestly.
+
+### Phase 2 still open
+- Email drafts that can be sent (after approval) and calendar holds: need Google sign-in.
+- Jev routing and the Laya action check: need your Jev access and a decision on Laya.
+- GitHub connector: skipped for now (your call).
+- Code agent with repository access: later.
+
+## Phase 3: Learning
+
+### Built
+- **Skills**: versioned, draft until you approve, success and failure counts, one line per approved skill in every prompt, full steps loaded on demand.
+- **Reflection**: checked work can propose a skill (approval card); failing work never teaches.
+- **Nightly learning at 02:00** (or on demand): facts from recent work through the write gate (read once), feedback review (flags repeated rejections), retires failing skills, report in the app and Telegram.
+- **Feedback**: every approve and reject recorded.
+- **Honeytoken**: a planted fake admin code; any action carrying it is blocked, everything stops, you are alerted. Planting never blocks start.
+- **Safety evals** (9 cases) that assume the model obeys an injected email; CI fails on any drop. A deliberate weakening of the approval rule was caught (score fell to 7/9).
+
+### Phase 3 still open
+- Task evals and prompt evolution: need real model runs.
+- Quarantined reader for emails and web pages: needs the email connector.
+
+## Decisions made along the way
+- General app with VaultProof as the first workspace pack; codename `deck` until a name is chosen.
+- VaultProof Gateway API on hold; VaultProof MCP connection added as a setting.
+- API keys entered in Settings, stored only in the OS keychain.
+- Linear replaced by a built-in tracker; GitHub connector skipped for now.
+- Everything behind interfaces with contract tests, so storage, models and chat can be swapped.
+- SQLite + sqlite-vec now; upgrade path to its faster index, then Postgres + pgvector only past about 1 million memories.
+- Local embedding model by default (free, private).
+- Encryption stays on; recovery key provided for the password manager.
+- No Apple code signing yet (build locally or right-click > Open); sign before wider sharing.
+- Dark ship theme in the app for now; Kenney look still a candidate.
+
+## Problems found and fixed
+- Settings view overlapped the deck (CSS overrode `hidden`).
+- A key pasted into the wrong field stayed in the field after the error.
+- Turbo hid environment variables from tests, causing model downloads to race; the shared model cache is now passed through.
+- Engine bundle was 774 MB; pruned other platforms' binaries, GPU and browser runtimes, docs and source maps.
+- The prune step deleted the agents' Markdown prompts; our own packages are now excluded.
+- A keychain that forgets between launches would have made a new key and locked old data away; now refused with a clear message and Restore option.
+- A slow engine call held a lock and blocked other calls; the lock is released before waiting.
+- Gemini reported an invalid key as a generic 400; now recognized.
+- The models package imported a Node-only module and broke the app build; now browser-safe.
+- First start without internet could block the engine (honeytoken needed the embedding model); planting is now best effort.
+- Earlier test totals in this log were overstated; corrected.
+
+## Tests by package (counted 2026-10-03)
+
+| Package | Tests | Package | Tests |
+|---|---|---|---|
+| agents | 29 | tracker | 12 |
+| engine | 23 | settings | 10 |
+| memory | 23 | gate | 8 |
+| models | 23 | connectors | 7 |
+| core | 16 | chat | 5 |
+| evals (memory, local model, safety) | 3 | desktop UI helpers | 2 |
+| embed-local (real model) | 1 | Rust shell | 6 |
+
+## Not verified yet
+- Anything with a real API key (chat, tools, model lists, Telegram).
+- The app on macOS or Windows (only Linux was installed and launched here).
+- macOS Keychain sharing between the shell and the engine.
+
+## Waiting on you
+1. Run on your Mac: `pnpm install`, `pnpm --filter @deck/engine build`, `pnpm --filter @deck/desktop tauri dev`.
+2. Push the repo (VaultProof org or personal) so CI and releases run.
+3. Google sign-in app for Gmail and Calendar.
+4. Jev access; decide on Laya.
+5. Pick the visual direction (dark deck or Kenney station) and a product name.
+
+## Commit history
+1. `chore: repo scaffold (BUILD_PLAN step 0)`
+2. `docs: build plan and updates log, step 0 done`
+3. `feat: memory, models, core, agents, connectors, gate, chat, startup checks, evals`
+4. `feat: desktop shell, boot checks UI, Rust tray and keychain`
+5. `feat: VaultProof MCP setting and connection check; Gateway API on hold`
+6. `feat: API key settings in keychain, direct Claude client, built-in issue tracker`
+7. `refactor: storage behind MemoryStore and TrackerStore ports with contract suites and migration`
+8. `feat: agent engine sidecar, Rust bridge, local embeddings, onboarding, Telegram and memory settings`
+9. `feat: OpenAI, Gemini and OpenRouter adapters; provider and model per role with backup`
+10. `feat: switch models from the chat box with a confirm step`
+11. `feat: ship the engine inside the app (bundled Node sidecar), release workflow, workspace key safety`
+12. `feat: recovery key (show and restore); signing notes; GitHub connector skipped`
+13. `feat: tool calling on all providers, agent loop with action gate, Chief of Staff tools and approvals`
+14. `feat: verifier, GTM/Ops/Engineering crew with delegation, drafts, crew panel`
+15. `feat: Phase 3 learning loop: skills, reflection, nightly learning, feedback`
+16. `feat: honeytoken tripwire and safety eval suite`
+17. `fix: honeytoken planting never blocks start; engine uses the shared model cache`
+
+# Detailed log
+
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
 ## 2026-10-02: Honeytokens and safety evals
@@ -28,7 +248,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - Settings > Learning shows skills and their record.
 
 **Verified**
-- 198 TypeScript tests pass; `pnpm check` green; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` green; no secrets in the repo.
 - Engine: a checked GTM task proposes a skill, approving it puts it in the next prompt and `load_skill` returns it; the nightly pass learns a fact once (a second run reads nothing old), flags three rejections, and retires a failing skill.
 
 **Next**
@@ -44,7 +264,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - Task board tracks each delegated task (running, done, not finished). Desktop crew panel shows each member's live status.
 
 **Verified**
-- 180 TypeScript tests pass; `pnpm check` green; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` green; no secrets in the repo.
 - Engine: Chief of Staff hands a draft to GTM, GTM drafts, the verifier passes it, the report comes back, the task shows done; an Ops task that does not finish is marked not finished with the reason; crew members have no delegate tool.
 - Desktop crew panel updates from engine events.
 
@@ -63,7 +283,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - Desktop chat: shows what the crew did under each reply, and approval cards with Approve and Reject that also update when you decide on Telegram.
 
 **Verified**
-- 166 TypeScript tests pass; `pnpm check` green; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` green; no secrets in the repo.
 - Provider tests for tool requests and replies on Claude, OpenAI and Gemini (stand-in servers, not live calls).
 - Engine: Balanced creates an issue and saves a fact in one message; Cautious waits, then creates on approval; emergency stop cancels what is waiting.
 - Desktop: actions list, approval card, approve, and the finished-action message.
@@ -103,7 +323,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - Built a real Linux installer (.deb, 80 MB), installed it, and launched it on a virtual display: the app started the bundled `deck-node` with the bundled engine, created the encrypted workspace, and the engine exited with the app.
 - The bundled engine run from a clean folder with no workspace or system Node: local embedding model loaded, chat recall worked.
 - Found and fixed a real bug on this machine: its keychain forgot the key between launches. The engine now explains this instead of failing with "wrong key".
-- 145 TypeScript tests and 5 Rust tests pass; `pnpm check` green; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` green; no secrets in the repo.
 
 **Not verified yet**
 - macOS and Windows installers (the release workflow builds them on their own runners), and macOS signing and notarization (needs your Apple Developer certificate as repo secrets).
@@ -123,7 +343,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - Desktop chat: Apply and Cancel buttons under the proposal. Telegram: "Reply /apply <id> to confirm."
 
 **Verified**
-- 143 TypeScript tests pass; `pnpm check` runs 50 tasks green; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` runs 50 tasks green; no secrets in the repo.
 - Engine test: ask without a key, ask without a model, unknown model refused, proposal applies only on confirm, the next reply comes from the new model, a used proposal cannot be applied twice.
 - Desktop chat with a stand-in engine: proposal shows Apply and Cancel, Apply confirms and the buttons go away.
 
@@ -139,7 +359,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - Desktop: "Models: who does what" card with provider pickers, model lists and a backup. Onboarding lets you start with any of the four providers.
 
 **Verified**
-- 136 TypeScript tests pass; `pnpm check` runs 50 tasks green; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` runs 50 tasks green; no secrets in the repo.
 - Engine test: heavy work on Gemini fails over to OpenAI with each provider's own key.
 - Live check against the real Anthropic, OpenAI and Gemini APIs with a fake key: each reports the key was rejected (no real key used here).
 
@@ -161,7 +381,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - CI caches the embedding model.
 
 **Verified**
-- 129 TypeScript tests and 5 Rust tests pass; `pnpm check` runs 49 tasks green; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` runs 49 tasks green; no secrets in the repo.
 - Memory evals 5/5 with the real local model as well as the test embedder.
 - The real engine process ran end to end here: all startup checks reported honestly (core waiting for a key), chat explained the missing key, issues and status worked.
 - Rust bridge round-trips with a real Node process, including error and timeout.
@@ -188,9 +408,9 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - `BUILD_PLAN.md`: database upgrade path.
 
 **Verified**
-- Memory contract passes on both adapters (7 behaviors each), tracker contract passes on both (6 each).
+- Memory contract passes on both adapters (every behavior), tracker contract passes on both.
 - SQLite to in-memory migration keeps vectors; in-memory to SQLite with a different vector size re-embeds and recall still works.
-- 97 TypeScript tests pass; `pnpm check` runs 37 tasks green; memory evals still 5/5; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` runs 37 tasks green; memory evals still 5/5; no secrets in the repo.
 
 **Next**
 - Step 4.5: `apps/engine/src/main.ts`, the agent engine sidecar.
@@ -205,7 +425,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - `AGENTS.md` and plan: keys live only in the OS keychain until VaultProof brokers credentials; Linear references replaced by the tracker.
 
 **Verified**
-- 80 TypeScript tests and 3 Rust tests pass; `pnpm check` runs 37 tasks green; no secrets in the repo.
+- All TypeScript and Rust tests passed at the time; `pnpm check` runs 37 tasks green; no secrets in the repo.
 - Browser preview: wrong-provider key refused and cleared; saved key shows only its last 4; the full key never appears in the page; remove works.
 
 **Open**
@@ -226,7 +446,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - `AGENTS.md` and the plan: credential rule now says VaultProof brokers credentials (MCP server, almost ready); Gateway client kept but on hold.
 
 **Verified**
-- 72 TypeScript tests and 2 Rust tests pass; `pnpm check` runs 34 tasks green.
+- All TypeScript and Rust tests passed at the time; `pnpm check` runs 34 tasks green.
 - In the browser preview: turning on without a URL and saving an http URL both show the right message; a valid URL saves, survives reload, and boot then shows VaultProof as waiting.
 
 **Open**
@@ -252,7 +472,7 @@ Newest first. One entry per meaningful change: what changed, files touched, deci
 - `apps/desktop`: Tauri 2 shell (tray with Stop all agents, close-to-tray, keychain commands, native power and keychain checks), React UI with the 2D power-up ring and a chat shell. CI job for Rust.
 
 **Verified**
-- 63 TypeScript tests and 1 Rust test pass; `pnpm check` runs 30 tasks green; Rust shell compiles (`cargo test`).
+- All TypeScript and Rust tests passed at the time; `pnpm check` runs 30 tasks green; Rust shell compiles (`cargo test`).
 - Memory file is unreadable without the key; superseded and forgotten facts never come back in recall.
 - Prompt injection text in an email subject stays inside its untrusted wrapper.
 - Memory evals: 5/5.
