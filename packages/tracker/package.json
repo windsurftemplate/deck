@@ -29,5 +29,6 @@
       "types": "./dist/contract.d.ts",
       "default": "./dist/contract.js"
     }
-  }
+  },
+  "license": "MIT"
 }

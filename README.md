@@ -38,3 +38,7 @@ mise install
 pnpm install
 pnpm check
 ```
+
+## License
+
+MIT (see `LICENSE`). Third-party assets and their licenses are listed in `THIRD_PARTY_NOTICES.md`. To report a security problem, see `SECURITY.md`; to contribute, see `CONTRIBUTING.md`.

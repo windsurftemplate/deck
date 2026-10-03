@@ -31,5 +31,6 @@
     "gtm",
     "ops",
     "research"
-  ]
+  ],
+  "license": "MIT"
 }
