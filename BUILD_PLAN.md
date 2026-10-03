@@ -145,10 +145,10 @@ Gate to leave Phase 3: eval scores rise two weeks running.
 | P3.1 | Skills in memory: versions, draft until approved, success and failure counts, in every prompt's index, `load_skill` tool | A skill is used only after approval | done |
 | P3.2 | Reflection after checked work proposes a skill (approval card) | Passing work can teach a skill; failing work never does | done |
 | P3.3 | Nightly pass at 02:00 (and Run learning now): facts from recent work through the write gate, feedback review, retire failing skills, report to the owner | Runs once per episode; conflicts go to the owner | done |
-| P3.4 | Quarantined reader for untrusted content (email, web) | Injected instructions never reach a tool call | todo |
-| P3.5 | Honeytokens | A planted fake secret used anywhere stops the crew and alerts the owner | todo |
-| P3.6 | Prompt evolution with evals | A prompt change ships only if every eval suite holds or improves | todo |
-| P3.7 | Task and safety eval suites | Replayed tasks and injection attempts scored in CI | todo |
+| P3.4 | Quarantined reader for untrusted content (email, web) | Injected instructions never reach a tool call | blocked: needs the email connector (Google sign-in) |
+| P3.5 | Honeytokens | A planted fake secret used anywhere stops the crew and alerts the owner | done |
+| P3.6 | Prompt evolution with evals | A prompt change ships only if every eval suite holds or improves | blocked: needs task evals on real models |
+| P3.7 | Task and safety eval suites | Replayed tasks and injection attempts scored in CI | safety done (9 cases); task evals need real models |
 
 ## Code signing
 

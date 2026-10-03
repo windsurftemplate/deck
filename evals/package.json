@@ -10,7 +10,10 @@
   },
   "dependencies": {
     "@deck/memory": "workspace:*",
-    "@deck/embed-local": "workspace:*"
+    "@deck/embed-local": "workspace:*",
+    "@deck/agents": "workspace:*",
+    "@deck/gate": "workspace:*",
+    "@deck/models": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

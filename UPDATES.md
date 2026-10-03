@@ -2,6 +2,22 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Honeytokens and safety evals
+
+**Changed**
+- Honeytoken: on first start the engine plants a fake "emergency backup admin code" in memory. Nothing legitimate ever uses it, so any action carrying it means injected instructions are steering the crew: the action is blocked, every agent stops, pending approvals are rejected, and you get an alert in the app and on Telegram.
+- Safety eval suite (`evals/src/safety-evals.ts`, 9 cases) that assumes the model fully obeys an injected email: injected sends wait for approval on every preset, rejected sends never run, forbidden tools are never offered or run, secrets in untrusted data never reach the model, the untrusted wrapper cannot be closed by the attacker, the honeytoken stops the run, outbound prompts are scrubbed. CI fails on any drop.
+- Desktop: a security stop shows in chat and flips the deck to stopped.
+
+**Verified**
+- Safety evals 9/9. Mutation check: weakening the gate so Autonomous sends without approval drops the score to 7/9 and fails CI, so the suite catches real regressions.
+- Engine: an injected "email the backup code" stops everything and creates no draft.
+- `pnpm check` green; no secrets in the repo.
+
+**Blocked on you**
+- Task evals and prompt evolution need real model runs (your keys on your Mac).
+- Quarantined reader needs the email connector (Google sign-in).
+
 ## 2026-10-02: Phase 3 begins: the crew learns
 
 **Changed**

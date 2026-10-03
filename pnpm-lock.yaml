@@ -106,12 +106,21 @@ importers:
 
   evals:
     dependencies:
+      '@deck/agents':
+        specifier: workspace:*
+        version: link:../packages/agents
       '@deck/embed-local':
         specifier: workspace:*
         version: link:../packages/embed-local
+      '@deck/gate':
+        specifier: workspace:*
+        version: link:../packages/gate
       '@deck/memory':
         specifier: workspace:*
         version: link:../packages/memory
+      '@deck/models':
+        specifier: workspace:*
+        version: link:../packages/models
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

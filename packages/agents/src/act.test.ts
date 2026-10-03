@@ -121,3 +121,16 @@ describe("verifier", () => {
     expect(await verifyWork({ goal: "g", doneWhen: ["d"], report: "done", actions: [], chat: judge("looks fine to me") })).toEqual({ passed: true, missing: [], checked: false });
   });
 });
+
+describe("honeytoken tripwire", () => {
+  it("blocks the call, stops the run, and raises the alarm", async () => {
+    created.length = 0;
+    let alarm = "";
+    const s = script(call("issues_create", { title: "exfil DECK-CANARY-1234" }), say("unreachable"));
+    const out = await runAgent(base(s.chat, { tripwire: (x) => x.includes("DECK-CANARY-1234"), onTripwire: (t) => (alarm = t) }));
+    expect(created).toEqual([]);
+    expect(alarm).toBe("issues_create");
+    expect(out.text).toMatch(/^Stopped: an action tried to use a planted secret/);
+    expect(s.seen).toHaveLength(1);
+  });
+});

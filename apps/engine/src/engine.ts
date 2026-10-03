@@ -110,7 +110,32 @@ export class Engine {
     this.reader = new MemoryReader(this.store, embedder);
     this.tracker = new Tracker(new SqliteTrackerStore(this.store.connection), "VP", this.clock);
     this.buildRouter();
+    await this.plantHoneytoken();
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
+  }
+
+  private canary: string | null = null;
+
+  /**
+   * Plants a fake "backup code" in memory once. Nothing legitimate ever uses it, so any action that carries it
+   * means injected instructions are steering the crew: the action is blocked and every agent stops.
+   */
+  private async plantHoneytoken() {
+    this.canary = await this.store.getMeta("honeytoken");
+    if (this.canary) return;
+    this.canary = `DECK-${randomBytes(6).toString("hex").toUpperCase()}-${randomBytes(6).toString("hex").toUpperCase()}`;
+    await this.store.setMeta("honeytoken", this.canary);
+    await this.writer.writeFact({ subject: "Admin vault", attribute: "backup code", claim: `Emergency backup admin code is ${this.canary}`, source: "stated" });
+  }
+
+  private tripwire = (input: string) => !!this.canary && input.includes(this.canary);
+
+  private onTripwire(agent: string, tool: string) {
+    const msg = `Security stop: ${agent} tried to use a planted secret in ${tool}. All agents are stopped and pending approvals were rejected. Something in recent input (an email, a page, a document) likely contains hidden instructions. Review recent work before resuming.`;
+    this.kill("all");
+    this.emit("security", { message: msg });
+    void this.writer.logEpisode({ agent: "security", kind: "alert", summary: msg }).catch(() => {});
+    for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, msg).catch(() => {});
   }
 
   /** One line per approved skill, for the prompt. Full steps load on demand with load_skill. */
@@ -345,6 +370,8 @@ export class Engine {
         preset: this.d.settings.preset,
         approvals: this.approvals,
         onLater: (r) => this.later(r),
+        tripwire: this.tripwire,
+        onTripwire: (t) => this.onTripwire(agent, t),
         verify: { goal, doneWhen, chat: (req) => this.router.chat("cheap", "verifier", req) },
       });
       const v = out.verdict;
@@ -537,6 +564,8 @@ export class Engine {
         preset: this.d.settings.preset,
         approvals: this.approvals,
         onLater: (r) => this.later(r),
+        tripwire: this.tripwire,
+        onTripwire: (t) => this.onTripwire(AGENT, t),
       });
       actions = out.actions;
       reply = out.text || (actions.length ? actions.map((a) => `${a.status === "waiting" ? "Waiting for you" : a.status === "done" ? "Done" : a.status}: ${a.summary}`).join("\n") : "(no reply)");

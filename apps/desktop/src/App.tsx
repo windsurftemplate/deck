@@ -29,6 +29,10 @@ export function App() {
         const d = data as { type: string; task?: { agent: string | null; status: string; title: string } };
         if ((d.type === "task.created" || d.type === "task.updated") && d.task?.agent) setCrew((c) => ({ ...c, [d.task!.agent!]: { status: d.task!.status, task: d.task!.title } }));
       }
+      if (event === "security") {
+        setStopped(true);
+        setLog((l) => [...l, { from: "system", text: (data as { message: string }).message }]);
+      }
       if (event === "learning") setLog((l) => [...l, { from: "system", text: `Learning: ${(data as { report: string }).report}` }]);
       if (event === "action") {
         const r = data as ActionRecord;

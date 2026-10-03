@@ -47,6 +47,12 @@ export interface RunAgentInput {
   onLater?: (r: ActionRecord) => void;
   maxTurns?: number;
   maxTokens?: number;
+  /**
+   * Honeytoken check: returns true when a tool call carries a planted fake secret. The call is blocked,
+   * the run stops, and onTripwire fires (the engine stops all agents and alerts the owner).
+   */
+  tripwire?: (serializedInput: string) => boolean;
+  onTripwire?: (tool: string) => void;
   /** Check the result against the task's done-when list before reporting done. One retry if something is missing. */
   verify?: { goal: string; doneWhen: string[]; chat: (req: ChatRequest) => Promise<ChatResponse> };
 }
@@ -109,6 +115,12 @@ export async function runAgent(i: RunAgentInput): Promise<{ text: string; action
     }
     const assistant: Block[] = [...(res.text.trim() ? [{ type: "text" as const, text: res.text }] : []), ...calls];
     messages.push({ role: "assistant", content: assistant });
+    const tripped = calls.find((c) => i.tripwire?.(JSON.stringify(c.input)));
+    if (tripped) {
+      actions.push({ tool: tripped.name, summary: `Blocked ${tripped.name}: it carried a planted secret`, status: "denied" });
+      i.onTripwire?.(tripped.name);
+      return { text: "Stopped: an action tried to use a planted secret, which means something in the input was trying to misuse the crew. All agents are stopped; the owner has been told.", actions, turns: turn };
+    }
     const results: Block[] = [];
     for (const call of calls) results.push(await handle(call, i, allowed, actions));
     messages.push({ role: "user", content: results });
