@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { SettingsError, isVaultProofHost, type Settings } from "@deck/settings";
 import { loadSettings, saveSettings } from "./bridge";
 import { ModelKeys } from "./ModelKeys";
+import { EmbeddingsCard, TelegramCard } from "./ChatAndMemory";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [s, setS] = useState<Settings | null>(null);
@@ -44,6 +45,8 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
       <ModelKeys />
+      <EmbeddingsCard s={s} onSaved={setS} />
+      <TelegramCard s={s} onSaved={setS} />
       <div className="card">
         <h3>VaultProof</h3>
         <p className="muted">Connects the crew to the VaultProof MCP server so credentials are brokered by VaultProof instead of stored here. The server is almost ready; leave this off until it is live.</p>

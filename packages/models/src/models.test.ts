@@ -77,7 +77,12 @@ describe("ModelRouter", () => {
     await expect(r.chat("cheap", "ops", { maxTokens: 1, messages: [] })).resolves.toBeTruthy();
   });
 
-  it("refuses a config with an unpriced model", () => {
+  it("refuses an unpriced model unless a token cap is set, then caps by tokens", async () => {
     expect(() => new ModelRouter({ roles: { heavy: ["a"] }, models: { a: fake("a", "ok") }, prices: {}, caps: { total: 1 } })).toThrow(/no price/);
+    const r = new ModelRouter({ roles: { heavy: ["a"] }, models: { a: fake("a", "ok") }, prices: {}, caps: { tokens: 1_500_000 } });
+    expect((await r.chat("heavy", "cos", { maxTokens: 1, messages: [] })).costUsd).toBeNull();
+    await r.chat("heavy", "cos", { maxTokens: 1, messages: [] });
+    await expect(r.chat("heavy", "cos", { maxTokens: 1, messages: [] })).rejects.toThrow(/token budget/);
+    expect(r.spend().tokens).toBe(2_000_000);
   });
 });

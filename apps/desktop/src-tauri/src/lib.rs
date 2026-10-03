@@ -1,4 +1,9 @@
+mod engine;
+
+use engine::EngineClient;
 use serde::Serialize;
+use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -142,16 +147,59 @@ fn check_settings_json(json: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Emergency stop: tells every part of the app to stop all agents now.
+/// Emergency stop: tells every part of the app to stop all agents now, including the engine.
 #[tauri::command]
-fn emergency_stop(app: AppHandle) -> Result<(), String> {
+fn emergency_stop(app: AppHandle, state: tauri::State<'_, EngineState>) -> Result<(), String> {
+    let client = state.0.lock().unwrap().clone();
+    if let Some(c) = client {
+        let _ = c.call("kill", serde_json::json!({ "agent": "all" }), Duration::from_secs(10));
+    }
     app.emit("kill-all", ()).map_err(|e| e.to_string())
+}
+
+/// The running agent engine, if it started.
+struct EngineState(Mutex<Option<std::sync::Arc<EngineClient>>>, Mutex<Option<String>>);
+
+/// Forward a request to the agent engine. Slow work (model calls) runs off the UI thread.
+#[tauri::command]
+async fn engine_call(state: tauri::State<'_, EngineState>, method: String, params: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
+    // Take a handle and release the lock, so a slow call never blocks other calls.
+    let client = state.0.lock().unwrap().clone().ok_or_else(|| state.1.lock().unwrap().clone().unwrap_or_else(|| "the agent engine is not running".into()))?;
+    let timeout = if method == "chat.send" || method == "brief" || method == "checks" || method == "reload" { Duration::from_secs(180) } else { Duration::from_secs(30) };
+    tauri::async_runtime::spawn_blocking(move || client.call(&method, params.unwrap_or(serde_json::Value::Null), timeout))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Where the engine lives. Dev builds use the workspace copy; set DECK_ENGINE_ENTRY to override.
+fn engine_entry() -> std::path::PathBuf {
+    std::env::var("DECK_ENGINE_ENTRY").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/dist/main.js"))
+}
+
+fn start_engine(app: &AppHandle) -> Result<EngineClient, String> {
+    let entry = engine_entry();
+    if !entry.exists() {
+        return Err(format!("agent engine not built yet ({}). Run: pnpm --filter @deck/engine build", entry.display()));
+    }
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
+    let node = std::env::var("DECK_NODE").unwrap_or_else(|_| "node".into());
+    let handle = app.clone();
+    EngineClient::spawn(&node, &[entry.display().to_string(), data.display().to_string()], Box::new(move |v| {
+        let _ = handle.emit("engine-event", v);
+    }))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(EngineState(Mutex::new(None), Mutex::new(None)))
         .setup(|app| {
+            let state = app.state::<EngineState>();
+            match start_engine(app.handle()) {
+                Ok(c) => *state.0.lock().unwrap() = Some(std::sync::Arc::new(c)),
+                Err(e) => *state.1.lock().unwrap() = Some(e),
+            };
             let show = MenuItem::with_id(app, "show", "Show deck", true, None::<&str>)?;
             let stop = MenuItem::with_id(app, "stop", "Stop all agents", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -168,9 +216,18 @@ pub fn run() {
                     }
                 }
                 "stop" => {
+                    let client = app.state::<EngineState>().0.lock().unwrap().clone();
+                    if let Some(c) = client {
+                        let _ = c.call("kill", serde_json::json!({ "agent": "all" }), Duration::from_secs(10));
+                    }
                     let _ = app.emit("kill-all", ());
                 }
-                "quit" => app.exit(0),
+                "quit" => {
+                    if let Some(c) = app.state::<EngineState>().0.lock().unwrap().take() {
+                        c.stop();
+                    }
+                    app.exit(0)
+                }
                 _ => {}
             })
             .build(app)?;
@@ -183,7 +240,7 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_hint, secret_delete, native_checks, emergency_stop, settings_get, settings_set])
+        .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_hint, secret_delete, native_checks, emergency_stop, settings_get, settings_set, engine_call])
         .run(tauri::generate_context!())
         .expect("error while running deck");
 }

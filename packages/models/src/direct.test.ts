@@ -30,3 +30,19 @@ describe("developer keys", () => {
     await expect(m.chat({ maxTokens: 1, messages: [] })).rejects.toMatchObject({ retryable: false, message: expect.stringMatching(/Settings > Models/) });
   });
 });
+
+describe("OpenAI embeddings", () => {
+  it("asks for the set size and returns unit vectors in input order", async () => {
+    const { OpenAIEmbedder } = await import("./index.js");
+    let sent: Record<string, unknown> = {};
+    const f = vi.fn(async (_u: unknown, init?: RequestInit) => {
+      sent = JSON.parse(init!.body as string);
+      return new Response(JSON.stringify({ data: [{ index: 1, embedding: [0, 2] }, { index: 0, embedding: [3, 4] }] }));
+    });
+    const e = new OpenAIEmbedder(async () => "k", 2, "text-embedding-3-small", f as unknown as typeof fetch);
+    const [a, b] = await e.embed(["first", "second"]);
+    expect(sent).toMatchObject({ dimensions: 2, input: ["first", "second"] });
+    expect(Array.from(a!)).toEqual([0.6000000238418579, 0.800000011920929]);
+    expect(Array.from(b!)).toEqual([0, 1]);
+  });
+});

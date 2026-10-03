@@ -46,3 +46,21 @@ export function openMemory({ path, key, dim }: OpenOptions): DB {
   db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_episodes USING vec0(embedding float[${dim}]);`);
   return db;
 }
+
+/** Embedding size a workspace file was created with, or null for a new file. Used before re-embedding. */
+export function storedDim(path: string, key: string): number | null {
+  if (path === ":memory:") return null;
+  const db = new Database(path);
+  try {
+    db.pragma("cipher='sqlcipher'");
+    db.pragma(`key='${key.replace(/'/g, "''")}'`);
+    const has = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'").get();
+    if (!has) return null;
+    const r = db.prepare("SELECT value FROM meta WHERE key = 'dim'").get() as { value: string } | undefined;
+    return r ? Number(r.value) : null;
+  } catch {
+    throw new Error("memory: cannot open database (wrong key or corrupt file)");
+  } finally {
+    db.close();
+  }
+}

@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { PowerUp } from "./boot/PowerUp";
-import { emergencyStop, listen } from "./bridge";
+import { emergencyStop, listen, loadSettings, sendChat } from "./bridge";
+import { Onboarding } from "./onboarding/Onboarding";
 import { SettingsPanel } from "./SettingsPanel";
 
 type Line = { from: "you" | "agent" | "system"; text: string };
 
 export function App() {
-  const [phase, setPhase] = useState<"boot" | "shell">("boot");
+  const [phase, setPhase] = useState<"boot" | "onboarding" | "shell">("boot");
   const [stopped, setStopped] = useState(false);
-  const [log, setLog] = useState<Line[]>([{ from: "system", text: "Chief of Staff is on standby. The agent engine connects in the next build step." }]);
+  const [log, setLog] = useState<Line[]>([{ from: "system", text: "Chief of Staff is ready. Ask anything, or open Settings to add keys." }]);
   const [draft, setDraft] = useState("");
   const [showSettings, setShowSettings] = useState(false);
 
@@ -21,7 +22,8 @@ export function App() {
     return () => off();
   }, []);
 
-  if (phase === "boot") return <PowerUp onDone={() => setPhase("shell")} />;
+  if (phase === "boot") return <PowerUp onDone={() => loadSettings().then((s) => setPhase(s.onboarding.done ? "shell" : "onboarding"))} />;
+  if (phase === "onboarding") return <Onboarding onDone={() => setPhase("shell")} />;
 
   const stopAll = async () => {
     await emergencyStop();
@@ -68,8 +70,10 @@ export function App() {
             onSubmit={(e) => {
               e.preventDefault();
               if (!draft.trim()) return;
-              setLog((l) => [...l, { from: "you", text: draft.trim() }, { from: "system", text: "Saved. The Chief of Staff will answer once the engine is connected." }]);
+              const text = draft.trim();
+              setLog((l) => [...l, { from: "you", text }, { from: "system", text: "Thinking…" }]);
               setDraft("");
+              sendChat(text).then((r) => setLog((l) => [...l.slice(0, -1), { from: "agent", text: r.reply }]));
             }}
           >
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message the Chief of Staff" aria-label="Message" />

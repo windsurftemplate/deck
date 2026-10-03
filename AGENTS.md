@@ -19,12 +19,14 @@ Codename `deck` until the product name is chosen. VaultProof is the first worksp
 ## Layout
 
 ```
-apps/desktop          Tauri 2 shell (UI, tray, updater)
+apps/desktop          Tauri 2 shell (UI, tray, keychain, engine bridge)
+apps/engine           agent engine (Node): workspace DB, models, Chief of Staff, Telegram; JSON lines over stdio
 packages/core         orchestrator, task board, events, scheduler, agent loop
 packages/memory       schema, migrations, write and read paths
 packages/models       provider adapters, roles, caps (Gateway client on hold)
 packages/settings     settings schema and validation (no secrets)
 packages/tracker      local issue tracker (replaces Linear)
+packages/embed-local  local embedding model (free, private)
 packages/agents       prompt layers and one folder per agent
 packages/gate         secret scan, approvals, undo, idempotency
 packages/connectors   MCP integrations

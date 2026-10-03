@@ -28,6 +28,18 @@
         "^build"
       ],
       "outputs": []
+    },
+    "@deck/engine#test": {
+      "dependsOn": [
+        "build",
+        "^build"
+      ],
+      "outputs": []
     }
-  }
+  },
+  "globalPassThroughEnv": [
+    "DECK_MODEL_CACHE",
+    "DECK_SKIP_MODEL_TESTS",
+    "HF_HOME"
+  ]
 }

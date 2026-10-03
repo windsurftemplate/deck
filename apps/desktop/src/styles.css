@@ -71,3 +71,11 @@ button { font: inherit; }
 .keyhead { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
 .keyhead b { font-weight: 600; }
 .keyinput { flex: 1; min-width: 220px; font: inherit; font-size: 15px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 6px; padding: 8px 11px; }
+.onboard { min-height: 100%; display: grid; align-content: center; justify-items: center; gap: 18px; padding: 32px 20px; }
+.onboard .card { width: min(560px, 100%); }
+.steps { list-style: none; display: flex; gap: 8px; flex-wrap: wrap; padding: 0; margin: 0; }
+.steps li { font-size: 13px; color: var(--muted); padding: 4px 10px; border: 1px solid var(--seam); border-radius: 999px; }
+.steps li.current { color: var(--ion); border-color: var(--ion); }
+.steps li.past { color: var(--text); }
+.field textarea { font: inherit; font-size: 15px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 6px; padding: 9px 11px; resize: vertical; }
+.option { align-items: flex-start; padding: 6px 0; }

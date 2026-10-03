@@ -36,7 +36,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Cache the local embedding model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/models
+          key: models-all-MiniLM-L6-v2
       - run: pnpm check
+        env:
+          DECK_MODEL_CACHE: ${{ runner.temp }}/models
 
   desktop:
     runs-on: ubuntu-latest

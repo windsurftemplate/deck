@@ -16,7 +16,8 @@ export function checkKeyShape(provider: ProviderId, key: string): string | null 
   if (/\s/.test(k)) return "The key has spaces in it. Copy it again.";
   if (provider === "openai" && k.startsWith("sk-ant-")) return "That is an Anthropic key. Paste it under Anthropic.";
   if (provider === "openai" && k.startsWith("sk-or-")) return "That is an OpenRouter key. Paste it under OpenRouter.";
-  if (!KEY_SHAPES[provider].test(k)) return `That does not look like a ${provider} key.`;
+  const name = { anthropic: "an Anthropic", openai: "an OpenAI", gemini: "a Google Gemini", openrouter: "an OpenRouter" }[provider];
+  if (!KEY_SHAPES[provider].test(k)) return `That does not look like ${name} key.`;
   return null;
 }
 

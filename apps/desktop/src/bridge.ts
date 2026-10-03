@@ -41,11 +41,22 @@ export async function runChecks(onResult: (r: CheckResult) => void): Promise<{ r
     }
     return { results, preview: true };
   }
-  const native = await invoke<CheckResult[]>("native_checks");
+  let fromEngine: CheckResult[] | null = null;
+  let engineError = ENGINE_PENDING;
+  try {
+    fromEngine = await invoke<CheckResult[]>("engine_call", { method: "checks" });
+  } catch (e) {
+    engineError = `Agent engine unavailable: ${String(e)}`;
+  }
+  const native = fromEngine ? [] : await invoke<CheckResult[]>("native_checks");
   for (const id of ids) {
     await pause();
-    const n = native.find((r) => r.id === id);
-    push(n ?? (id === "gateway" ? vaultproof : { id, name: names[id]!, status: "waiting", message: ENGINE_PENDING }));
+    if (id === "world") {
+      push({ id, name: "World", status: "ok", message: "2D deck ready." });
+      continue;
+    }
+    const r = fromEngine?.find((x) => x.id === id) ?? native.find((x) => x.id === id);
+    push(r ?? (id === "gateway" ? vaultproof : { id, name: names[id]!, status: "waiting", message: engineError }));
   }
   return { results, preview: false };
 }
@@ -66,7 +77,41 @@ export async function saveSettings(patch: DeepPartial<Settings>): Promise<Settin
   const json = JSON.stringify(next, null, 2);
   if (inTauri) await invoke("settings_set", { json });
   else globalThis.localStorage?.setItem(LOCAL_KEY, json);
+  reloadEngine();
   return next;
+}
+
+let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+/** Tell the engine settings or keys changed. Batched so several saves cause one reload. */
+export function reloadEngine() {
+  if (!inTauri) return;
+  if (reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => void invoke("engine_call", { method: "reload" }).catch(() => {}), 800);
+}
+
+/** Send a message to the Chief of Staff through the engine. */
+export async function sendChat(text: string): Promise<{ reply: string; redacted: string[] }> {
+  if (!inTauri) return { reply: "Preview mode: the agent engine only runs inside the desktop app.", redacted: [] };
+  try {
+    return await invoke<{ reply: string; redacted: string[] }>("engine_call", { method: "chat.send", params: { text } });
+  } catch (e) {
+    return { reply: `Agent engine unavailable: ${String(e)}`, redacted: [] };
+  }
+}
+
+/** Telegram bot token: shape check, then keychain. */
+export async function saveBotToken(token: string): Promise<string | null> {
+  const t = token.trim();
+  if (!/^\d{6,12}:[A-Za-z0-9_-]{30,}$/.test(t)) return "That does not look like a Telegram bot token (numbers, a colon, then letters).";
+  if (inTauri) await invoke("secret_set", { name: "chat.telegram", value: t });
+  else previewKeys.set("chat.telegram", t);
+  reloadEngine();
+  return null;
+}
+export async function botTokenHint(): Promise<string | null> {
+  if (inTauri) return invoke<string | null>("secret_hint", { name: "chat.telegram" });
+  const v = previewKeys.get("chat.telegram");
+  return v ? v.slice(-4) : null;
 }
 
 /** Browser preview has no keychain: keys are held in memory only and vanish on reload. */
@@ -79,6 +124,7 @@ export async function saveKey(provider: ProviderId, key: string): Promise<string
   if (problem) return problem;
   if (inTauri) await invoke("secret_set", { name: keyName(provider), value: key.trim() });
   else previewKeys.set(keyName(provider), key.trim());
+  reloadEngine();
   return null;
 }
 
@@ -92,4 +138,11 @@ export async function keyHint(provider: ProviderId): Promise<string | null> {
 export async function removeKey(provider: ProviderId): Promise<void> {
   if (inTauri) await invoke("secret_delete", { name: keyName(provider) });
   else previewKeys.delete(keyName(provider));
+  reloadEngine();
+}
+
+/** Generic engine call. In the browser preview it returns null so screens can still be walked through. */
+export async function engineCall<T>(method: string, params?: unknown): Promise<T | null> {
+  if (!inTauri) return null;
+  return invoke<T>("engine_call", { method, params });
 }

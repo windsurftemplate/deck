@@ -2,6 +2,35 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Agent engine, local embeddings, onboarding
+
+**Changed**
+- `apps/engine`: the agent engine. Opens the encrypted workspace (creates the memory key in the keychain on first run), memory and tracker, the model router, startup checks, chat with the Chief of Staff (secrets stripped first, memory recall with citations, your profile in every prompt), morning briefing, issues, emergency stop and resume, and the Telegram bot when turned on. Re-embeds memory automatically when the embedding model changes (backup kept as `workspace.db.bak`). Talks JSON lines over stdio.
+- Desktop: Rust starts the engine and relays calls (`engine_call`) and events; slow calls run off the UI thread; Stop all agents reaches the engine. Boot checks, chat and onboarding now go through the engine.
+- `packages/embed-local`: free local embedding model (all-MiniLM-L6-v2, 384 dims, downloads about 25 MB once). Default for memory search.
+- `packages/models`: OpenAI embeddings; daily token budget so models work without prices set.
+- Settings: memory search model (local or OpenAI), Telegram (bot token in keychain, owner chat ids, on/off), approval preset, onboarding flag. Default models: `claude-sonnet-5` (heavy), `claude-haiku-4-5-20251001` (cheap), 2,000,000 tokens a day.
+- Onboarding: connect an LLM (key to keychain, live test), short interview saved as stated facts, choose Cautious, Balanced or Autonomous.
+- CI caches the embedding model.
+
+**Verified**
+- 129 TypeScript tests and 5 Rust tests pass; `pnpm check` runs 49 tasks green; no secrets in the repo.
+- Memory evals 5/5 with the real local model as well as the test embedder.
+- The real engine process ran end to end here: all startup checks reported honestly (core waiting for a key), chat explained the missing key, issues and status worked.
+- Rust bridge round-trips with a real Node process, including error and timeout.
+- Browser preview: onboarding steps, key checks, Telegram and memory search settings.
+
+**Not verified yet (needs your Mac)**
+- The full app with a real Anthropic key: power-up from the engine, a real Chief of Staff reply, Telegram from your phone.
+- macOS Keychain sharing between the Rust shell and the engine (same service name, `dev.deck.app`).
+
+**Open**
+- GitHub connector (step 6.4): token in the keychain, or skip for now.
+- Gmail and Calendar need a Google sign-in (OAuth client) before they can connect.
+
+**Next**
+- Run the app on your Mac; then step 1.5, engine packaging.
+
 ## 2026-10-02: Modular storage
 
 **Changed**
