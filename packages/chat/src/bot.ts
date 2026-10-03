@@ -11,6 +11,8 @@ export interface BotActions {
   kill(agent: string): string;
   /** Free text goes to the Chief of Staff. */
   message(text: string): Promise<string>;
+  /** Optional: confirm a settings change the crew proposed in chat. */
+  apply?(id: string): Promise<string>;
   /** Optional: voice notes become text (local Whisper). */
   transcribe?(audio: Uint8Array): Promise<string>;
 }
@@ -91,6 +93,9 @@ export class ChatBot {
         break;
       case "/undo":
         reply = arg ? this.actions.undo(arg) : "Which one? /undo <id>";
+        break;
+      case "/apply":
+        reply = arg && this.actions.apply ? await this.actions.apply(arg) : "Which one? /apply <id>";
         break;
       case "/kill":
         reply = this.actions.kill(arg || "all");

@@ -134,6 +134,9 @@ importers:
       '@deck/models':
         specifier: workspace:*
         version: link:../models
+      '@deck/settings':
+        specifier: workspace:*
+        version: link:../settings
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

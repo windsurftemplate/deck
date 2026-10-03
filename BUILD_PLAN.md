@@ -65,6 +65,7 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 3.12 | Settings: embeddings, Telegram, preset, onboarding | Choice of memory search model, bot token and chat id, approval preset | Validated; bad sections fall back on their own | done |
 | 3.13 | `packages/models/src/providers.ts` | OpenAI, Gemini and OpenRouter chat adapters; one factory; model lists read from each provider | Each adapter maps turns and usage; bad key and missing model explained | done |
 | 3.14 | `apps/desktop/src/ModelRoles.tsx` | Settings: provider and model for heavy work, quick tasks and a backup, with model lists from your keys | Switching saves and the engine reloads; backup takes over when the main model fails | done |
+| 3.15 | `packages/agents/src/commands.ts` + engine proposals | Switch models from the chat box ("switch heavy work to Gemini"); confirm card in the app, /apply in Telegram | Nothing changes until confirmed; next reply uses the new model | done |
 
 ### Step 4: Orchestrator
 

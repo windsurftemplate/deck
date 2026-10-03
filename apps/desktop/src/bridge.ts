@@ -90,10 +90,11 @@ export function reloadEngine() {
 }
 
 /** Send a message to the Chief of Staff through the engine. */
-export async function sendChat(text: string): Promise<{ reply: string; redacted: string[] }> {
+export type Proposal = { id: string; summary: string };
+export async function sendChat(text: string): Promise<{ reply: string; redacted: string[]; proposal?: Proposal }> {
   if (!inTauri) return { reply: "Preview mode: the agent engine only runs inside the desktop app.", redacted: [] };
   try {
-    return await invoke<{ reply: string; redacted: string[] }>("engine_call", { method: "chat.send", params: { text } });
+    return await invoke<{ reply: string; redacted: string[]; proposal?: Proposal }>("engine_call", { method: "chat.send", params: { text } });
   } catch (e) {
     return { reply: `Agent engine unavailable: ${String(e)}`, redacted: [] };
   }
@@ -145,4 +146,14 @@ export async function removeKey(provider: ProviderId): Promise<void> {
 export async function engineCall<T>(method: string, params?: unknown): Promise<T | null> {
   if (!inTauri) return null;
   return invoke<T>("engine_call", { method, params });
+}
+
+/** Confirm a change the crew proposed in chat (for example switching models). */
+export async function applyProposal(id: string): Promise<string> {
+  try {
+    const r = await engineCall<{ summary: string }>("settings.apply", { id });
+    return r?.summary ?? "Preview mode: changes apply inside the desktop app.";
+  } catch (e) {
+    return `Could not apply: ${String(e)}`;
+  }
 }

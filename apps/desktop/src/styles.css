@@ -80,3 +80,4 @@ button { font: inherit; }
 .field textarea { font: inherit; font-size: 15px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 6px; padding: 9px 11px; resize: vertical; }
 .option { align-items: flex-start; padding: 6px 0; }
 select { font: inherit; font-size: 15px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 6px; padding: 8px 10px; }
+.proposal { margin-top: 8px; }

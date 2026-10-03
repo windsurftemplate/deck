@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { buildPrompt, composeBrief, loadCoreRules, loadRole } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, buildPrompt, composeBrief, describeModels, loadCoreRules, loadRole, parseModelCommand } from "@deck/agents";
 import { ChatBot, TelegramClient, type BotActions } from "@deck/chat";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
@@ -10,9 +10,16 @@ import { LocalEmbedder } from "@deck/embed-local";
 import { ApprovalQueue, redactSecrets } from "@deck/gate";
 import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder } from "@deck/memory";
 import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, type ChatModel, type ModelRef } from "@deck/models";
-import type { Settings } from "@deck/settings";
+import { applyUpdate, type DeepPartial, type Settings } from "@deck/settings";
 import { SqliteTrackerStore, Tracker } from "@deck/tracker";
 import type { Keychain } from "./keychain.js";
+
+/** A settings change the owner asked for in chat. Nothing changes until they confirm. */
+export interface Proposal {
+  id: string;
+  summary: string;
+  patch: DeepPartial<Settings>;
+}
 
 export interface EngineDeps {
   dataDir: string;
@@ -45,6 +52,7 @@ export class Engine {
   private bot: ChatBot | null = null;
   private turns: Turn[] = [];
   private stopped = false;
+  private proposals = new Map<string, Proposal>();
   private clock: () => Date;
 
   constructor(private d: EngineDeps) {
@@ -87,6 +95,10 @@ export class Engine {
     this.writer = new MemoryWriter(this.store, embedder, this.clock);
     this.reader = new MemoryReader(this.store, embedder);
     this.tracker = new Tracker(new SqliteTrackerStore(this.store.connection), "VP", this.clock);
+    this.buildRouter();
+  }
+
+  private buildRouter() {
     const m = this.d.settings.models;
     const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch));
     const chosen = [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : [])];
@@ -175,8 +187,66 @@ export class Engine {
   }
 
   /** The owner talks to the Chief of Staff. Secrets are stripped before anything leaves the machine. */
-  async chat(text: string): Promise<{ reply: string; memories: string[]; redacted: string[] }> {
+  /** Model requests in chat ("switch heavy work to Gemini") become a proposal the owner confirms. */
+  private async modelCommand(text: string): Promise<{ reply: string; proposal?: Proposal } | null> {
+    const cmd = parseModelCommand(text);
+    if (!cmd) return null;
+    const m = this.d.settings.models;
+    if (cmd.kind === "show") return { reply: describeModels(m) };
+    if (cmd.kind === "clear-backup") {
+      if (!m.fallback) return { reply: "There is no backup model set." };
+      return { reply: "Remove the backup model?", proposal: this.propose("Remove the backup model", { models: { fallback: null } }) };
+    }
+    if (!(await this.d.keychain.get(`provider.${cmd.provider}`))) return { reply: `Add ${KEY_PHRASE[cmd.provider]} in Settings > Models first, then ask again.` };
+    let available: string[] = [];
+    try {
+      available = await this.listModels(cmd.provider);
+    } catch (err) {
+      return { reply: `Could not read ${PROVIDER_LABEL[cmd.provider]} models: ${(err as Error).message}` };
+    }
+    const jobs = cmd.roles.map((r) => ROLE_LABEL[r]).join(" and ");
+    if (!cmd.model) {
+      const shown = available.slice(0, 12);
+      return { reply: `Which ${PROVIDER_LABEL[cmd.provider]} model for ${jobs}? Your key can use:\n${shown.map((x) => `- ${x}`).join("\n")}${available.length > shown.length ? `\n…and ${available.length - shown.length} more` : ""}\n\nSay, for example: use ${shown[0] ?? "<model id>"} for ${jobs}.` };
+    }
+    if (available.length && !available.includes(cmd.model)) {
+      const close = available.filter((x) => x.includes(cmd.model!.split(/[-/]/)[0] ?? "")).slice(0, 6);
+      return { reply: `${cmd.model} is not available with your ${PROVIDER_LABEL[cmd.provider]} key.${close.length ? ` Close matches:\n${close.map((x) => `- ${x}`).join("\n")}` : ""}` };
+    }
+    const choice = { provider: cmd.provider, model: cmd.model };
+    const patch: DeepPartial<Settings> = { models: Object.fromEntries(cmd.roles.map((r) => [r, choice])) };
+    return { reply: `Switch ${jobs} to ${PROVIDER_LABEL[cmd.provider]} ${cmd.model}?`, proposal: this.propose(`Use ${PROVIDER_LABEL[cmd.provider]} ${cmd.model} for ${jobs}`, patch) };
+  }
+
+  private propose(summary: string, patch: DeepPartial<Settings>): Proposal {
+    applyUpdate(this.d.settings, patch); // validate now, so a bad proposal is never shown
+    const p = { id: randomBytes(3).toString("hex"), summary, patch };
+    this.proposals.set(p.id, p);
+    return p;
+  }
+
+  /** The owner confirmed a proposal: save settings (same file the app uses) and switch models right away. */
+  async applyProposal(id: string): Promise<{ applied: boolean; summary: string; settings: Settings }> {
+    const p = this.proposals.get(id);
+    if (!p) return { applied: false, summary: "That change expired or was already applied.", settings: this.d.settings };
+    const next = applyUpdate(this.d.settings, p.patch);
+    const file = join(this.d.dataDir, "settings.json");
+    writeFileSync(`${file}.tmp`, JSON.stringify(next, null, 2));
+    renameSync(`${file}.tmp`, file);
+    this.d.settings = next;
+    this.proposals.delete(id);
+    this.buildRouter();
+    this.emit("settings", next);
+    return { applied: true, summary: `Done: ${p.summary}.`, settings: next };
+  }
+
+  async chat(text: string): Promise<{ reply: string; memories: string[]; redacted: string[]; proposal?: Proposal }> {
     if (this.stopped) return { reply: "All agents are stopped. Resume them to continue.", memories: [], redacted: [] };
+    const command = await this.modelCommand(text);
+    if (command) {
+      this.turns.push({ from: "owner", text }, { from: "agent", text: command.reply });
+      return { reply: command.reply, memories: [], redacted: [], ...(command.proposal ? { proposal: command.proposal } : {}) };
+    }
     const { clean, findings } = redactSecrets(text.slice(0, 8000));
     const memories = await this.reader.retrieve(clean, { tokenBudget: 800 });
     const open = (await this.tracker.list()).slice(0, 10);
@@ -284,7 +354,11 @@ export class Engine {
       reject: (id) => (this.approvals.decide(id, false), `Rejected ${id}`),
       undo: () => "Nothing to undo.",
       kill: (a) => this.kill(a),
-      message: async (text) => (await this.chat(text)).reply,
+      message: async (text) => {
+        const r = await this.chat(text);
+        return r.proposal ? `${r.reply}\nReply /apply ${r.proposal.id} to confirm.` : r.reply;
+      },
+      apply: async (id) => (await this.applyProposal(id)).summary,
     };
     this.bot = new ChatBot(new TelegramClient(token, this.d.fetch ?? fetch), t.ownerChatIds, actions, (m) => this.emit("log", { source: "telegram", message: m }));
     void this.bot.start();

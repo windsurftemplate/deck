@@ -19,7 +19,8 @@
   "dependencies": {
     "@deck/memory": "workspace:*",
     "@deck/models": "workspace:*",
-    "@deck/connectors": "workspace:*"
+    "@deck/connectors": "workspace:*",
+    "@deck/settings": "workspace:*"
   },
   "files": [
     "dist",

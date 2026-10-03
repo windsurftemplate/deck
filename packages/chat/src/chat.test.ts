@@ -34,8 +34,8 @@ const msg = (text: string, from = OWNER): Update => ({ update_id: 1, message: { 
 describe("chat bot", () => {
   it("serves the owner's commands", async () => {
     const { bot, sent } = setup();
-    for (const t of ["/brief", "/approve ab12", "/kill gtm", "/kill", "draft a reply to Dana", "/nope"]) await bot.handle(msg(t));
-    expect(sent()).toEqual(["- 10:00 Acme call", "Approved ab12", "Stopped gtm", "Stopped all", "CoS: draft a reply to Dana", expect.stringMatching(/^Unknown command/)]);
+    for (const t of ["/brief", "/approve ab12", "/kill gtm", "/kill", "draft a reply to Dana", "/nope", "/apply"]) await bot.handle(msg(t));
+    expect(sent()).toEqual(["- 10:00 Acme call", "Approved ab12", "Stopped gtm", "Stopped all", "CoS: draft a reply to Dana", expect.stringMatching(/^Unknown command/), "Which one? /apply <id>"]);
   });
 
   it("ignores everyone who is not the owner, including button presses", async () => {

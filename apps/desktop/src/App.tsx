@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { PowerUp } from "./boot/PowerUp";
-import { emergencyStop, listen, loadSettings, sendChat } from "./bridge";
+import { applyProposal, emergencyStop, listen, loadSettings, sendChat, type Proposal } from "./bridge";
 import { Onboarding } from "./onboarding/Onboarding";
 import { SettingsPanel } from "./SettingsPanel";
 
-type Line = { from: "you" | "agent" | "system"; text: string };
+type Line = { from: "you" | "agent" | "system"; text: string; proposal?: Proposal; settled?: boolean };
 
 export function App() {
   const [phase, setPhase] = useState<"boot" | "onboarding" | "shell">("boot");
@@ -62,6 +62,23 @@ export function App() {
               <div key={i} className={`msg ${l.from}`}>
                 {l.from === "you" ? "You: " : ""}
                 {l.text}
+                {l.proposal && !l.settled && (
+                  <div className="row proposal">
+                    <button
+                      className="primary"
+                      type="button"
+                      onClick={async () => {
+                        const summary = await applyProposal(l.proposal!.id);
+                        setLog((all) => [...all.map((x, j) => (j === i ? { ...x, settled: true } : x)), { from: "system", text: summary }]);
+                      }}
+                    >
+                      Apply
+                    </button>
+                    <button className="btn" type="button" onClick={() => setLog((all) => [...all.map((x, j) => (j === i ? { ...x, settled: true } : x)), { from: "system", text: "Cancelled. Nothing changed." }])}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -73,10 +90,10 @@ export function App() {
               const text = draft.trim();
               setLog((l) => [...l, { from: "you", text }, { from: "system", text: "Thinking…" }]);
               setDraft("");
-              sendChat(text).then((r) => setLog((l) => [...l.slice(0, -1), { from: "agent", text: r.reply }]));
+              sendChat(text).then((r) => setLog((l) => [...l.slice(0, -1), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}) }]));
             }}
           >
-            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message the Chief of Staff" aria-label="Message" />
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message the Chief of Staff, or say: switch heavy work to Gemini" aria-label="Message" />
             <button className="btn" type="submit">Send</button>
           </form>
         </section>

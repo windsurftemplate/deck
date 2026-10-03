@@ -117,6 +117,48 @@ describe("switching providers", () => {
   });
 });
 
+describe("switching models from chat", () => {
+  const lists = (async (url: string | URL | Request) => {
+    const u = String(url);
+    if (u.includes("generativelanguage")) return new Response(JSON.stringify({ models: [{ name: "models/gemini-pro-x", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-flash-x", supportedGenerationMethods: ["generateContent"] }] }));
+    throw new TypeError("offline");
+  }) as unknown as typeof fetch;
+  const used: string[] = [];
+  const setup = async (keys: Record<string, string>) => {
+    const d = dir();
+    const e = new Engine({ dataDir: d, keychain: memoryKeychain(keys), settings: DEFAULTS, fetch: lists, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => ({ id: ref.model, chat: async (req) => (used.push(`${ref.provider}:${ref.model}`), fakeModel(ref.model).chat(req)) }) });
+    await e.open();
+    return { e, d };
+  };
+
+  it("asks for a key, then for a model, then proposes and applies only after confirming", async () => {
+    const { e, d } = await setup({ "provider.anthropic": ANTHROPIC });
+    expect((await e.chat("switch to gemini")).reply).toMatch(/Add a Google Gemini key in Settings > Models first/);
+    const { e: e2, d: d2 } = await setup({ "provider.anthropic": ANTHROPIC, "provider.gemini": "g-key" });
+    const ask = await e2.chat("switch to gemini");
+    expect(ask.reply).toMatch(/Which Gemini model for heavy work and quick tasks\?[\s\S]*- gemini-pro-x/);
+    expect(ask.proposal).toBeUndefined();
+    expect((await e2.chat("use gemini-ultra-z for heavy work")).reply).toMatch(/not available with your Gemini key/);
+    const p = await e2.chat("use gemini-pro-x for heavy work");
+    expect(p.reply).toBe("Switch heavy work to Gemini gemini-pro-x?");
+    expect(existsSync(join(d2, "settings.json"))).toBe(false);
+    used.length = 0;
+    await e2.chat("hello");
+    expect(used).toEqual(["anthropic:claude-sonnet-5"]);
+    const done = await e2.applyProposal(p.proposal!.id);
+    expect(done).toMatchObject({ applied: true, summary: "Done: Use Gemini gemini-pro-x for heavy work." });
+    expect(JSON.parse(readFileSync(join(d2, "settings.json"), "utf8")).models.heavy).toEqual({ provider: "gemini", model: "gemini-pro-x" });
+    used.length = 0;
+    await e2.chat("hello again");
+    expect(used).toEqual(["gemini:gemini-pro-x"]);
+    expect((await e2.applyProposal(p.proposal!.id)).applied).toBe(false);
+    expect((await e2.chat("which models are you using?")).reply).toBe("Heavy work: Gemini gemini-pro-x\nQuick tasks: Claude claude-haiku-4-5-20251001\nBackup: none");
+    await e.close();
+    await e2.close();
+    void d;
+  });
+});
+
 describe("onboarding", () => {
   it("saves the interview as stated facts and uses them in chat", async () => {
     const e = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });

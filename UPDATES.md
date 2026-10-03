@@ -2,6 +2,21 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Switch models from the chat box
+
+**Changed**
+- `packages/agents/src/commands.ts`: understands model requests in plain language without calling a model (so it works even when the current model is broken): "switch to Gemini", "use claude-opus-5-5 for heavy work", "set quick tasks to gemini-flash-x", "make OpenRouter vendor/model the backup", "which models are you using?", "remove the backup". Normal conversation is left alone.
+- Engine: a request becomes a proposal. It checks you have that provider's key, reads the models your key can use, asks which model when you did not name one, and refuses names your key cannot use. Nothing changes until you confirm. Confirming saves settings and switches immediately.
+- Desktop chat: Apply and Cancel buttons under the proposal. Telegram: "Reply /apply <id> to confirm."
+
+**Verified**
+- 143 TypeScript tests pass; `pnpm check` runs 50 tasks green; no secrets in the repo.
+- Engine test: ask without a key, ask without a model, unknown model refused, proposal applies only on confirm, the next reply comes from the new model, a used proposal cannot be applied twice.
+- Desktop chat with a stand-in engine: proposal shows Apply and Cancel, Apply confirms and the buttons go away.
+
+**Next**
+- Run the app on your Mac; then step 1.5, engine packaging.
+
 ## 2026-10-02: Switch between Claude, GPT and Gemini
 
 **Changed**
