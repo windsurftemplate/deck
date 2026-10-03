@@ -15,10 +15,10 @@ This file has two parts:
 | 2. Swarm and safety | Mostly built (now with crew rules you can change); email, calendar and Jev routing waiting on you | No raw key anywhere; every external action approved |
 | 3. Learning | Started: skills, nightly learning, honeytoken, safety evals | Eval scores rise two weeks running |
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
-| 5. Expand | Not started | All earlier gates still hold |
+| 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 11 packages, 23 commits.
-Tests (counted): **179 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 12 packages, 28 commits.
+Tests (counted): **182 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -157,6 +157,11 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - Crew walk to Command on real handoffs; voice push-to-talk with local whisper.cpp.
 - Still open: camera snapshots, camera tours and a 3D power-up, sandbox PRs (needs repository access).
 
+## Phase 5: Expand (started)
+- Workspace packs (founder, freelancer, student, VaultProof, blank) that can only make the crew more careful; picked in a new onboarding step.
+- One-click installers for Mac, Windows and Linux (Linux verified end to end).
+- Still open: camera snapshots, hands-free voice, open-sourcing (needs your license choice).
+
 ## Decisions made along the way
 - General app with VaultProof as the first workspace pack; codename `deck` until a name is chosen.
 - VaultProof Gateway API on hold; VaultProof MCP connection added as a setting.
@@ -189,12 +194,13 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 | Package | Tests | Package | Tests |
 |---|---|---|---|
 | agents | 33 | tracker | 12 |
-| engine | 29 | settings | 11 |
+| engine | 30 | settings | 11 |
 | models | 27 | gate | 8 |
 | memory | 23 | connectors | 7 |
 | core | 16 | chat | 5 |
 | desktop UI helpers | 4 | evals (memory, local model, safety) | 3 |
-| embed-local (real model) | 1 | Rust shell | 6 |
+| embed-local (real model) | 1 | packs | 2 |
+| Rust shell | 6 | | |
 
 ## Not verified yet
 - Anything with a real API key (chat, tools, model lists, Telegram).
@@ -232,10 +238,29 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 21. `feat: research agent with web research on Claude, OpenAI and Gemini; weekly self-review`
 22. `feat: 3D command deck (Kenney station) driven by live events; docs for phase 4`
 23. `feat: crew motion on handoffs and push-to-talk voice`
+24. `docs: current code size`
+25. `docs: fix code size line`
+26. `feat: one-click Mac installer and uninstaller`
+27. `feat: one-click installers for Linux and Windows; app identifier fixed for macOS`
+28. `feat: workspace packs and starting setup step`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Phase 5: workspace packs and starting setups
+
+**Changed**
+- `packages/packs`: five starting setups, each a `pack.json`: Startup founder, Freelancer or consultant, Student, VaultProof, Start blank. A pack adds crew rules, tool limits, approved skills, a few starter issues, interview hints and a preset. Packs are checked on load: they may only set tools to "ask" or "off", so a pack can never give an agent more power or switch off a locked rule.
+- Engine: `packs.list` and `packs.apply`. Applying merges the pack's rules with yours, keeps anything you switched off, adds its skills as approved, creates starter issues once, and sets the preset. Safe to apply twice.
+- Onboarding has a new "Starting setup" step after connecting a model. Picking a pack applies it and carries its interview hints and preset into the next steps.
+- The VaultProof pack: security-buyer-first outreach, no claims that are not stated facts, credential-touching engineering work asks first, breach research with sources, and skills for CISO outreach and breach triage.
+
+**Verified**
+- Pack tests: all shipped packs valid, blank last, a pack that tries to allow sending is refused.
+- Engine: applying VaultProof adds rules, the Engineering issue-writing limit, two approved skills and two issues; applying again changes nothing; the Student pack switches the preset to cautious.
+- Onboarding with a stand-in engine: the setup step lists packs, applying one moves to About you with the pack's hints.
+- 182 TypeScript tests and 6 Rust tests pass (counted); `pnpm check` runs 54 tasks green; no secrets in the repo.
 
 ## 2026-10-03: One-click installers for Linux and Windows
 

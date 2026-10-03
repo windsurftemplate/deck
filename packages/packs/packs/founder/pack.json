@@ -1,0 +1,21 @@
+{
+  "id": "founder",
+  "name": "Startup founder",
+  "description": "Customers, investors and shipping. GTM works the pipeline, Engineering keeps the backlog honest, Operations handles investor and admin follow-ups.",
+  "preset": "balanced",
+  "rules": {
+    "chief-of-staff": ["Put customer and investor commitments first in the morning briefing.", "Every Friday, list what slipped this week and why."],
+    "gtm": ["Lead with the customer's problem, never with features.", "Every outreach draft ends with one clear, small ask."],
+    "ops": ["Investor emails are drafts only and always need the owner's eye."]
+  },
+  "tools": {},
+  "skills": [
+    { "name": "weekly-investor-update", "description": "Use for the weekly or monthly investor update.", "steps": ["Search memory for this period's wins, metrics and asks", "List three highlights with numbers", "Name the biggest risk plainly", "Make one specific ask (intro, hire, advice)", "Keep it under 250 words and draft it for review"] },
+    { "name": "design-partner-follow-up", "description": "Use after a call with a design partner or pilot customer.", "steps": ["Search memory for the call and their stated problem", "Restate their problem in their words", "Confirm the next step and its date", "Create an issue for anything promised", "Draft the follow-up under 120 words"] }
+  ],
+  "issues": [
+    { "title": "List the 10 accounts that matter most this quarter", "priority": 2 },
+    { "title": "Write down this month's top 3 goals", "priority": 2 }
+  ],
+  "interview": { "role": "Founder of a security startup", "priorities": "Sign 3 design partners; ship the beta", "people": "Sam: co-founder, runs sales" }
+}

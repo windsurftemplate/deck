@@ -21,7 +21,8 @@
     "@deck/models": "workspace:*",
     "@deck/settings": "workspace:*",
     "@deck/tracker": "workspace:*",
-    "@napi-rs/keyring": "^1.1.6"
+    "@napi-rs/keyring": "^1.1.6",
+    "@deck/packs": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

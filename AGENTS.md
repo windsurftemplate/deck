@@ -27,6 +27,7 @@ packages/models       provider adapters, roles, caps (Gateway client on hold)
 packages/settings     settings schema and validation (no secrets)
 packages/tracker      local issue tracker (replaces Linear)
 packages/embed-local  local embedding model (free, private)
+packages/packs        workspace packs (starting setups: founder, freelancer, student, VaultProof, blank)
 packages/agents       prompt layers and one folder per agent
 packages/gate         secret scan, approvals, undo, idempotency
 packages/connectors   MCP integrations

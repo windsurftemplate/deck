@@ -43,6 +43,8 @@ async function main() {
     "profile.save": (p) => engine.saveProfile((p ?? {}) as Record<string, string>),
     "models.test": () => engine.testModel(),
     "voice.transcribe": (p) => engine.transcribe(String((p as { audio?: string })?.audio ?? "")),
+    "packs.list": async () => engine.packsList(),
+    "packs.apply": (p) => engine.applyPack(String((p as { id?: string })?.id ?? "")),
     "crew.info": async () => engine.crewInfo(),
     "crew.update": (p) => engine.crewUpdate(String((p as { agent?: string })?.agent ?? ""), ((p as { override?: object })?.override ?? {}) as never, "settings"),
     "crew.history": () => engine.crewHistory(),

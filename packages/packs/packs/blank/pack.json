@@ -1,0 +1,11 @@
+{
+  "id": "blank",
+  "name": "Start blank",
+  "description": "No starting rules, skills or issues. The crew learns from how you work.",
+  "preset": "balanced",
+  "rules": {},
+  "tools": {},
+  "skills": [],
+  "issues": [],
+  "interview": {}
+}

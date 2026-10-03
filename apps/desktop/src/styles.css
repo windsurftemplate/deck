@@ -124,3 +124,8 @@ select { font: inherit; font-size: 15px; color: var(--text); background: var(--v
 .deck-approval { background: #fff; border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
 @media (max-width: 760px) { .main.with-deck { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; } }
 .mic-on { align-self: center; font-size: 13px; color: #fff; background: #b3261e; border-radius: 999px; padding: 3px 9px; }
+.packs { display: grid; gap: 8px; }
+.pack { font: inherit; text-align: left; display: grid; gap: 4px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+.pack:hover, .pack:focus-visible { border-color: var(--ion); }
+.pack b { font-size: 16px; }
+.pack span { font-size: 14px; line-height: 1.45; }

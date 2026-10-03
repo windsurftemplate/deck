@@ -527,6 +527,27 @@ describe("voice", () => {
   });
 });
 
+describe("workspace packs", () => {
+  it("applying a pack adds rules, approved skills, starter issues and the preset, and is safe to repeat", async () => {
+    const d = dir();
+    const e = make({ dataDir: d });
+    await e.open();
+    expect(e.packsList().map((p) => p.id)).toContain("vaultproof");
+    const first = await e.applyPack("vaultproof");
+    expect(first).toMatch(/^Applied VaultProof: \d+ rules, 2 skills, 2 starter issues, preset balanced\.$/);
+    const gtm = e.crewInfo().find((c) => c.id === "gtm")!;
+    expect(gtm.rules[0]).toMatch(/^Security buyers first/);
+    expect(e.crewInfo().find((c) => c.id === "code")!.tools.find((t) => t.scope === "issues.write")!.mode).toBe("ask");
+    expect((await e.skillsList()).filter((k) => k.status === "active").map((k) => k.name)).toEqual(["breach-news-triage", "security-buyer-outreach"]);
+    expect(await e.applyPack("vaultproof")).toBe("Applied VaultProof: 0 rules, 0 skills, 0 starter issues, preset balanced.");
+    expect(await e.issues().list()).toHaveLength(2);
+    await e.applyPack("student");
+    expect(JSON.parse(readFileSync(join(d, "settings.json"), "utf8")).preset).toBe("cautious");
+    await expect(e.applyPack("nope")).rejects.toThrow(/no pack/);
+    await e.close();
+  });
+});
+
 describe("onboarding", () => {
   it("saves the interview as stated facts and uses them in chat", async () => {
     const e = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });

@@ -1,0 +1,22 @@
+{
+  "id": "vaultproof",
+  "name": "VaultProof",
+  "description": "Active Key Protection: selling to security buyers, design partners, investors and a security-first build. Tuned for VaultProof's go-to-market and engineering.",
+  "preset": "balanced",
+  "rules": {
+    "chief-of-staff": ["Put design partners, investor follow-ups and security incidents first in the morning briefing."],
+    "gtm": ["Security buyers first: lead with the risk of live API keys in their stack, then how VaultProof removes it.", "Never claim a certification, customer or number that is not in memory as a stated fact."],
+    "code": ["Treat anything touching keys, tokens or the proxy as security-sensitive: ask before planning changes there.", "Every engineering issue that touches credentials lists how it will be tested."],
+    "research": ["Track breaches involving leaked API keys and summarize what VaultProof would have prevented, with sources."]
+  },
+  "tools": { "code": { "issues.write": "ask" } },
+  "skills": [
+    { "name": "security-buyer-outreach", "description": "Use for first outreach to a CISO or security lead.", "steps": ["Search memory for the company, contact and any past touch", "Find one recent, specific risk they face (with a source)", "Explain in one sentence how live keys create that risk", "Offer a 20-minute call as the only ask", "Keep it under 120 words and draft it for review"] },
+    { "name": "breach-news-triage", "description": "Use when a breach or key leak is in the news.", "steps": ["Research what leaked and how, with sources", "Decide if leaked API keys or tokens were involved", "Save the finding to memory with its source", "If relevant, create an issue to use it in outreach or content"] }
+  ],
+  "issues": [
+    { "title": "List current design partners and their next step", "priority": 1 },
+    { "title": "Collect three recent breaches caused by leaked API keys", "priority": 3 }
+  ],
+  "interview": { "role": "Founder of VaultProof (Active Key Protection)", "priorities": "Sign design partners; ship the MCP server", "people": "Co-founder: runs GTM" }
+}

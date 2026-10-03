@@ -12,6 +12,7 @@ import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim
 import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, webResearch, type ChatModel, type ModelRef } from "@deck/models";
 import { applyUpdate, type DeepPartial, type Settings } from "@deck/settings";
 import { SqliteTrackerStore, Tracker } from "@deck/tracker";
+import { getPack, listPacks } from "@deck/packs";
 import type { Keychain } from "./keychain.js";
 
 /** A settings change the owner asked for in chat. Nothing changes until they confirm. */
@@ -177,7 +178,7 @@ export class Engine {
   }
 
   /** Saves your changes to one agent, with history. Throws a plain message if the change is not allowed. */
-  async crewUpdate(agent: string, override: CrewOverride, source: "settings" | "chat" = "settings"): Promise<string> {
+  async crewUpdate(agent: string, override: CrewOverride, source: "settings" | "chat" | "pack" = "settings"): Promise<string> {
     if (agent !== AGENT && !Engine.CREW[agent]) throw new Error(`There is no crew member called ${agent}.`);
     const clean: CrewOverride = {
       ...(override.instructions?.trim() ? { instructions: override.instructions.trim() } : {}),
@@ -710,6 +711,57 @@ export class Engine {
     return p;
   }
 
+  /** Saves settings to the same file the app uses, atomically, and makes them current. */
+  private writeSettings(next: Settings): Settings {
+    const file = join(this.d.dataDir, "settings.json");
+    writeFileSync(`${file}.tmp`, JSON.stringify(next, null, 2));
+    renameSync(`${file}.tmp`, file);
+    this.d.settings = next;
+    return next;
+  }
+
+  packsList() {
+    return listPacks().map((p) => ({ id: p.id, name: p.name, description: p.description, preset: p.preset, skills: p.skills.map((k) => k.name), issues: p.issues.length, rules: Object.values(p.rules).flat().length, interview: p.interview }));
+  }
+
+  /**
+   * Applies a workspace pack: adds its crew rules and tool limits (merged with yours; they can only make
+   * agents more careful), its skills as approved, its starter issues, and its preset. Safe to run twice.
+   */
+  async applyPack(id: string): Promise<string> {
+    const pack = getPack(id);
+    if (!pack) throw new Error(`There is no pack called ${id}.`);
+    const applied = JSON.parse((await this.store.getMeta("packs.applied")) ?? "[]") as string[];
+    const firstTime = !applied.includes(id);
+    let rules = 0, skills = 0, issues = 0;
+    for (const agent of new Set([...Object.keys(pack.rules), ...Object.keys(pack.tools)])) {
+      const cur = this.crew[agent] ?? {};
+      const add = (pack.rules[agent] ?? []).filter((r) => !(cur.rules ?? []).includes(r));
+      const tools = { ...(cur.tools ?? {}) };
+      for (const [scope, mode] of Object.entries(pack.tools[agent] ?? {})) if (tools[scope] !== "off") tools[scope] = mode;
+      // Tool limits only apply to tools the agent actually has.
+      for (const scope of Object.keys(tools)) if (!loadPolicy(agent).allow.includes(scope)) delete tools[scope];
+      if (!add.length && JSON.stringify(tools) === JSON.stringify(cur.tools ?? {})) continue;
+      rules += add.length;
+      await this.crewUpdate(agent, { ...cur, rules: [...(cur.rules ?? []), ...add], tools }, "pack");
+    }
+    for (const k of pack.skills) {
+      const body = k.steps.map((x, n) => `${n + 1}. ${x}`).join("\n");
+      const existing = await this.store.skill(k.name);
+      if (existing && existing.body === body && existing.status === "active") continue;
+      await this.store.saveSkill({ name: k.name, description: k.description, body }, this.clock().toISOString());
+      await this.store.setSkillStatus(k.name, "active");
+      skills++;
+    }
+    if (firstTime) for (const i of pack.issues) (await this.tracker.create({ title: i.title, body: i.body ?? "", ...(i.priority ? { priority: i.priority } : {}), by: "owner" }), issues++);
+    if (this.d.settings.preset !== pack.preset) this.writeSettings(applyUpdate(this.d.settings, { preset: pack.preset }));
+    if (firstTime) await this.store.setMeta("packs.applied", JSON.stringify([...applied, id]));
+    const summary = `Applied ${pack.name}: ${rules} rules, ${skills} skills, ${issues} starter issues, preset ${pack.preset}.`;
+    await this.writer.logEpisode({ agent: "owner", kind: "pack", summary });
+    this.emit("crew", { agent: "all", summary });
+    return summary;
+  }
+
   /** The owner confirmed a proposal: save settings (same file the app uses) and switch models right away. */
   async applyProposal(id: string): Promise<{ applied: boolean; summary: string; settings: Settings }> {
     const p = this.proposals.get(id);
@@ -722,11 +774,7 @@ export class Engine {
         return { applied: false, summary: (err as Error).message, settings: this.d.settings };
       }
     }
-    const next = applyUpdate(this.d.settings, p.patch);
-    const file = join(this.d.dataDir, "settings.json");
-    writeFileSync(`${file}.tmp`, JSON.stringify(next, null, 2));
-    renameSync(`${file}.tmp`, file);
-    this.d.settings = next;
+    const next = this.writeSettings(applyUpdate(this.d.settings, p.patch));
     this.proposals.delete(id);
     this.buildRouter();
     this.emit("settings", next);

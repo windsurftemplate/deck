@@ -3,8 +3,9 @@ import type { Provider } from "@deck/settings";
 import { engineCall, inTauri, saveKey, saveSettings } from "../bridge";
 import { PROVIDER_LABEL, loadModelList } from "../ModelRoles";
 
-type Step = "llm" | "about" | "preset" | "done";
-const STEPS: Step[] = ["llm", "about", "preset", "done"];
+type Step = "llm" | "pack" | "about" | "preset" | "done";
+const STEPS: Step[] = ["llm", "pack", "about", "preset", "done"];
+type PackInfo = { id: string; name: string; description: string; preset: "cautious" | "balanced" | "autonomous"; skills: string[]; issues: number; rules: number; interview: Record<string, string> };
 const FIELDS: { id: string; label: string; hint: string; area?: boolean }[] = [
   { id: "name", label: "What should the crew call you?", hint: "Alex" },
   { id: "role", label: "What do you do?", hint: "Founder of a security startup" },
@@ -26,8 +27,24 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [about, setAbout] = useState<Record<string, string>>({});
   const [preset, setPreset] = useState<"cautious" | "balanced" | "autonomous">("balanced");
   const [note, setNote] = useState<string | null>(null);
+  const [packs, setPacks] = useState<PackInfo[] | null>(null);
+  const [hints, setHints] = useState<Record<string, string>>({});
+  const loadPacks = () => engineCall<PackInfo[]>("packs.list").then((p) => setPacks(p ?? [])).catch(() => setPacks([]));
+  const choosePack = async (p: PackInfo) => {
+    setBusy(true);
+    const r = await engineCall<string>("packs.apply", { id: p.id }).catch((e) => String(e));
+    setBusy(false);
+    setNote(r ?? `Preview mode: ${p.name} would be applied in the desktop app.`);
+    setHints(p.interview);
+    setPreset(p.preset);
+    setStep("about");
+  };
   const idx = STEPS.indexOf(step);
-  const next = () => setStep(STEPS[idx + 1]!);
+  const next = () => {
+    const n = STEPS[idx + 1]!;
+    if (n === "pack" && !packs) void loadPacks();
+    setStep(n);
+  };
 
   const connect = async () => {
     setBusy(true);
@@ -56,7 +73,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     const r = await engineCall<{ saved: number }>("profile.save", about).catch(() => null);
     setBusy(false);
     setNote(r ? `Saved ${r.saved} facts about you. You can change them any time.` : inTauri ? "Could not save; you can do this later." : "Preview mode: answers are not saved.");
-    next();
+    setStep("preset");
   };
 
   const finish = async () => {
@@ -67,7 +84,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   return (
     <main className="onboard" aria-live="polite">
       <ol className="steps" aria-label="Setup steps">
-        {["Connect an LLM", "About you", "How much to ask", "Ready"].map((t, i) => (
+        {["Connect an LLM", "Starting setup", "About you", "How much to ask", "Ready"].map((t, i) => (
           <li key={t} className={i === idx ? "current" : i < idx ? "past" : ""}>
             {t}
           </li>
@@ -123,17 +140,41 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </section>
       )}
 
+      {step === "pack" && (
+        <section className="card">
+          <h3>Pick a starting setup</h3>
+          <p className="muted">A starting setup gives the crew rules, skills and a few first issues for your kind of work. It can only make the crew more careful, and you can change everything later in Settings &gt; Crew.</p>
+          {packs === null && <p className="muted">Loading setups…</p>}
+          {packs?.length === 0 && <p className="muted">{inTauri ? "No setups found." : "Setups load inside the desktop app."}</p>}
+          <div className="packs">
+            {packs?.map((p) => (
+              <button key={p.id} type="button" className="pack" disabled={busy} onClick={() => choosePack(p)}>
+                <b>{p.name}</b>
+                <span>{p.description}</span>
+                {p.id !== "blank" && <span className="muted">{p.rules} rules · {p.skills.length} skills · {p.issues} first issues · {p.preset}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="row">
+            <button className="btn" type="button" onClick={next}>
+              Skip
+            </button>
+          </div>
+        </section>
+      )}
+
       {step === "about" && (
         <section className="card">
           <h3>About you</h3>
+          {note && <p className="ok">{note}</p>}
           <p className="muted">A few answers so the crew starts with context. Saved as facts you stated, in your encrypted memory. Leave any blank.</p>
           {FIELDS.map((f) => (
             <label className="field" key={f.id}>
               {f.label}
               {f.area ? (
-                <textarea rows={2} value={about[f.id] ?? ""} placeholder={f.hint} onChange={(e) => setAbout({ ...about, [f.id]: e.target.value })} />
+                <textarea rows={2} value={about[f.id] ?? ""} placeholder={hints[f.id] ?? f.hint} onChange={(e) => setAbout({ ...about, [f.id]: e.target.value })} />
               ) : (
-                <input value={about[f.id] ?? ""} placeholder={f.hint} onChange={(e) => setAbout({ ...about, [f.id]: e.target.value })} />
+                <input value={about[f.id] ?? ""} placeholder={hints[f.id] ?? f.hint} onChange={(e) => setAbout({ ...about, [f.id]: e.target.value })} />
               )}
             </label>
           ))}

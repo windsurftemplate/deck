@@ -183,7 +183,18 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 - **Phase 2, swarm and safety:** GTM, Code, Ops agents; Jev routing; Laya gate; kill switches; model settings; verifier.
 - **Phase 3, learning:** reflection, skill capture, consolidation, prompt evolution, quarantined reader, honeytokens.
 - **Phase 4, world and research:** 3D command deck (look decision pending), research agent, voice push-to-talk, camera snapshots.
-- **Phase 5, expand:** workspace packs, full onboarding, signed installers, open source, hands-free voice.
+- **Phase 5, expand:** see the table below.
+
+## Phase 5: Expand (in progress)
+
+| # | What | Done when | Status |
+|---|------|-----------|--------|
+| P5.1 | Workspace packs (`packages/packs`): founder, freelancer, student, VaultProof, blank. Rules, tool limits (ask or off only), approved skills, starter issues, preset. Checked so packs can never loosen safety | Applying twice changes nothing; a loosening pack is refused | done |
+| P5.2 | Onboarding "Starting setup" step: pick a pack; its interview hints and preset carry into the next steps | New install ends with the pack applied | done |
+| P5.3 | One-click installers for Mac, Windows and Linux | Double-click installs and opens deck | done (Linux verified here) |
+| P5.4 | Camera snapshots (image input in the model layer) | Off by default; indicator always on | todo |
+| P5.5 | Open source the repo | License chosen, secrets scan clean, contributor guide | needs your license choice |
+| P5.6 | Hands-free voice (wake word, spoken replies) | Off by default; mic indicator always on | todo |
 
 ## How to use this file
 

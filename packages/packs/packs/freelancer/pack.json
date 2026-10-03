@@ -1,0 +1,18 @@
+{
+  "id": "freelancer",
+  "name": "Freelancer or consultant",
+  "description": "Clients, proposals, deadlines and getting paid. Operations tracks deliverables and invoices, GTM drafts proposals and follow-ups.",
+  "preset": "cautious",
+  "rules": {
+    "chief-of-staff": ["Show every client deadline in the next 7 days in the morning briefing.", "Flag any invoice unpaid after 14 days."],
+    "gtm": ["Proposals state scope, price range, timeline and what is not included."],
+    "ops": ["Never agree to new scope in a draft; list it for the owner to decide."]
+  },
+  "tools": { "gtm": { "memory.write": "ask" } },
+  "skills": [
+    { "name": "client-invoice-follow-up", "description": "Use when an invoice is overdue.", "steps": ["Search memory for the invoice, amount and due date", "Draft a friendly reminder with the amount and date", "Offer a simple way to pay", "Create an issue to check again in 7 days"] },
+    { "name": "project-kickoff", "description": "Use when a new client project starts.", "steps": ["Save the client, contact and deadline to memory", "Create issues for each deliverable with dates", "Draft a kickoff note confirming scope and next meeting"] }
+  ],
+  "issues": [{ "title": "List active clients with their next deadline", "priority": 2 }],
+  "interview": { "role": "Freelance designer", "priorities": "Deliver the Acme rebrand; find two new clients", "people": "Jordan: main contact at Acme" }
+}

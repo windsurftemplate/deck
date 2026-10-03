@@ -1,0 +1,18 @@
+{
+  "id": "student",
+  "name": "Student",
+  "description": "Classes, assignments and study plans. Research helps you understand topics with sources; the crew never writes graded work for you.",
+  "preset": "cautious",
+  "rules": {
+    "chief-of-staff": ["Show assignments due in the next 7 days in the morning briefing."],
+    "research": ["Explain and point to sources; never write graded work for the student.", "Prefer textbooks, course pages and peer-reviewed sources."],
+    "gtm": ["Only help with internship, club or job outreach."]
+  },
+  "tools": { "gtm": { "drafts.write": "ask" } },
+  "skills": [
+    { "name": "assignment-breakdown", "description": "Use when a new assignment is set.", "steps": ["Save the course, assignment and due date to memory", "Split it into steps of an hour or two", "Create an issue per step with a date before the deadline"] },
+    { "name": "exam-study-plan", "description": "Use to plan revision for an exam.", "steps": ["List the topics from the syllabus", "Mark each as strong, okay or weak", "Schedule weak topics first and review all of them twice", "Create issues for each study session"] }
+  ],
+  "issues": [{ "title": "Add this term's courses and key dates", "priority": 2 }],
+  "interview": { "role": "Computer science student", "priorities": "Pass algorithms; land a summer internship", "people": "Dr. Lee: algorithms professor" }
+}
