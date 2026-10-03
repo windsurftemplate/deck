@@ -2,6 +2,27 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: API key settings and built-in issue tracker
+
+**Changed**
+- Settings: Models card with API key fields for Anthropic, OpenAI, Gemini and OpenRouter. Keys go straight to the OS keychain (`secret_set`); the UI shows only the last 4 characters (`secret_hint`), clears the field after saving or on error, and refuses a key pasted under the wrong provider.
+- `packages/models/src/direct.ts`: Claude called directly with the developer key, read from the keychain at call time and sent only in the `x-api-key` header.
+- `packages/tracker`: built-in issue tracker replacing Linear. Issues (VP-1 style keys), status, priority, labels, assignee, due date, history, comments and full-text search, in the same encrypted workspace database. Feeds the morning briefing.
+- Chief of Staff scopes: `linear.read` replaced by `issues.read` and `issues.write`.
+- `AGENTS.md` and plan: keys live only in the OS keychain until VaultProof brokers credentials; Linear references replaced by the tracker.
+
+**Verified**
+- 80 TypeScript tests and 3 Rust tests pass; `pnpm check` runs 37 tasks green; no secrets in the repo.
+- Browser preview: wrong-provider key refused and cleared; saved key shows only its last 4; the full key never appears in the page; remove works.
+
+**Open**
+- Embedding model for memory (provider and dimension).
+- GitHub connector (step 6.4): which MCP server, or the GitHub API with a token in the keychain.
+- Sharing the tracker with a collaborator (later, likely through GitHub Issues).
+
+**Next**
+- Step 4.5: `apps/engine/src/main.ts`, the agent engine sidecar.
+
 ## 2026-10-02: VaultProof MCP setting, Gateway API on hold
 
 **Changed**

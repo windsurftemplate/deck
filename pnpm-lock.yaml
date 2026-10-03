@@ -17,6 +17,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@deck/models':
+        specifier: workspace:*
+        version: link:../../packages/models
       '@deck/settings':
         specifier: workspace:*
         version: link:../../packages/settings
@@ -176,6 +179,25 @@ importers:
         version: 2.1.9(@types/node@22.20.5)
 
   packages/settings:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.5)
+
+  packages/tracker:
+    dependencies:
+      '@deck/connectors':
+        specifier: workspace:*
+        version: link:../connectors
+      '@deck/memory':
+        specifier: workspace:*
+        version: link:../memory
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

@@ -1,5 +1,6 @@
 import type { CheckResult } from "./boot/checks";
 import { applyUpdate, parseSettings, type DeepPartial, type Settings } from "@deck/settings";
+import { checkKeyShape, type ProviderId } from "@deck/models";
 
 /** True inside the Tauri app; false in a plain browser during UI development. */
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -66,4 +67,29 @@ export async function saveSettings(patch: DeepPartial<Settings>): Promise<Settin
   if (inTauri) await invoke("settings_set", { json });
   else globalThis.localStorage?.setItem(LOCAL_KEY, json);
   return next;
+}
+
+/** Browser preview has no keychain: keys are held in memory only and vanish on reload. */
+const previewKeys = new Map<string, string>();
+const keyName = (p: ProviderId) => `provider.${p}`;
+
+/** Saves a developer key to the OS keychain after a shape check. Returns an error message or null. */
+export async function saveKey(provider: ProviderId, key: string): Promise<string | null> {
+  const problem = checkKeyShape(provider, key);
+  if (problem) return problem;
+  if (inTauri) await invoke("secret_set", { name: keyName(provider), value: key.trim() });
+  else previewKeys.set(keyName(provider), key.trim());
+  return null;
+}
+
+/** Last 4 characters of a saved key, or null when none is saved. */
+export async function keyHint(provider: ProviderId): Promise<string | null> {
+  if (inTauri) return invoke<string | null>("secret_hint", { name: keyName(provider) });
+  const v = previewKeys.get(keyName(provider));
+  return v ? v.slice(-4) : null;
+}
+
+export async function removeKey(provider: ProviderId): Promise<void> {
+  if (inTauri) await invoke("secret_delete", { name: keyName(provider) });
+  else previewKeys.delete(keyName(provider));
 }

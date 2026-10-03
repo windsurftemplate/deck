@@ -66,3 +66,8 @@ button { font: inherit; }
 .warn { color: var(--warn); margin: 0; font-size: 14px; }
 .ok { color: var(--ion); font-size: 14px; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
+.settings { display: grid; gap: 14px; align-content: start; }
+.keyrow { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--seam); }
+.keyhead { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+.keyhead b { font-weight: 600; }
+.keyinput { flex: 1; min-width: 220px; font: inherit; font-size: 15px; color: var(--text); background: var(--void); border: 1px solid var(--seam); border-radius: 6px; padding: 8px 11px; }

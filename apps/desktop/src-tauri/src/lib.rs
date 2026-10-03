@@ -47,6 +47,24 @@ fn secret_exists(name: String) -> Result<bool, String> {
     }
 }
 
+/// Last 4 characters only, so the owner can tell which key is saved. The full key never leaves the keychain to the UI.
+#[tauri::command]
+fn secret_hint(name: String) -> Result<Option<String>, String> {
+    match entry(&name)?.get_password() {
+        Ok(v) => Ok(Some(last4(&v))),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn last4(v: &str) -> String {
+    let chars: Vec<char> = v.chars().collect();
+    if chars.len() < 12 {
+        return "****".into();
+    }
+    chars[chars.len() - 4..].iter().collect()
+}
+
 #[tauri::command]
 fn secret_delete(name: String) -> Result<(), String> {
     match entry(&name)?.delete_credential() {
@@ -165,14 +183,20 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_delete, native_checks, emergency_stop, settings_get, settings_set])
+        .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_hint, secret_delete, native_checks, emergency_stop, settings_get, settings_set])
         .run(tauri::generate_context!())
         .expect("error while running deck");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{check_settings_json, valid_name};
+    use super::{check_settings_json, last4, valid_name};
+
+    #[test]
+    fn hint_shows_only_the_last_four() {
+        assert_eq!(last4("sk-ant-api03-abcdefghWXYZ"), "WXYZ");
+        assert_eq!(last4("short"), "****");
+    }
 
     #[test]
     fn settings_file_must_be_a_small_json_object() {

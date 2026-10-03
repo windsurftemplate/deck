@@ -9,7 +9,7 @@ Status keys: `todo`, `doing`, `done`, `blocked`.
 ## Next file
 
 **`apps/engine/src/main.ts` (step 4.5, agent engine sidecar).**
-It connects the tested packages to the desktop app and runs the VaultProof check for real. How the engine reaches a model before VaultProof is live is an open question (see `UPDATES.md`, Open).
+Opens the workspace database (memory and tracker), reads the Anthropic key from the keychain, runs the startup checks and the Chief of Staff, and talks to the desktop app.
 
 ## Phase 1: Core (weeks 1 to 2)
 
@@ -54,6 +54,8 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 3.5 | `packages/connectors/src/vaultproof.ts` | VaultProof MCP check: handshake, session id, tools list, sign-in needed, not live yet | Each state reported; never blocks boot | done (needs the live server) |
 | 3.6 | `apps/desktop/src/SettingsPanel.tsx` | Systems panel: VaultProof URL, connect toggle, saved to app data | Settings survive restart; boot shows off or waiting | done |
 | 3.7 | VaultProof sign-in (OAuth in the browser, session in keychain) | Sign in to the MCP server | Signed-in check shows connected | blocked: VaultProof MCP server not live |
+| 3.8 | `packages/models/src/direct.ts` | Direct Claude client using a developer key read from the keychain at call time | Key only in the x-api-key header; rejected key explained | done |
+| 3.9 | `apps/desktop/src/ModelKeys.tsx` | Settings: API key fields for Anthropic, OpenAI, Gemini, OpenRouter (keychain, last 4 shown) | Wrong-provider key refused; full key never in the UI | done |
 
 ### Step 4: Orchestrator
 
@@ -80,7 +82,7 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 |---|------|--------------|-----------|--------|
 | 6.1 | `packages/connectors/gmail.ts` | Read inbox, draft (no send yet) | Brief lists today's important emails | done (needs Gmail OAuth to run) |
 | 6.2 | `packages/connectors/calendar.ts` | Read today and tomorrow | Brief lists meetings | done (needs Calendar OAuth to run) |
-| 6.3 | `packages/connectors/linear.ts` | Read and create issues | Brief lists open issues | blocked: pick Linear MCP server |
+| 6.3 | `packages/tracker/src/tracker.ts` | Built-in issue tracker (replaces Linear): keys, priority, labels, history, search | Brief lists open issues | done |
 | 6.4 | `packages/connectors/github.ts` | Read PRs and checks | Brief lists PRs waiting on review | blocked: pick GitHub MCP server |
 
 ### Step 7: Safety basics
