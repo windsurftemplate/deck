@@ -12,7 +12,7 @@ This file has two parts:
 |---|---|---|
 | 0. Planning and prototypes | Done | n/a |
 | 1. Core | Built and tested here; not yet run on your Mac | Morning briefing useful 5 workdays in a row |
-| 2. Swarm and safety | Mostly built; email, calendar and Jev routing waiting on you | No raw key anywhere; every external action approved |
+| 2. Swarm and safety | Mostly built (now with crew rules you can change); email, calendar and Jev routing waiting on you | No raw key anywhere; every external action approved |
 | 3. Learning | Started: skills, nightly learning, honeytoken, safety evals | Eval scores rise two weeks running |
 | 4. World and research | Not started (3D deck exists only as prototypes) | First agent PR merged after your review |
 | 5. Expand | Not started | All earlier gates still hold |
@@ -223,6 +223,23 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Crew rules you can change
+
+**Changed**
+- Plan doc: new section "Agent rules: what is fixed and what you can change" (four layers: locked-on safety in code, built-in defaults, your crew rules, approved skills; how they combine; how to change them; limits).
+- Fixed a gap: each agent's `tools.json` "ask first" list was ignored by the action gate. It now forces approval on any preset.
+- `packages/agents/crew-config.ts`: your changes per agent (instructions, extra rules, each tool Allowed, Ask me or Off). Changes can only narrow an agent: tools can be limited, never added; locked rules always apply; size limits match role files.
+- Engine: crew rules stored in the encrypted workspace with history (who, when, what, Settings or chat) and undo. Every prompt uses your version. The startup check reports how many agents have your rules.
+- Chat: the Chief of Staff turns "from now on GTM should never mention pricing" into a proposal; Apply (or /apply on Telegram) makes it real.
+- Settings > Crew: tabs per agent, instructions with Reset to default, your rules, tool permissions, locked rules shown read-only, Save, Undo last change, recent changes.
+
+**Verified**
+- Agents: tools can be limited not added; size checks; owner rules in the role text; ask-first forces approval even on Autonomous.
+- Engine: Settings changes reach the prompt, a switched-off tool disappears, ask-first waits for approval, history and undo; widening refused; chat proposal applies only on Apply and GTM then follows the rule.
+- Desktop Crew screen with a stand-in engine: add rule, set Ask me first, save, history.
+- `pnpm check` green; no secrets in the repo.
+
 
 ## 2026-10-03: Crew rules you can change (Settings and chat)
 

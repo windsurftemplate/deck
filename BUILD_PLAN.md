@@ -136,6 +136,7 @@ Gate to leave Phase 2: no raw key anywhere in the app or logs, and every externa
 | P2.5 | GTM, Code and Ops agents | Role files, tools, handoffs from the Chief of Staff | A delegated task finishes with a report | done (GTM, Ops, Engineering; Engineering plans only until repo tools exist) |
 | P2.6 | Jev routing and Laya intent check | Decide which agent and check each action matches the task | Off-task actions are stopped | blocked: needs your Jev access (API key) and a decision on Laya |
 | P2.8 | Crew rules you can change | Settings > Crew (instructions, your rules, each tool Allowed / Ask me / Off, history, undo) and from chat (proposal, then Apply); tool-list ask-first now honored | Changes can only make agents more careful; locked rules shown read-only | done |
+| P2.8 | Crew rules | Settings > Crew (instructions, your rules, tools Allowed, Ask me or Off; locked rules shown), chat proposals with Apply, history and undo; tool lists' ask-first honored | Changes only narrow an agent; nothing changes before you confirm | done |
 | P2.7 | Verifier | Check work against done-when before reporting done | Unfinished work is not reported done | done |
 ## Phase 3: Learning (in progress)
 
