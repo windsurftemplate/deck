@@ -7,7 +7,7 @@ import { ModelRoles } from "./ModelRoles";
 import { RecoveryCard } from "./Recovery";
 import { LearningCard } from "./Learning";
 import { CrewCard } from "./Crew";
-import { VoiceCard } from "./Voice";
+import { NotificationsCard, VoiceCard } from "./Voice";
 import { CameraCard } from "./Camera";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
@@ -56,6 +56,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <TelegramCard s={s} onSaved={setS} />
       <CrewCard />
       <VoiceCard s={s} onSaved={setS} />
+      <NotificationsCard s={s} onSaved={setS} />
       <CameraCard s={s} onSaved={setS} />
       <LearningCard />
       <RecoveryCard />

@@ -43,7 +43,17 @@ export interface Settings {
   /** Command deck view: the 3D station or a simple list (lighter on older machines). */
   world: { view: "3d" | "brain" | "list" };
   /** Push-to-talk in the app. Speech is turned into text on this machine with whisper.cpp; audio is never kept. */
-  voice: { enabled: boolean; whisperBin: string; modelPath: string; speakReplies: boolean };
+  voice: {
+    enabled: boolean;
+    whisperBin: string;
+    modelPath: string;
+    speakReplies: boolean;
+    /** Hands-free: listen for the wake word, then take the request. Audio stays on this machine. */
+    handsFree: boolean;
+    wakeWord: string;
+  };
+  /** Desktop notifications when deck is in the background. */
+  notifications: { enabled: boolean };
   /** Camera snapshots in chat. The camera is on only while you take a picture; pictures go to your chosen model and are not stored. */
   camera: { enabled: boolean };
   /** Outside tools the crew can use. Keys live in the OS keychain, never here. */
@@ -63,7 +73,8 @@ export const DEFAULTS: Settings = {
   preset: "balanced",
   onboarding: { done: false },
   world: { view: "3d" },
-  voice: { enabled: false, whisperBin: "", modelPath: "", speakReplies: false },
+  voice: { enabled: false, whisperBin: "", modelPath: "", speakReplies: false, handsFree: false, wakeWord: "deck" },
+  notifications: { enabled: true },
   camera: { enabled: false },
   tools: { jev: { enabled: false, baseUrl: "" } },
   chat: { telegram: { enabled: false, ownerChatIds: [] } },
@@ -158,9 +169,17 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
     for (const k of ["whisperBin", "modelPath"] as const) if (patch.voice[k] !== undefined) next.voice[k] = String(patch.voice[k]).trim();
     if (patch.voice.enabled !== undefined) next.voice.enabled = !!patch.voice.enabled;
     if (patch.voice.speakReplies !== undefined) next.voice.speakReplies = !!patch.voice.speakReplies;
+    if (patch.voice.handsFree !== undefined) next.voice.handsFree = !!patch.voice.handsFree;
+    if (patch.voice.wakeWord !== undefined) {
+      const w = String(patch.voice.wakeWord).trim().toLowerCase();
+      if (!/^[a-z][a-z ]{1,19}$/.test(w)) throw new SettingsError("voice.wakeWord", "Use a short word or two, letters only.");
+      next.voice.wakeWord = w;
+    }
+    if (next.voice.handsFree && !next.voice.enabled) throw new SettingsError("voice", "Turn on push-to-talk first; hands-free uses the same speech setup.");
     if (next.voice.enabled && (!next.voice.whisperBin || !next.voice.modelPath)) throw new SettingsError("voice", "Set the whisper.cpp program and model file before turning voice on.");
   }
   if (patch.camera?.enabled !== undefined) next.camera.enabled = !!patch.camera.enabled;
+  if (patch.notifications?.enabled !== undefined) next.notifications.enabled = !!patch.notifications.enabled;
   if (patch.tools?.jev) {
     const j = patch.tools.jev;
     if (j.baseUrl !== undefined) {
@@ -194,7 +213,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

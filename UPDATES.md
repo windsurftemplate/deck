@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 35 commits.
-Tests (counted): **203 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 38 commits.
+Tests (counted): **212 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -252,10 +252,32 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 33. `feat: second brain (files, text, links, Obsidian, Notion, Apple Notes, notes) with 3D map; document recall marked untrusted`
 34. `feat: livelier station (space, props, live screens, crew at consoles)`
 35. `feat: command center analytics, crew chat with discussions, tools page with Jev key`
+36. `feat: automations (recurring jobs from a page or from chat, with results everywhere)`
+37. `feat: documents become facts nightly; prompt tuning tested on practice tasks and adopted only with approval`
+38. `feat: hands-free voice with a wake word, and desktop notifications`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Automations, smarter learning, hands-free voice, notifications
+
+**Changed**
+- Automations page: name, who does it (any agent), what to do, time and days. Run now, edit, pause, delete. Or ask in chat ("every Monday at 9, have GTM review the pipeline"): the Chief of Staff proposes it and Apply schedules it. Chief of Staff jobs answer in their own chat; crew jobs run as checked tasks. Results go to chat, Crew chat, a desktop notification and Telegram if on. Jobs run while the app is open.
+- Learning from documents: the nightly pass (and Run learning now) also reads files and notes you added since last time and saves lasting facts through the usual memory filter. Web pages stay reference only.
+- Prompt tuning: for each crew member with misses (unfinished or unchecked tasks, rejected actions), a model drafts 3 to 6 bullets of guidance. Guidance that would loosen approvals, checks or rules is refused. The agent then redoes up to 4 recent tasks twice, with and without the guidance, in a practice run where reading works and anything that would change or send something is only recorded. Each run is checked by the verifier and scored. Adopted only if it is clearly better (at least 0.15 higher on average, not worse on most tasks, no task much worse), and only after you approve the card. It appears as "Learned guidance" in Settings, Crew, where you can remove it. Runs Sunday nights, or Tune prompts now.
+- Hands-free voice (off by default; needs push-to-talk set up): a Hands-free button keeps the microphone listening on this machine with a badge always visible. Speech is cut into clips when you pause, turned into text locally, and only clips starting with the wake word ("deck", or your own) are used. The reply is spoken; you can answer without the wake word for 8 seconds. Esc or the button turns it off and the microphone fully stops.
+- Desktop notifications (on by default, Settings): when deck is in the background, approvals waiting, replies, automation results, learning reports and security alerts. Uses the Tauri notification plugin.
+
+**Verified**
+- Engine: automation proposed from chat, applied, run as a task with a notification, edited, paused, deleted, validated.
+- Engine: documents turned into facts once, web pages skipped; tuning scored 0 before and 1 after on practice tasks, practice made no real changes, guidance adopted only after approval and kept across other rule edits.
+- Unit: guidance that loosens safety refused; adoption rule; wake word matching; settings for hands-free and notifications.
+- Desktop: scheduling a job; hands-free badge on and off with a fake microphone.
+- Rust shell with the notification plugin compiles. 212 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
+
+**Not verified yet**
+- Hands-free with a real voice, and notifications, on your Mac.
 
 ## 2026-10-03: Command center, crew chat, tools page
 

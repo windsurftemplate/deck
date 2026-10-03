@@ -87,3 +87,11 @@ it("Jev settings: https address only, off by default", () => {
   expect(() => applyUpdate(DEFAULTS, { tools: { jev: { baseUrl: "http://jev.example" } } })).toThrow(/https/);
   expect(applyUpdate(DEFAULTS, { tools: { jev: { baseUrl: "https://api.jev.example/v1" } } }).tools.jev.baseUrl).toBe("https://api.jev.example/v1");
 });
+
+it("hands-free needs voice on and a simple wake word; notifications on by default", () => {
+  expect(DEFAULTS.notifications.enabled).toBe(true);
+  expect(() => applyUpdate(DEFAULTS, { voice: { handsFree: true } })).toThrow(/push-to-talk first/);
+  const on = applyUpdate(DEFAULTS, { voice: { enabled: true, whisperBin: "/w", modelPath: "/m", handsFree: true, wakeWord: "Computer" } });
+  expect(on.voice).toMatchObject({ handsFree: true, wakeWord: "computer" });
+  expect(() => applyUpdate(on, { voice: { wakeWord: "deck!!" } })).toThrow(/letters only/);
+});

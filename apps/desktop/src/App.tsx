@@ -7,6 +7,8 @@ import { CrewChannel } from "./pages/CrewChannel";
 import { Tools } from "./pages/Tools";
 import { Automations } from "./pages/Automations";
 import { MicButton } from "./Voice";
+import { HandsFree } from "./HandsFree";
+import { notify, setNotifications } from "./notify";
 import { SnapshotButton, attachFile, type Picture } from "./Camera";
 import { PowerUp } from "./boot/PowerUp";
 import { engineCall, listThreads, threadMessages, deleteThread, renameThread, type Thread } from "./bridge";
@@ -29,6 +31,8 @@ export function App() {
   const [view, setView] = useState<View>("3d");
   const [voiceOn, setVoiceOn] = useState(false);
   const [speak, setSpeak] = useState(false);
+  const [handsFree, setHandsFree] = useState<{ on: boolean; word: string }>({ on: false, word: "deck" });
+  const [busy, setBusy] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [pictures, setPictures] = useState<Picture[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -54,7 +58,25 @@ export function App() {
     setLog(msgs.map((m) => ({ from: m.role === "owner" ? "you" : "agent", text: m.text })));
   };
   const [attachErr, setAttachErr] = useState<string | null>(null);
-  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled))), [showSettings]);
+  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled), setHandsFree({ on: s.voice.enabled && s.voice.handsFree, word: s.voice.wakeWord }), setNotifications(s.notifications.enabled))), [showSettings]);
+  /** Sends a message to the Chief of Staff and resolves with the reply (used by the box and by hands-free voice). */
+  const sendMessage = async (text: string, speakIt: boolean): Promise<string> => {
+    const pics = pictures;
+    setLog((l) => [...l, { from: "you", text: pics.length ? `${text} (${pics.length} picture${pics.length > 1 ? "s" : ""})` : text }, { from: "agent", text: "", typing: true }]);
+    setDraft("");
+    setPictures([]);
+    setBusy(true);
+    setCrew((c) => ({ ...c, "chief-of-staff": { status: "running", task: "Answering you" } }));
+    const r = await sendChat(text, pics.map(({ mediaType, data }) => ({ mediaType, data })), threadRef.current);
+    if (r.threadId && r.threadId !== threadRef.current) setThreadId(r.threadId);
+    setCrew((c) => ({ ...c, "chief-of-staff": { status: "done", task: "" } }));
+    setBusy(false);
+    if (speakIt && speak && "speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(r.reply.slice(0, 1200)));
+    setLog((l) => [...l.filter((x) => !x.typing), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.actions?.length ? { actions: r.actions.filter((a) => a.status !== "waiting") } : {}) }]);
+    void notify("Chief of Staff", r.reply);
+    return r.reply;
+  };
+
   const switchView = async (next: View) => {
     setView(next);
     // The station, brain and list views are remembered; the other pages open from the header.
@@ -80,6 +102,10 @@ export function App() {
         // Handoffs on the deck: walk to Command to take a task (created) and to report (done or not finished).
         if (d.task?.agent && (d.type === "task.created" || ["done", "failed"].includes(d.task.status))) setSignal((s) => ({ ...s, visit: `${d.task!.agent}#${Date.now()}` }));
       }
+      if (event === "approval" && (data as Approval).status === "pending") void notify("Needs your approval", (data as Approval).summary);
+      if (event === "notify") void notify((data as { title: string }).title, (data as { body: string }).body);
+      if (event === "security") void notify("Security alert", "Agents were stopped. Open deck to see why.");
+      if (event === "learning") void notify("Learning report", String((data as { report?: string }).report ?? ""));
       if (event === "chat.delta") {
         const d = data as { threadId: string; delta: string };
         // Text arrives word by word; it goes into the reply that is being written.
@@ -305,18 +331,7 @@ export function App() {
             onSubmit={(e) => {
               e.preventDefault();
               if (!draft.trim()) return;
-              const text = draft.trim();
-              const pics = pictures;
-              setLog((l) => [...l, { from: "you", text: pics.length ? `${text} (${pics.length} picture${pics.length > 1 ? "s" : ""})` : text }, { from: "agent", text: "", typing: true }]);
-              setDraft("");
-              setPictures([]);
-              setCrew((c) => ({ ...c, "chief-of-staff": { status: "running", task: "Answering you" } }));
-              sendChat(text, pics.map(({ mediaType, data }) => ({ mediaType, data })), threadRef.current).then((r) => {
-                if (r.threadId && r.threadId !== threadRef.current) setThreadId(r.threadId);
-                setCrew((c) => ({ ...c, "chief-of-staff": { status: "done", task: "" } }));
-                if (speak && "speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(r.reply.slice(0, 1200)));
-                return r;
-              }).then((r) => setLog((l) => [...l.filter((x) => !x.typing), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.actions?.length ? { actions: r.actions.filter((a) => a.status !== "waiting") } : {}) }]));
+              void sendMessage(draft.trim(), true);
             }}
           >
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message the Chief of Staff, or say: switch heavy work to Gemini" aria-label="Message" />
@@ -336,6 +351,7 @@ export function App() {
                 />
               </label>
             )}
+            {handsFree.on && <HandsFree wakeWord={handsFree.word} busy={busy} onRequest={(t) => sendMessage(t, false)} />}
             {voiceOn && <MicButton onText={(t) => setDraft((d) => (d ? `${d} ${t}` : t))} />}
             <button className="btn" type="submit">Send</button>
           </form>

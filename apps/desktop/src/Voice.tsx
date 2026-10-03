@@ -65,15 +65,30 @@ export function MicButton({ onText }: { onText: (text: string) => void }) {
   );
 }
 
+export function NotificationsCard({ s, onSaved }: { s: Settings; onSaved: (s: Settings) => void }) {
+  return (
+    <div className="card">
+      <h3>Notifications</h3>
+      <p className="muted">When deck is in the background: approvals waiting for you, replies, automation results, learning reports and security alerts. macOS asks once for permission.</p>
+      <label className="check">
+        <input type="checkbox" checked={s.notifications.enabled} onChange={async (e) => onSaved(await saveSettings({ notifications: { enabled: e.target.checked } }))} />
+        Show desktop notifications
+      </label>
+    </div>
+  );
+}
+
 export function VoiceCard({ s, onSaved }: { s: Settings; onSaved: (s: Settings) => void }) {
   const [on, setOn] = useState(s.voice.enabled);
   const [bin, setBin] = useState(s.voice.whisperBin);
   const [model, setModel] = useState(s.voice.modelPath);
   const [speak, setSpeak] = useState(s.voice.speakReplies);
+  const [hands, setHands] = useState(s.voice.handsFree);
+  const [word, setWord] = useState(s.voice.wakeWord);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const save = async () => {
     try {
-      onSaved(await saveSettings({ voice: { enabled: on, whisperBin: bin, modelPath: model, speakReplies: speak } }));
+      onSaved(await saveSettings({ voice: { enabled: on, whisperBin: bin, modelPath: model, speakReplies: speak, handsFree: on && hands, wakeWord: word } }));
       setMsg({ ok: true, text: on ? "Saved. A Talk button appears next to Send." : "Saved. Voice is off." });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof SettingsError ? e.message : "Could not save." });
@@ -98,6 +113,14 @@ export function VoiceCard({ s, onSaved }: { s: Settings; onSaved: (s: Settings) 
       <label className="check">
         <input type="checkbox" checked={speak} onChange={(e) => setSpeak(e.target.checked)} />
         Read the Chief of Staff's replies aloud (uses your computer's built-in voice)
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={hands} onChange={(e) => setHands(e.target.checked)} />
+        Hands-free: a Hands-free button listens for the wake word, then takes your request and answers out loud
+      </label>
+      <label className="field">
+        Wake word
+        <input value={word} onChange={(e) => setWord(e.target.value)} placeholder="deck" spellCheck={false} />
       </label>
       <div className="row">
         <button className="primary" type="button" onClick={save}>

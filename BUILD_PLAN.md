@@ -200,7 +200,9 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P5.10 | Command center: tokens per day, by model and agent, crew work per day, crew performance table, approvals, brain growth, issues opened and closed (7, 30 or 90 days) | Numbers come from the usage, task and message history | done |
 | P5.11 | Crew chat: live feed of handoffs, tool calls, reports, checks, approvals and decisions; crew discussions you start (talk only) with a Chief of Staff summary; you can add to a discussion | Every step of delegated work appears in order | done |
 | P5.12 | Tools page: every integration's state; Jev key (keychain) and API address; who can use what | Jev key saved; connection waits for Jev's API docs | done (Jev API todo) |
-| P5.6 | Hands-free voice: spoken replies done (computer's built-in voice); wake word todo | Off by default; mic indicator always on | partly done |
+| P5.6 | Hands-free voice: wake word, request, spoken reply, follow-up without the wake word; desktop notifications in the background | Off by default; badge whenever the mic listens | done |
+| P5.13 | Automations: recurring jobs for any agent, set on a page or proposed from chat; results to chat, Crew chat, notifications and Telegram | Runs on schedule while the app is open | done |
+| P5.14 | Learning: your documents become facts nightly; prompt tuning drafts guidance from misses, tests it on practice tasks (nothing changed or sent), adopts only a clear win with your approval | Tuned guidance shows in Settings, Crew, and can be removed | done |
 
 ## How to use this file
 

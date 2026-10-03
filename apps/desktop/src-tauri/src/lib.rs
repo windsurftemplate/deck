@@ -293,6 +293,7 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![secret_set, secret_exists, secret_hint, secret_delete, native_checks, emergency_stop, settings_get, settings_set, engine_call, engine_restart, recovery_key_reveal, recovery_key_restore])
         .run(tauri::generate_context!())
         .expect("error while running deck");

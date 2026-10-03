@@ -18,7 +18,8 @@
     "@fontsource/chakra-petch": "^5.1.0",
     "@deck/settings": "workspace:*",
     "@deck/models": "workspace:*",
-    "three": "^0.170.0"
+    "three": "^0.170.0",
+    "@tauri-apps/plugin-notification": "^2.2.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
