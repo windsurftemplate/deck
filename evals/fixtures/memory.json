@@ -1,0 +1,15 @@
+{
+  "note": "Fake data for evals only. Not real people or companies.",
+  "steps": [
+    { "episode": { "agent": "gtm", "kind": "email_reply", "summary": "Acme replied: not until Q2, talk to our CISO Dana Ito" } },
+    { "fact": { "subject": "Acme", "attribute": "timing", "claim": "Not buying until Q2", "source": "inferred" } },
+    { "fact": { "subject": "Dana Ito", "attribute": "role", "claim": "CISO at Acme, the security contact", "source": "inferred" } },
+    { "edge": ["Dana Ito", "works at", "Acme"] },
+    { "fact": { "subject": "Pricing", "attribute": "team tier", "claim": "Team tier costs $79 per month", "source": "stated" } },
+    { "fact": { "subject": "Pricing", "attribute": "team tier", "claim": "Team tier costs $99 per month", "source": "stated" } },
+    { "fact": { "subject": "Initech", "attribute": "design partner", "claim": "Signed design partner agreement in August", "source": "inferred" } },
+    { "fact": { "subject": "Globex", "attribute": "design partner", "claim": "Signed design partner agreement in September, the most recent", "source": "inferred" } },
+    { "fact": { "subject": "Owner rule", "attribute": "investors", "claim": "Never email investors without approval", "source": "stated" } },
+    { "fact": { "subject": "Hooli", "attribute": "status", "claim": "Lost deal, chose a competitor", "source": "inferred" } }
+  ]
+}

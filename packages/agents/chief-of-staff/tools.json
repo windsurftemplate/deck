@@ -1,0 +1,6 @@
+{
+  "agent": "chief-of-staff",
+  "allow": ["calendar.read", "gmail.read", "linear.read", "github.read", "memory.read", "memory.write", "tasks.create", "tasks.assign"],
+  "requiresApproval": [],
+  "deny": ["gmail.send", "github.merge", "payments.*", "*.delete"]
+}

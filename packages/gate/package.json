@@ -1,5 +1,5 @@
 {
-  "name": "@deck/core",
+  "name": "@deck/gate",
   "version": "0.0.0",
   "private": true,
   "type": "module",

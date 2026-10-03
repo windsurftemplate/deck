@@ -1,17 +1,22 @@
 {
-  "name": "@deck/evals",
+  "name": "@deck/memory",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/schema.sql','dist/schema.sql')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@deck/memory": "workspace:*"
+    "better-sqlite3-multiple-ciphers": "^11.7.0",
+    "sqlite-vec": "0.1.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

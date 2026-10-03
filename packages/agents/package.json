@@ -1,5 +1,5 @@
 {
-  "name": "@deck/core",
+  "name": "@deck/agents",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,5 +15,15 @@
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
     "@types/node": "^22.10.2"
-  }
+  },
+  "dependencies": {
+    "@deck/memory": "workspace:*",
+    "@deck/models": "workspace:*",
+    "@deck/connectors": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "core-rules.md",
+    "chief-of-staff"
+  ]
 }

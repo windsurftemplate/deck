@@ -1,0 +1,7 @@
+[
+  { "id": "acme-timing", "q": "When should we follow up with Acme?", "expect": ["Q2"] },
+  { "id": "acme-security-contact", "q": "Who is the security contact at Acme?", "expect": ["Dana Ito"] },
+  { "id": "team-price-current", "q": "What does the Team tier cost?", "expect": ["$99"], "forbid": ["$79"] },
+  { "id": "latest-design-partner", "q": "Which design partner signed most recently?", "expect": ["Globex"] },
+  { "id": "investor-rule", "q": "Can I email our investors directly?", "expect": ["Never email investors without approval"] }
+]
