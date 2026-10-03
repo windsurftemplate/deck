@@ -136,6 +136,20 @@ Gate to leave Phase 2: no raw key anywhere in the app or logs, and every externa
 | P2.5 | GTM, Code and Ops agents | Role files, tools, handoffs from the Chief of Staff | A delegated task finishes with a report | done (GTM, Ops, Engineering; Engineering plans only until repo tools exist) |
 | P2.6 | Jev routing and Laya intent check | Decide which agent and check each action matches the task | Off-task actions are stopped | blocked: needs your Jev access (API key) and a decision on Laya |
 | P2.7 | Verifier | Check work against done-when before reporting done | Unfinished work is not reported done | done |
+## Phase 3: Learning (in progress)
+
+Gate to leave Phase 3: eval scores rise two weeks running.
+
+| # | What | Done when | Status |
+|---|------|-----------|--------|
+| P3.1 | Skills in memory: versions, draft until approved, success and failure counts, in every prompt's index, `load_skill` tool | A skill is used only after approval | done |
+| P3.2 | Reflection after checked work proposes a skill (approval card) | Passing work can teach a skill; failing work never does | done |
+| P3.3 | Nightly pass at 02:00 (and Run learning now): facts from recent work through the write gate, feedback review, retire failing skills, report to the owner | Runs once per episode; conflicts go to the owner | done |
+| P3.4 | Quarantined reader for untrusted content (email, web) | Injected instructions never reach a tool call | todo |
+| P3.5 | Honeytokens | A planted fake secret used anywhere stops the crew and alerts the owner | todo |
+| P3.6 | Prompt evolution with evals | A prompt change ships only if every eval suite holds or improves | todo |
+| P3.7 | Task and safety eval suites | Replayed tasks and injection attempts scored in CI | todo |
+
 ## Code signing
 
 - Not needed to build and run on your own Mac (apps you build yourself are not quarantined).

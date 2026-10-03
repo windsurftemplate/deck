@@ -1,6 +1,6 @@
 import { words } from "./fts.js";
 import { checkDump } from "./sqlite-store.js";
-import type { MemoryDump, MemoryStore, NewFact, StoredEdge, StoredEpisode, StoredFact } from "./store.js";
+import type { MemoryDump, MemoryStore, NewFact, SkillStatus, StoredEdge, StoredEpisode, StoredFact, StoredSkill } from "./store.js";
 import type { EpisodeInput } from "./types.js";
 
 type Dump = MemoryDump;
@@ -22,7 +22,7 @@ export class InMemoryStore implements MemoryStore {
   private seq = { e: 0, f: 0, edge: 0, r: 0, fb: 0 };
 
   constructor(public readonly dim: number) {
-    this.d = { format: "deck-memory", version: 1, dim, episodes: [], facts: [], edges: [], reviews: [], feedback: [] };
+    this.d = { format: "deck-memory", version: 1, dim, episodes: [], facts: [], edges: [], reviews: [], feedback: [], skills: [], meta: {} };
   }
 
   async addEpisode(e: EpisodeInput, ts: string, vec: Float32Array) {
@@ -141,13 +141,50 @@ export class InMemoryStore implements MemoryStore {
   async importAll(d: MemoryDump) {
     checkDump(d, this.dim);
     if (this.d.facts.length || this.d.episodes.length) throw new Error("memory: import needs an empty store");
-    this.d = structuredClone({ ...d, dim: this.dim });
+    this.d = structuredClone({ ...d, dim: this.dim, skills: d.skills ?? [], meta: d.meta ?? {} });
     for (const f of this.d.facts) if (f.vec && f.validTo === null) this.fv.set(f.id, new Float32Array(f.vec));
     for (const e of this.d.episodes) if (e.vec) this.ev.set(e.id, new Float32Array(e.vec));
     this.d.facts.forEach((f) => delete f.vec);
     this.d.episodes.forEach((e) => delete e.vec);
     const max = (xs: { id: number }[]) => xs.reduce((m, x) => Math.max(m, x.id), 0);
     this.seq = { e: max(this.d.episodes), f: max(this.d.facts), edge: max(this.d.edges), r: max(this.d.reviews), fb: max(this.d.feedback) };
+  }
+  async getMeta(key: string) {
+    return this.d.meta?.[key] ?? null;
+  }
+  async setMeta(key: string, value: string) {
+    (this.d.meta ??= {})[key] = value;
+  }
+  async episodesSince(afterId: number, limit: number) {
+    return this.d.episodes.filter((e) => e.id > afterId).slice(0, limit).map((e) => ({ id: e.id, ts: e.ts, summary: e.summary, agent: e.agent, kind: e.kind }));
+  }
+  async feedbackSince(afterId: number) {
+    return this.d.feedback.filter((f) => f.id > afterId).map((f) => ({ id: f.id, ts: f.ts, actionId: f.actionId, agent: f.agent, verdict: f.verdict, reason: f.reason }));
+  }
+  private latest(): StoredSkill[] {
+    const by = new Map<string, StoredSkill>();
+    for (const k of this.d.skills ?? []) if (!by.has(k.name) || by.get(k.name)!.version < k.version) by.set(k.name, k);
+    return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+  async saveSkill(sk: { name: string; description: string; body: string }, ts: string) {
+    const v = (this.latest().find((x) => x.name === sk.name)?.version ?? 0) + 1;
+    const row: StoredSkill = { ...sk, version: v, status: "draft", successes: 0, failures: 0, createdAt: ts };
+    (this.d.skills ??= []).push(row);
+    return structuredClone(row);
+  }
+  async skills(status?: SkillStatus) {
+    return structuredClone(this.latest().filter((x) => !status || x.status === status));
+  }
+  async skill(name: string) {
+    return structuredClone(this.latest().find((x) => x.name === name));
+  }
+  async setSkillStatus(name: string, status: SkillStatus) {
+    const k = this.latest().find((x) => x.name === name);
+    if (k) k.status = status;
+  }
+  async recordSkillOutcome(name: string, success: boolean) {
+    const k = this.latest().find((x) => x.name === name);
+    if (k) success ? k.successes++ : k.failures++;
   }
   async setVector(kind: "fact" | "episode", id: number, vec: Float32Array) {
     if (vec.length !== this.dim) throw new Error("memory: vector has the wrong length");

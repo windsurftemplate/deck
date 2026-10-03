@@ -2,6 +2,22 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Phase 3 begins: the crew learns
+
+**Changed**
+- Memory port: skills (versioned, draft until approved, success and failure counts), small notes for cursors, and reading episodes and feedback since a point. Both adapters pass the shared tests; skills and notes survive export and import.
+- Reflection: after work passes its check, a cheap model call looks for a reusable procedure. If there is one, it becomes a draft skill and you get an approval card ("Learn skill ..."). Approved skills appear as one line in every agent's prompt and load in full with the `load_skill` tool; each use counts as a success or failure from the task's check.
+- Nightly learning at 02:00 (or Settings > Learning > Run learning now): reads recent work once, pulls out lasting facts through the memory write gate (conflicts with what you said come to you), tells you if you keep rejecting one agent's actions, retires skills that fail more than they work, and sends a short report (also on Telegram).
+- Every approve and reject is now recorded as feedback.
+- Settings > Learning shows skills and their record.
+
+**Verified**
+- 198 TypeScript tests pass; `pnpm check` green; no secrets in the repo.
+- Engine: a checked GTM task proposes a skill, approving it puts it in the next prompt and `load_skill` returns it; the nightly pass learns a fact once (a second run reads nothing old), flags three rejections, and retires a failing skill.
+
+**Next**
+- Eval suites for tasks and safety, then the injection defenses (quarantined reader, honeytokens), then prompt evolution.
+
 ## 2026-10-02: Verifier and the crew (GTM, Operations, Engineering)
 
 **Changed**

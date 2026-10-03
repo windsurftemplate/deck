@@ -42,6 +42,9 @@ export function openMemory({ path, key, dim }: OpenOptions): DB {
     throw new Error(`memory: workspace uses ${stored.value}-dim embeddings; re-embed before switching to ${dim}`);
   }
   if (!stored) db.prepare("INSERT INTO meta (key, value) VALUES ('dim', ?)").run(String(dim));
+  // Migrations for columns added after a workspace was created.
+  const skillCols = (db.prepare("PRAGMA table_info(skills)").all() as { name: string }[]).map((c) => c.name);
+  if (!skillCols.includes("description")) db.exec("ALTER TABLE skills ADD COLUMN description TEXT NOT NULL DEFAULT ''");
   db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_facts USING vec0(embedding float[${dim}]);`);
   db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_episodes USING vec0(embedding float[${dim}]);`);
   return db;

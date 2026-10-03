@@ -42,6 +42,8 @@ async function main() {
     "issues.get": (p) => engine.issues().get(p as never),
     "profile.save": (p) => engine.saveProfile((p ?? {}) as Record<string, string>),
     "models.test": () => engine.testModel(),
+    "learn.now": () => engine.learnNow(),
+    "skills.list": () => engine.skillsList(),
     "drafts.list": async () => engine.recentDrafts(),
     "crew.tasks": async () => engine.board.list(),
     "approvals.list": async () => engine.pendingApprovals(),

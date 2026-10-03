@@ -40,6 +40,20 @@ export interface MemoryStore {
   searchEpisodesByVector(vec: Float32Array, k: number): Promise<StoredEpisode[]>;
   searchEpisodesByText(text: string, k: number): Promise<StoredEpisode[]>;
 
+  /** Small key-value notes (for example where the nightly pass stopped). */
+  getMeta(key: string): Promise<string | null>;
+  setMeta(key: string, value: string): Promise<void>;
+  /** Episodes after an id, oldest first. Used by the nightly learning pass. */
+  episodesSince(afterId: number, limit: number): Promise<(StoredEpisode & { agent: string; kind: string })[]>;
+  feedbackSince(afterId: number): Promise<{ id: number; ts: string; actionId: string; agent: string; verdict: "approve" | "reject" | "edit"; reason: string | null }[]>;
+
+  /** Skills: learned procedures. New ones start as drafts and are only used once the owner approves. */
+  saveSkill(s: { name: string; description: string; body: string }, ts: string): Promise<StoredSkill>;
+  skills(status?: SkillStatus): Promise<StoredSkill[]>;
+  skill(name: string): Promise<StoredSkill | undefined>;
+  setSkillStatus(name: string, status: SkillStatus): Promise<void>;
+  recordSkillOutcome(name: string, success: boolean): Promise<void>;
+
   /** Everything needed to move to another adapter. Vectors included when `withVectors` is true. */
   exportAll(withVectors: boolean): Promise<MemoryDump>;
   /** Load a dump into an empty store. Vectors must match `dim` if present. */
@@ -66,6 +80,18 @@ export interface StoredEpisode {
   ts: string;
   summary: string;
 }
+export type SkillStatus = "draft" | "active" | "retired";
+export interface StoredSkill {
+  name: string;
+  version: number;
+  description: string;
+  body: string;
+  status: SkillStatus;
+  successes: number;
+  failures: number;
+  createdAt: string;
+}
+
 export interface StoredEdge {
   id: number;
   from: string;
@@ -83,4 +109,6 @@ export interface MemoryDump {
   edges: { id: number; from: string; relation: string; to: string; validFrom: string; validTo: string | null }[];
   reviews: { id: number; ts: string; kind: string; payload: unknown; status: "open" | "resolved" }[];
   feedback: { id: number; ts: string; actionId: string; agent: string; verdict: "approve" | "reject" | "edit"; before: string | null; after: string | null; reason: string | null }[];
+  skills?: StoredSkill[];
+  meta?: Record<string, string>;
 }

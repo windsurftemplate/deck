@@ -1,6 +1,6 @@
 import { openMemory, type DB, type OpenOptions } from "./db.js";
 import { ftsQuery } from "./fts.js";
-import type { MemoryDump, MemoryStore, NewFact, StoredEdge, StoredEpisode, StoredFact, StoredFactRef } from "./store.js";
+import type { MemoryDump, MemoryStore, NewFact, SkillStatus, StoredEdge, StoredEpisode, StoredFact, StoredFactRef, StoredSkill } from "./store.js";
 import type { EpisodeInput } from "./types.js";
 
 /** SQLite adapter: SQLCipher-encrypted file, sqlite-vec for vectors, FTS5 for keywords. */
@@ -137,6 +137,41 @@ export class SqliteMemoryStore implements MemoryStore {
     return this.db.prepare(`SELECT e.id, e.ts, e.summary FROM episodes_fts JOIN episodes e ON e.id = episodes_fts.rowid WHERE episodes_fts MATCH ? ORDER BY bm25(episodes_fts) LIMIT ?`).all(q, k) as StoredEpisode[];
   }
 
+  async getMeta(key: string) {
+    return (this.db.prepare("SELECT value FROM meta WHERE key = ?").get(`app.${key}`) as { value: string } | undefined)?.value ?? null;
+  }
+  async setMeta(key: string, value: string) {
+    this.db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(`app.${key}`, value);
+  }
+  async episodesSince(afterId: number, limit: number) {
+    return this.db.prepare("SELECT id, ts, summary, agent, kind FROM episodes WHERE id > ? ORDER BY id LIMIT ?").all(afterId, limit) as (StoredEpisode & { agent: string; kind: string })[];
+  }
+  async feedbackSince(afterId: number) {
+    return (this.db.prepare("SELECT id, ts, action_id, agent, verdict, reason FROM feedback WHERE id > ? ORDER BY id").all(afterId) as { id: number; ts: string; action_id: string; agent: string; verdict: "approve" | "reject" | "edit"; reason: string | null }[]).map((f) => ({ id: f.id, ts: f.ts, actionId: f.action_id, agent: f.agent, verdict: f.verdict, reason: f.reason }));
+  }
+  private skillRow = (r: { name: string; version: number; description: string; body: string; status: SkillStatus; successes: number; failures: number; created_at: string }): StoredSkill => ({ name: r.name, version: r.version, description: r.description, body: r.body, status: r.status, successes: r.successes, failures: r.failures, createdAt: r.created_at });
+  async saveSkill(sk: { name: string; description: string; body: string }, ts: string) {
+    return this.db.transaction(() => {
+      const v = ((this.db.prepare("SELECT MAX(version) v FROM skills WHERE name = ?").get(sk.name) as { v: number | null }).v ?? 0) + 1;
+      this.db.prepare("INSERT INTO skills (name, version, description, body, status, created_at) VALUES (?, ?, ?, ?, 'draft', ?)").run(sk.name, v, sk.description, sk.body, ts);
+      return { name: sk.name, version: v, description: sk.description, body: sk.body, status: "draft" as const, successes: 0, failures: 0, createdAt: ts };
+    })();
+  }
+  /** Latest version of each skill. */
+  async skills(status?: SkillStatus) {
+    const rows = this.db.prepare("SELECT s.* FROM skills s JOIN (SELECT name, MAX(version) v FROM skills GROUP BY name) m ON m.name = s.name AND m.v = s.version ORDER BY s.name").all() as Parameters<typeof this.skillRow>[0][];
+    return rows.map(this.skillRow).filter((x) => !status || x.status === status);
+  }
+  async skill(name: string) {
+    return (await this.skills()).find((x) => x.name === name);
+  }
+  async setSkillStatus(name: string, status: SkillStatus) {
+    this.db.prepare("UPDATE skills SET status = ? WHERE name = ? AND version = (SELECT MAX(version) FROM skills WHERE name = ?)").run(status, name, name);
+  }
+  async recordSkillOutcome(name: string, success: boolean) {
+    this.db.prepare(`UPDATE skills SET ${success ? "successes = successes + 1" : "failures = failures + 1"} WHERE name = ? AND version = (SELECT MAX(version) FROM skills WHERE name = ?)`).run(name, name);
+  }
+
   async exportAll(withVectors: boolean): Promise<MemoryDump> {
     const vecOf = (table: "vec_facts" | "vec_episodes", id: number) => {
       if (!withVectors) return undefined;
@@ -156,6 +191,8 @@ export class SqliteMemoryStore implements MemoryStore {
       }),
       edges: (this.db.prepare("SELECT id, from_subj, relation, to_subj, valid_from, valid_to FROM edges ORDER BY id").all() as { id: number; from_subj: string; relation: string; to_subj: string; valid_from: string; valid_to: string | null }[]).map((e) => ({ id: e.id, from: e.from_subj, relation: e.relation, to: e.to_subj, validFrom: e.valid_from, validTo: e.valid_to })),
       reviews: (this.db.prepare("SELECT id, ts, kind, payload, status FROM review_queue ORDER BY id").all() as { id: number; ts: string; kind: string; payload: string; status: "open" | "resolved" }[]).map((r) => ({ ...r, payload: JSON.parse(r.payload) as unknown })),
+      skills: (this.db.prepare("SELECT * FROM skills ORDER BY name, version").all() as Parameters<typeof this.skillRow>[0][]).map(this.skillRow),
+      meta: Object.fromEntries((this.db.prepare("SELECT key, value FROM meta WHERE key LIKE 'app.%'").all() as { key: string; value: string }[]).map((r) => [r.key.slice(4), r.value])),
       feedback: (this.db.prepare("SELECT id, ts, action_id, agent, verdict, before, after, reason FROM feedback ORDER BY id").all() as { id: number; ts: string; action_id: string; agent: string; verdict: "approve" | "reject" | "edit"; before: string | null; after: string | null; reason: string | null }[]).map((f) => ({ id: f.id, ts: f.ts, actionId: f.action_id, agent: f.agent, verdict: f.verdict, before: f.before, after: f.after, reason: f.reason })),
     };
   }
@@ -176,6 +213,8 @@ export class SqliteMemoryStore implements MemoryStore {
       for (const f of d.facts) if (f.supersededBy !== null) this.db.prepare("UPDATE facts SET superseded_by = ? WHERE id = ?").run(f.supersededBy, f.id);
       for (const e of d.edges) this.db.prepare("INSERT INTO edges (id, from_subj, relation, to_subj, valid_from, valid_to) VALUES (?, ?, ?, ?, ?, ?)").run(e.id, e.from, e.relation, e.to, e.validFrom, e.validTo);
       for (const r of d.reviews) this.db.prepare("INSERT INTO review_queue (id, ts, kind, payload, status) VALUES (?, ?, ?, ?, ?)").run(r.id, r.ts, r.kind, JSON.stringify(r.payload), r.status);
+      for (const k of d.skills ?? []) this.db.prepare("INSERT INTO skills (name, version, description, body, status, successes, failures, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(k.name, k.version, k.description, k.body, k.status, k.successes, k.failures, k.createdAt);
+      for (const [k, v] of Object.entries(d.meta ?? {})) this.db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(`app.${k}`, v);
       for (const f of d.feedback) this.db.prepare("INSERT INTO feedback (id, ts, action_id, agent, verdict, before, after, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(f.id, f.ts, f.actionId, f.agent, f.verdict, f.before, f.after, f.reason);
     })();
   }

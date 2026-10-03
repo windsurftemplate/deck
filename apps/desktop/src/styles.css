@@ -88,3 +88,5 @@ select { font: inherit; font-size: 15px; color: var(--text); background: var(--v
 .member .station { font-size: 12px; color: var(--muted); margin-left: 6px; }
 .member.running .st { color: var(--ion); }
 .member.failed .st { color: var(--warn); }
+.skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.skills li { border-top: 1px solid var(--seam); padding-top: 8px; font-size: 15px; }

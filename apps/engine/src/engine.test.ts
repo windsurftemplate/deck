@@ -262,7 +262,9 @@ describe("crew delegation", () => {
     await e.open();
     const r = await e.chat("Get GTM to draft a follow-up to Dana at Acme");
     expect(r.reply).toBe("GTM drafted the follow-up; it is ready for you to review.");
-    expect(seen).toEqual(["claude-sonnet-5:# Role: Chief of Staff", "claude-sonnet-5:# Role: GTM", "claude-sonnet-5:# Role: GTM", "claude-haiku-4-5-20251001:verifier", "claude-sonnet-5:# Role: Chief of Staff"]);
+    // Heavy model: Chief of Staff, GTM twice, Chief of Staff again. Cheap model: the check (and then reflection).
+    expect(seen.filter((x) => x.startsWith("claude-sonnet-5"))).toEqual(["claude-sonnet-5:# Role: Chief of Staff", "claude-sonnet-5:# Role: GTM", "claude-sonnet-5:# Role: GTM", "claude-sonnet-5:# Role: Chief of Staff"]);
+    expect(seen.indexOf("claude-haiku-4-5-20251001:verifier")).toBe(3);
     expect(e.recentDrafts()[0]).toMatchObject({ agent: "gtm", to: "dana@acme.com", subject: "Q2 pilot" });
     expect(e.board.list({ agent: "gtm" })[0]).toMatchObject({ status: "done", note: "Checked: all done-when items met." });
     await e.close();
@@ -283,6 +285,77 @@ describe("crew delegation", () => {
     expect(tools(e, "chief-of-staff")).toContain("delegate");
     expect(tools(e, "gtm")).not.toContain("delegate");
     expect(await e.delegate("nobody", "x", "y", ["z"])).toMatch(/no crew member/);
+    await e.close();
+  });
+});
+
+describe("learning loop", () => {
+  const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const tool = (name: string, input: Record<string, unknown>) => ({ text: "", toolCalls: [{ type: "tool_call" as const, id: `c-${Math.random()}`, name, input }], model: "m", stopReason: "tool_use", usage: U });
+  const text = (t: string) => ({ text: t, model: "m", stopReason: "end_turn", usage: U });
+  const setup = (heavy: ReturnType<typeof text>[], cheap: ReturnType<typeof text>[]) => {
+    const prompts: string[] = [];
+    const cheapSeen: string[] = [];
+    const e = new Engine({
+      dataDir: dir(),
+      keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }),
+      settings: DEFAULTS,
+      fetch: offline,
+      makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({
+        id: ref.model,
+        chat: async (req) => {
+          if (ref.model.includes("haiku")) cheapSeen.push(JSON.stringify(req.messages));
+          else prompts.push(req.system?.map((b) => b.text).join("\n") ?? "");
+          return ((ref.model.includes("haiku") ? cheap : heavy).shift() ?? text('{"facts": []}')) as never;
+        },
+      }),
+    });
+    return { e, prompts, cheapSeen };
+  };
+  const tick = () => new Promise((r) => setTimeout(r, 30));
+
+  it("passing work proposes a skill; once approved it shows up in prompts and loads on demand", async () => {
+    const { e, prompts } = setup(
+      [tool("delegate", { agent: "gtm", goal: "Draft a follow-up to Dana", done_when: ["a draft exists"] }), tool("draft_message", { to: "dana@acme.com", body: "Hi Dana" }), text("Drafted."), text("Done.")],
+      [text('{"missing": []}'), text('{"skill": {"name": "draft-follow-up", "description": "Use after a sales call", "steps": ["Search memory for the call", "Write under 120 words", "One clear ask"]}}')],
+    );
+    await e.open();
+    await e.chat("Get GTM to draft a follow-up to Dana");
+    await tick();
+    const pending = e.pendingApprovals().find((a) => a.summary.startsWith('Learn skill "draft-follow-up"'))!;
+    expect(pending.detail).toBe("1. Search memory for the call\n2. Write under 120 words\n3. One clear ask");
+    expect((await e.skillsList())[0]).toMatchObject({ name: "draft-follow-up", status: "draft" });
+    e.decide(pending.id, true);
+    await tick();
+    expect((await e.skillsList())[0]!.status).toBe("active");
+    await e.chat("hello");
+    expect(prompts.at(-1)).toContain("- draft-follow-up: Use after a sales call");
+    const load = (e as unknown as { toolsFor: (a: string) => { spec: { name: string }; run: (i: object) => Promise<string> }[] }).toolsFor("gtm").find((t) => t.spec.name === "load_skill")!;
+    expect(await load.run({ name: "draft-follow-up" })).toMatch(/^Skill draft-follow-up \(v1\):\n1\. Search memory/);
+    await e.close();
+  });
+
+  it("nightly pass: learns facts once, flags repeated rejections, retires failing skills", async () => {
+    const { e, cheapSeen } = setup([text("ok"), text("ok")], [text('{"facts": [{"subject": "Acme", "topic": "timing", "claim": "Not buying until Q2"}]}')]);
+    await e.open();
+    await e.chat("Acme said they are not buying until Q2");
+    const store = (e as unknown as { store: { saveSkill: (s: object, ts: string) => Promise<unknown>; setSkillStatus: (n: string, s: string) => Promise<void>; recordSkillOutcome: (n: string, ok: boolean) => Promise<void> } }).store;
+    await store.saveSkill({ name: "bad-skill", description: "d", body: "1. a\n2. b" }, "t");
+    await store.setSkillStatus("bad-skill", "active");
+    for (let n = 0; n < 3; n++) await store.recordSkillOutcome("bad-skill", false);
+    for (let n = 0; n < 3; n++) {
+      const { approval } = e.approvals.request({ agent: "gtm", summary: `Send ${n}`, detail: "", scope: "gmail.send" });
+      e.decide(approval.id, false);
+    }
+    await tick();
+    const report = await e.learnNow();
+    expect(report).toContain("Learned 1 new facts");
+    expect(report).toContain("You rejected 3 of gtm's last 3 actions");
+    expect(report).toContain('Retired skill "bad-skill"');
+    const seenBefore = cheapSeen.length;
+    expect(await e.learnNow()).toBe("Nothing new to learn.");
+    expect(cheapSeen.length).toBe(seenBefore);
     await e.close();
   });
 });

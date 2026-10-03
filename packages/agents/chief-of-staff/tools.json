@@ -10,6 +10,7 @@
     "issues.write",
     "memory.read",
     "memory.write",
+    "skills.read",
     "tasks.assign",
     "tasks.create"
   ],

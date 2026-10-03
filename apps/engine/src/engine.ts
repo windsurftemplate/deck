@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, runAgent, type ActionRecord, type AgentTool } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, type ActionRecord, type AgentTool } from "@deck/agents";
 import { ChatBot, TelegramClient, type BotActions } from "@deck/chat";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
@@ -110,6 +110,12 @@ export class Engine {
     this.reader = new MemoryReader(this.store, embedder);
     this.tracker = new Tracker(new SqliteTrackerStore(this.store.connection), "VP", this.clock);
     this.buildRouter();
+    this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
+  }
+
+  /** One line per approved skill, for the prompt. Full steps load on demand with load_skill. */
+  private async skillsIndex(): Promise<string[]> {
+    return (await this.store.skills("active")).map((k) => `${k.name}: ${k.description}`);
   }
 
   private buildRouter() {
@@ -291,6 +297,16 @@ export class Engine {
         },
       },
     ];
+    extra.push({
+      spec: { name: "load_skill", description: "Load the full steps of one of your approved skills before doing that kind of task.", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
+      scope: "skills.read",
+      kind: "read",
+      describe: (i) => `Use skill ${str(i.name)}`,
+      run: async (i) => {
+        const k = await this.store.skill(str(i.name));
+        return k && k.status === "active" ? `Skill ${k.name} (v${k.version}):\n${k.body}` : `No approved skill called ${str(i.name)}.`;
+      },
+    });
     if (agent === AGENT)
       extra.push({
         spec: {
@@ -316,7 +332,7 @@ export class Engine {
     const task = this.board.create({ title: goal, why, doneWhen, scopes: policy.allow, agent });
     this.board.move(task.id, "running");
     const memories = await this.reader.retrieve(goal, { tokenBudget: 600 });
-    const p = buildPrompt({ coreRules: loadCoreRules(), role: loadRole(agent), userModel: await this.userModel(), skillsIndex: [], task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: MemoryReader.format(memories), working: "" });
+    const p = buildPrompt({ coreRules: loadCoreRules(), role: loadRole(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: MemoryReader.format(memories), working: "" });
     try {
       const out = await runAgent({
         agent,
@@ -335,12 +351,89 @@ export class Engine {
       const check = !v ? "" : v.passed ? (v.checked ? "\nChecked: all done-when items met." : "\nNot independently checked.") : `\nNot finished: ${v.missing.join("; ")}`;
       this.board.move(task.id, v && !v.passed ? "failed" : "done", { result: out.text.slice(0, 2000), note: check.trim() });
       const did = out.actions.map((a) => `- ${a.status}: ${a.summary}`).join("\n");
+      // Learning: skills that were used get credit or blame; passing work may teach a new skill.
+      for (const a of out.actions) if (a.tool === "load_skill" && a.status === "done" && v?.checked) await this.store.recordSkillOutcome(a.summary.replace(/^Use skill /, ""), v.passed);
+      void this.learnFromTask(agent, goal, out.text, out.actions, v);
       await this.writer.logEpisode({ agent, kind: "task", taskId: task.id, summary: `${goal}: ${v?.passed === false ? "not finished" : "done"}`, outcome: out.text.slice(0, 300) });
       return `${name} report:\n${out.text}${did ? `\n\nActions:\n${did}` : ""}${check}`;
     } catch (err) {
       this.board.move(task.id, "failed", { note: (err as Error).message });
       return `${name} could not finish: ${(err as Error).message}`;
     }
+  }
+
+  /** Proposes a skill from passing work. It stays a draft until the owner approves it. */
+  private async learnFromTask(agent: string, goal: string, report: string, actions: ActionRecord[], verdict?: { passed: boolean; missing: string[]; checked: boolean }) {
+    try {
+      const draft = await reflect({ chat: (req) => this.router.chat("cheap", "reflection", req), agent, goal, report, actions, ...(verdict ? { verdict } : {}) });
+      if (!draft) return;
+      const existing = await this.store.skill(draft.name);
+      if (existing && existing.body === draft.body) return;
+      await this.store.saveSkill(draft, this.clock().toISOString());
+      const { decision } = this.approvals.request({ agent, summary: `Learn skill "${draft.name}": ${draft.description}`, detail: draft.body, scope: "skills.activate" });
+      void decision.then(async (a) => {
+        await this.store.setSkillStatus(draft.name, a.status === "approved" ? "active" : "retired");
+        this.emit("skill", { name: draft.name, status: a.status === "approved" ? "active" : "retired" });
+      });
+    } catch {
+      /* learning is best effort; it never breaks a task */
+    }
+  }
+
+  /**
+   * The nightly pass (also on demand): pull lasting facts from recent work, review feedback,
+   * and retire skills that keep failing. Returns a short report for the owner.
+   */
+  async learnNow(): Promise<string> {
+    const lines: string[] = [];
+    // 1. Facts from recent episodes, in batches, skipping the pass's own notes.
+    let cursor = Number((await this.store.getMeta("learn.episodes")) ?? 0);
+    const counts = { new: 0, update: 0, duplicate: 0, contradicts: 0, rejected: 0 };
+    for (let batch = 0; batch < 10; batch++) {
+      const eps = (await this.store.episodesSince(cursor, 30)).filter((e) => e.kind !== "learning");
+      const all = await this.store.episodesSince(cursor, 30);
+      if (!all.length) break;
+      try {
+        const facts = await extractFacts({ chat: (req) => this.router.chat("cheap", "learning", req), episodes: eps });
+        for (const f of facts) counts[(await this.writer.writeFact(f)).verdict.kind]++;
+      } catch (err) {
+        lines.push(`Stopped reading recent work: ${(err as Error).message}`);
+        break;
+      }
+      cursor = all.at(-1)!.id;
+      await this.store.setMeta("learn.episodes", String(cursor));
+    }
+    if (counts.new + counts.update) lines.push(`Learned ${counts.new} new facts and updated ${counts.update}.`);
+    if (counts.contradicts) lines.push(`${counts.contradicts} new claims conflict with what you told me; they are waiting for you.`);
+    // 2. Feedback since last time.
+    const fbCursor = Number((await this.store.getMeta("learn.feedback")) ?? 0);
+    const fb = await this.store.feedbackSince(fbCursor);
+    if (fb.length) {
+      const by = new Map<string, { approve: number; reject: number }>();
+      for (const f of fb) {
+        const c = by.get(f.agent) ?? { approve: 0, reject: 0 };
+        f.verdict === "reject" ? c.reject++ : c.approve++;
+        by.set(f.agent, c);
+      }
+      for (const [agent, c] of by) if (c.reject >= 3 && c.reject > c.approve) lines.push(`You rejected ${c.reject} of ${agent}'s last ${c.reject + c.approve} actions. Tell me what to change, or tighten its preset.`);
+      await this.store.setMeta("learn.feedback", String(fb.at(-1)!.id));
+    }
+    // 3. Retire skills that keep failing.
+    for (const k of await this.store.skills("active")) {
+      if (k.failures >= 3 && k.failures > k.successes) {
+        await this.store.setSkillStatus(k.name, "retired");
+        lines.push(`Retired skill "${k.name}": it failed ${k.failures} times and worked ${k.successes}.`);
+      }
+    }
+    const report = lines.length ? lines.join("\n") : "Nothing new to learn.";
+    await this.writer.logEpisode({ agent: "learning", kind: "learning", summary: report.slice(0, 500) });
+    this.emit("learning", { report });
+    for (const id of this.d.settings.chat.telegram.ownerChatIds) if (lines.length) void this.bot?.notify(id, `Overnight learning:\n${report}`).catch(() => {});
+    return report;
+  }
+
+  async skillsList() {
+    return this.store.skills();
   }
 
   /** Recent drafts for the owner to review. */
@@ -424,7 +517,7 @@ export class Engine {
       coreRules: loadCoreRules(),
       role: loadRole(AGENT),
       userModel: await this.userModel(),
-      skillsIndex: [],
+      skillsIndex: await this.skillsIndex(),
       task: { goal: "Reply to the owner's latest message", why: "The owner is talking to you directly", doneWhen: ["answers the message directly", "cites memory ids when memory is used", "says plainly when something is not known"] },
       memories: MemoryReader.format(memories),
       working: [recent && `Recent conversation:\n${recent}`, open.length ? `Open issues:\n${open.map((i) => `- ${i.key} ${i.title} (${i.status})`).join("\n")}` : ""].filter(Boolean).join("\n\n"),
@@ -512,6 +605,7 @@ export class Engine {
     if (approve && this.stopped) return "Agents are stopped. Resume them first.";
     try {
       const a = this.approvals.decide(id.trim(), approve);
+      void this.writer.recordFeedback({ actionId: a.id, agent: a.agent, verdict: a.status === "approved" ? "approve" : "reject", reason: a.summary }).catch(() => {});
       return a.status === "approved" ? `Approved: ${a.summary}` : a.status === "expired" ? `Expired: ${a.summary}` : `Rejected: ${a.summary}`;
     } catch (err) {
       return (err as Error).message.replace(/^approvals: /, "");

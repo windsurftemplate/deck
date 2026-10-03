@@ -80,6 +80,26 @@ export function memoryStoreContract(name: string, make: (dim: number) => Promise
       expect((await r.retrieve("Dana CISO security")).map((m) => m.text).join()).not.toContain("Dana");
     });
 
+    it("skills: versions, approval status, outcomes; meta and episode cursors", async () => {
+      const { store } = await setup();
+      await store.saveSkill({ name: "prep-call", description: "Prepare a call", body: "1. Read notes" }, "2026-10-02T00:00:00Z");
+      const v2 = await store.saveSkill({ name: "prep-call", description: "Prepare a call", body: "1. Read notes\n2. List asks" }, "2026-10-03T00:00:00Z");
+      expect(v2).toMatchObject({ version: 2, status: "draft" });
+      expect(await store.skills("active")).toEqual([]);
+      await store.setSkillStatus("prep-call", "active");
+      await store.recordSkillOutcome("prep-call", true);
+      await store.recordSkillOutcome("prep-call", false);
+      expect(await store.skill("prep-call")).toMatchObject({ version: 2, status: "active", successes: 1, failures: 1, body: "1. Read notes\n2. List asks" });
+      expect(await store.getMeta("cursor")).toBeNull();
+      await store.setMeta("cursor", "7");
+      expect(await store.getMeta("cursor")).toBe("7");
+      const ts = "2026-10-02T09:00:00Z";
+      await store.addEpisode({ agent: "a", kind: "chat", summary: "one" }, ts, new Float32Array(DIM).fill(0.1));
+      const second = await store.addEpisode({ agent: "b", kind: "task", summary: "two" }, ts, new Float32Array(DIM).fill(0.1));
+      const first = (await store.episodesSince(0, 10))[0]!.id;
+      expect((await store.episodesSince(first, 10)).map((e) => [e.id, e.kind])).toEqual([[second, "task"]]);
+    });
+
     it("exports and imports without losing anything", async () => {
       const { store, w } = await setup();
       const ep = await w.logEpisode({ agent: "ops", kind: "note", summary: "Investor update sent" });
@@ -87,6 +107,8 @@ export function memoryStoreContract(name: string, make: (dim: number) => Promise
       await w.writeFact({ subject: "Acme", attribute: "stage", claim: "Pilot signed", source: "inferred" }, ep);
       await w.addEdge("Dana", "works at", "Acme");
       await w.recordFeedback({ actionId: "a1", agent: "gtm", verdict: "edit", before: "Hi", after: "Hello" });
+      await store.saveSkill({ name: "s", description: "d", body: "b" }, "2026-10-02T00:00:00Z");
+      await store.setMeta("cursor", "3");
       const dump = await store.exportAll(true);
       const copy = await make(DIM);
       await copy.importAll(dump);

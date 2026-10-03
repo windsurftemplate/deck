@@ -1,5 +1,5 @@
 export { openMemory, storedDim, type DB, type OpenOptions } from "./db.js";
-export type { MemoryStore, MemoryDump, NewFact, StoredFact, StoredFactRef, StoredEpisode, StoredEdge } from "./store.js";
+export type { MemoryStore, MemoryDump, NewFact, StoredFact, StoredFactRef, StoredEpisode, StoredEdge, StoredSkill, SkillStatus } from "./store.js";
 export { SqliteMemoryStore } from "./sqlite-store.js";
 export { InMemoryStore } from "./memory-store.js";
 export { MemoryWriter, type FactDecider, type WriteResult, type CurrentFact } from "./write.js";
