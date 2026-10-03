@@ -68,12 +68,17 @@ rustup update stable --no-self-update >/dev/null 2>&1 || true
 echo "$(rustc --version)."
 
 step "5/6 Building deck (the slow part)"
+# macOS signing refuses files carrying Finder, quarantine or iCloud labels. Strip them from this
+# folder, and build outside it (iCloud-synced folders like Desktop keep re-adding them).
+xattr -cr "$REPO" 2>/dev/null || true
+export CARGO_TARGET_DIR="$TOOLS/target"
 pnpm install --frozen-lockfile
 node scripts/package-engine.mjs
+xattr -cr "$REPO/apps/desktop/src-tauri" 2>/dev/null || true
 pnpm --filter @deck/desktop tauri build --bundles app --config src-tauri/tauri.bundle.conf.json
 
 step "6/6 Installing to Applications"
-APP="$REPO/apps/desktop/src-tauri/target/release/bundle/macos/deck.app"
+APP="$CARGO_TARGET_DIR/release/bundle/macos/deck.app"
 [ -d "$APP" ] || fail "the build finished but deck.app was not found."
 osascript -e 'tell application "deck" to quit' >/dev/null 2>&1 || true
 sleep 1

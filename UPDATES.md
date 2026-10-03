@@ -252,6 +252,19 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-03: First real Mac install: signing fix
+
+**What happened**
+- First run of `Install deck.command` on a Mac mini (Apple Silicon): Command Line Tools, Node, pnpm, Rust, packages, engine packaging, web build and the full release compile all succeeded. The last step, signing the app, failed: "resource fork, Finder information, or similar detritus not allowed".
+- Cause: macOS file labels (quarantine from the download, Finder info, iCloud sync on the Desktop) were copied into the app bundle, and Apple's signing tool refuses them.
+
+**Changed**
+- The installer strips those labels from the folder before building and again before bundling, and builds in `~/.deck-tools/target` (outside iCloud-synced folders) so they cannot come back mid-build.
+
+**Verified**
+- On the Mac: every step up to signing (first real-hardware run).
+- Script passes `bash -n` and shellcheck.
+
 ## 2026-10-03: Open source (MIT), snapshots, spoken replies
 
 **Changed**
