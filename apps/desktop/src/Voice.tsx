@@ -69,10 +69,11 @@ export function VoiceCard({ s, onSaved }: { s: Settings; onSaved: (s: Settings) 
   const [on, setOn] = useState(s.voice.enabled);
   const [bin, setBin] = useState(s.voice.whisperBin);
   const [model, setModel] = useState(s.voice.modelPath);
+  const [speak, setSpeak] = useState(s.voice.speakReplies);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const save = async () => {
     try {
-      onSaved(await saveSettings({ voice: { enabled: on, whisperBin: bin, modelPath: model } }));
+      onSaved(await saveSettings({ voice: { enabled: on, whisperBin: bin, modelPath: model, speakReplies: speak } }));
       setMsg({ ok: true, text: on ? "Saved. A Talk button appears next to Send." : "Saved. Voice is off." });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof SettingsError ? e.message : "Could not save." });
@@ -93,6 +94,10 @@ export function VoiceCard({ s, onSaved }: { s: Settings; onSaved: (s: Settings) 
       <label className="check">
         <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} />
         Turn on push-to-talk
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={speak} onChange={(e) => setSpeak(e.target.checked)} />
+        Read the Chief of Staff's replies aloud (uses your computer's built-in voice)
       </label>
       <div className="row">
         <button className="primary" type="button" onClick={save}>

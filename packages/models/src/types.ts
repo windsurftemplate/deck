@@ -25,7 +25,14 @@ export interface ToolResultBlock {
   isError?: boolean;
 }
 
-export type Block = TextBlock | ToolCallBlock | ToolResultBlock;
+/** A picture sent to the model (camera snapshot). Base64 without the data: prefix. */
+export interface ImageBlock {
+  type: "image";
+  mediaType: "image/jpeg" | "image/png" | "image/webp";
+  data: string;
+}
+
+export type Block = TextBlock | ToolCallBlock | ToolResultBlock | ImageBlock;
 
 export interface ChatMessage {
   role: "user" | "assistant";

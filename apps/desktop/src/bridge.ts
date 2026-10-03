@@ -96,10 +96,10 @@ export function reloadEngine() {
 
 /** Send a message to the Chief of Staff through the engine. */
 export type Proposal = { id: string; summary: string };
-export async function sendChat(text: string): Promise<{ reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }> {
+export async function sendChat(text: string, images: { mediaType: string; data: string }[] = []): Promise<{ reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }> {
   if (!inTauri) return { reply: "Preview mode: the agent engine only runs inside the desktop app.", redacted: [] };
   try {
-    return await invoke<{ reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }>("engine_call", { method: "chat.send", params: { text } });
+    return await invoke<{ reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }>("engine_call", { method: "chat.send", params: { text, images } });
   } catch (e) {
     return { reply: `Agent engine unavailable: ${String(e)}`, redacted: [] };
   }

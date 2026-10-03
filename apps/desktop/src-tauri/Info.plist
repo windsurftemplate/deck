@@ -4,5 +4,7 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Push-to-talk: your speech is turned into text on this Mac. Audio is not stored.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Snapshots: the camera turns on only while you take a picture to send to your chosen model. Pictures are not stored.</string>
 </dict>
 </plist>

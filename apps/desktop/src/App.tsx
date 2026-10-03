@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Deck3D } from "./deck3d/Deck3D";
 import { MicButton } from "./Voice";
+import { SnapshotButton, attachFile, type Picture } from "./Camera";
 import { PowerUp } from "./boot/PowerUp";
 import { applyProposal, decideApproval, emergencyStop, listen, loadSettings, onEngineEvent, pendingApprovals, saveSettings, sendChat, type ActionRecord, type Approval, type Proposal } from "./bridge";
 import { Onboarding } from "./onboarding/Onboarding";
@@ -19,7 +20,11 @@ export function App() {
   const [signal, setSignal] = useState<{ beam?: string; archive?: number; visit?: string }>({});
   const [view, setView] = useState<"3d" | "list">("3d");
   const [voiceOn, setVoiceOn] = useState(false);
-  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled))), [showSettings]);
+  const [speak, setSpeak] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [pictures, setPictures] = useState<Picture[]>([]);
+  const [attachErr, setAttachErr] = useState<string | null>(null);
+  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled))), [showSettings]);
   const switchView = async () => {
     const next = view === "3d" ? "list" : "3d";
     setView(next);
@@ -187,18 +192,52 @@ export function App() {
               </div>
             ))}
           </div>
+          {(pictures.length > 0 || attachErr) && (
+            <div className="thumbs" aria-label="Attached pictures">
+              {pictures.map((p, i) => (
+                <span key={i} className="thumb">
+                  <img src={p.preview} alt={`Picture ${i + 1}`} />
+                  <button type="button" className="btn" aria-label={`Remove picture ${i + 1}`} onClick={() => setPictures((ps) => ps.filter((_, j) => j !== i))}>
+                    Remove
+                  </button>
+                </span>
+              ))}
+              {attachErr && <span className="error">{attachErr}</span>}
+            </div>
+          )}
           <form
             className="composer"
             onSubmit={(e) => {
               e.preventDefault();
               if (!draft.trim()) return;
               const text = draft.trim();
-              setLog((l) => [...l, { from: "you", text }, { from: "system", text: "Thinking…" }]);
+              const pics = pictures;
+              setLog((l) => [...l, { from: "you", text: pics.length ? `${text} (${pics.length} picture${pics.length > 1 ? "s" : ""})` : text }, { from: "system", text: "Thinking…" }]);
               setDraft("");
-              sendChat(text).then((r) => setLog((l) => [...l.slice(0, -1), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.actions?.length ? { actions: r.actions.filter((a) => a.status !== "waiting") } : {}) }]));
+              setPictures([]);
+              sendChat(text, pics.map(({ mediaType, data }) => ({ mediaType, data }))).then((r) => {
+                if (speak && "speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(r.reply.slice(0, 1200)));
+                return r;
+              }).then((r) => setLog((l) => [...l.slice(0, -1), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.actions?.length ? { actions: r.actions.filter((a) => a.status !== "waiting") } : {}) }]));
             }}
           >
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message the Chief of Staff, or say: switch heavy work to Gemini" aria-label="Message" />
+            {cameraOn && <SnapshotButton onPicture={(p) => setPictures((ps) => [...ps, p].slice(0, 3))} />}
+            {cameraOn && (
+              <label className="btn attach">
+                Attach
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) attachFile(f).then((p) => (setAttachErr(null), setPictures((ps) => [...ps, p].slice(0, 3)))).catch((err) => setAttachErr((err as Error).message));
+                  }}
+                />
+              </label>
+            )}
             {voiceOn && <MicButton onText={(t) => setDraft((d) => (d ? `${d} ${t}` : t))} />}
             <button className="btn" type="submit">Send</button>
           </form>

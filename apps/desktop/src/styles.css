@@ -129,3 +129,10 @@ select { font: inherit; font-size: 15px; color: var(--text); background: var(--v
 .pack:hover, .pack:focus-visible { border-color: var(--ion); }
 .pack b { font-size: 16px; }
 .pack span { font-size: 14px; line-height: 1.45; }
+.camera { position: fixed; right: 24px; bottom: 90px; width: min(420px, calc(100vw - 48px)); background: var(--hull); border: 1px solid var(--seam); border-radius: 12px; padding: 12px; display: grid; gap: 10px; z-index: 20; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+.camera video { width: 100%; border-radius: 8px; background: #000; }
+.camera .mic-on { justify-self: start; }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+.thumb { display: grid; gap: 4px; justify-items: center; }
+.thumb img { width: 88px; height: 66px; object-fit: cover; border-radius: 6px; border: 1px solid var(--seam); }
+.attach { display: inline-flex; align-items: center; }

@@ -192,9 +192,9 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P5.1 | Workspace packs (`packages/packs`): founder, freelancer, student, VaultProof, blank. Rules, tool limits (ask or off only), approved skills, starter issues, preset. Checked so packs can never loosen safety | Applying twice changes nothing; a loosening pack is refused | done |
 | P5.2 | Onboarding "Starting setup" step: pick a pack; its interview hints and preset carry into the next steps | New install ends with the pack applied | done |
 | P5.3 | One-click installers for Mac, Windows and Linux | Double-click installs and opens deck | done (Linux verified here) |
-| P5.4 | Camera snapshots (image input in the model layer) | Off by default; indicator always on | todo |
-| P5.5 | Open source the repo | License chosen, secrets scan clean, contributor guide | needs your license choice |
-| P5.6 | Hands-free voice (wake word, spoken replies) | Off by default; mic indicator always on | todo |
+| P5.4 | Camera snapshots and picture attachments; images on Claude, OpenAI and Gemini | Off by default; camera on only while taking a picture, with a badge; pictures never stored | done |
+| P5.5 | Open source the repo: MIT license, security policy, contributing guide, third-party notices | License chosen, full-history secret scan clean, no personal data | done (publish when you push) |
+| P5.6 | Hands-free voice: spoken replies done (computer's built-in voice); wake word todo | Off by default; mic indicator always on | partly done |
 
 ## How to use this file
 

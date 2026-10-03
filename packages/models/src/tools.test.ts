@@ -55,3 +55,21 @@ describe("tool calling on every provider", () => {
     expect(res.toolCalls![0]).toMatchObject({ name: "issues_create", input: { title: "Second" }, meta: { thoughtSignature: "sig-456" } });
   });
 });
+
+describe("images on every provider", () => {
+  const img = { type: "image" as const, mediaType: "image/jpeg" as const, data: "QUJD" };
+  const req = { maxTokens: 10, messages: [{ role: "user" as const, content: [{ type: "text" as const, text: "What is on this whiteboard?" }, img] }] };
+  const send = async (provider: ProviderId, reply: unknown) => {
+    const c = capture(reply);
+    await makeChatModel({ provider, model: "m" }, async () => "k", c.f).chat(req);
+    return c.sent();
+  };
+  it("maps a snapshot to each provider's image format", async () => {
+    const a = await send("anthropic", { model: "m", stop_reason: "end_turn", content: [], usage: { input_tokens: 1, output_tokens: 1 } });
+    expect(a.messages[0].content[1]).toEqual({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: "QUJD" } });
+    const o = await send("openai", { choices: [{ message: { content: "ok" }, finish_reason: "stop" }] });
+    expect(o.messages[0].content).toEqual([{ type: "text", text: "What is on this whiteboard?" }, { type: "image_url", image_url: { url: "data:image/jpeg;base64,QUJD" } }]);
+    const g = await send("gemini", { candidates: [{ content: { parts: [{ text: "ok" }] } }] });
+    expect(g.contents[0].parts[1]).toEqual({ inline_data: { mime_type: "image/jpeg", data: "QUJD" } });
+  });
+});

@@ -21,7 +21,9 @@ export function openaiMessages(req: ChatRequest) {
     } else {
       for (const b of blocks) if (b.type === "tool_result") out.push({ role: "tool", tool_call_id: b.id, content: b.content });
       const t = joinText(m);
-      if (t) out.push({ role: "user", content: t });
+      const images = blocks.filter((b) => b.type === "image");
+      if (images.length) out.push({ role: "user", content: [...(t ? [{ type: "text", text: t }] : []), ...images.map((b) => b.type === "image" && { type: "image_url", image_url: { url: `data:${b.mediaType};base64,${b.data}` } })] });
+      else if (t) out.push({ role: "user", content: t });
     }
   }
   return out;
@@ -33,6 +35,7 @@ export function geminiContents(req: ChatRequest) {
     role: m.role === "assistant" ? "model" : "user",
     parts: blocksOf(m.content).map((b) => {
       if (b.type === "text") return { text: b.text };
+      if (b.type === "image") return { inline_data: { mime_type: b.mediaType, data: b.data } };
       if (b.type === "tool_call") return (b.meta as object | undefined) ?? { functionCall: { name: b.name, args: b.input } };
       return { functionResponse: { name: b.name, response: b.isError ? { error: b.content } : { result: b.content } } };
     }),

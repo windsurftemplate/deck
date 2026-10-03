@@ -31,7 +31,7 @@ async function main() {
   const handlers: Record<string, Handler> = {
     ping: async () => "pong",
     checks: () => engine.checks(),
-    "chat.send": (p) => engine.chat(String((p as { text?: string })?.text ?? "")),
+    "chat.send": (p) => engine.chat(String((p as { text?: string })?.text ?? ""), ((p as { images?: { mediaType: string; data: string }[] })?.images ?? []).slice(0, 5)),
     brief: () => engine.brief(),
     status: async () => engine.status(),
     kill: async (p) => engine.kill((p as { agent?: string })?.agent ?? "all"),

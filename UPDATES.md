@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 12 packages, 28 commits.
-Tests (counted): **182 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 12 packages, 30 commits.
+Tests (counted): **184 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -160,7 +160,8 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 ## Phase 5: Expand (started)
 - Workspace packs (founder, freelancer, student, VaultProof, blank) that can only make the crew more careful; picked in a new onboarding step.
 - One-click installers for Mac, Windows and Linux (Linux verified end to end).
-- Still open: camera snapshots, hands-free voice, open-sourcing (needs your license choice).
+- Open source under MIT with security policy and contributing guide; camera snapshots and picture attachments; spoken replies.
+- Still open: wake word for fully hands-free voice.
 
 ## Decisions made along the way
 - General app with VaultProof as the first workspace pack; codename `deck` until a name is chosen.
@@ -171,6 +172,7 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - SQLite + sqlite-vec now; upgrade path to its faster index, then Postgres + pgvector only past about 1 million memories.
 - Local embedding model by default (free, private).
 - Encryption stays on; recovery key provided for the password manager.
+- MIT license for open source.
 - No Apple code signing yet (build locally or right-click > Open); sign before wider sharing.
 - Kenney space station is the chosen 3D look (dark theme kept for the app's chrome).
 - Research agent does web research through the model's own search tool, capped at 25 searches a day.
@@ -243,10 +245,27 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 26. `feat: one-click Mac installer and uninstaller`
 27. `feat: one-click installers for Linux and Windows; app identifier fixed for macOS`
 28. `feat: workspace packs and starting setup step`
+29. `chore: MIT license, security policy, contributing guide, third-party notices`
+30. `feat: snapshots and picture attachments, images on all providers, spoken replies`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Open source (MIT), snapshots, spoken replies
+
+**Changed**
+- MIT license (`LICENSE`, copyright "the deck authors"; change it to your company name if you prefer), `SECURITY.md` (private vulnerability reports, what matters most), `CONTRIBUTING.md`, `THIRD_PARTY_NOTICES.md` (Kenney CC0, Chakra Petch OFL, the embedding model's Apache 2.0, Node). Every package marked MIT. Full git history scanned for secrets: clean. No personal details in the repo (a test name was changed to a placeholder).
+- Pictures in chat (off by default, Settings > Camera and pictures): Snapshot opens the camera with a "Camera on" badge and turns it off right after the picture; Attach adds a JPEG, PNG or WebP file. Up to 3 per message, 5 MB each. Pictures go to the model with the message, are marked as data not instructions, and are never stored in memory.
+- Images work on Claude, OpenAI and Gemini (each provider's own image format).
+- Spoken replies (Settings > Voice): the Chief of Staff's replies can be read aloud with the computer's built-in voice.
+- macOS camera permission text.
+
+**Verified**
+- Provider tests for image requests on all three providers.
+- Engine: pictures refused when off, wrong types refused, sent as image blocks with the data-not-instructions note, never in memory.
+- Desktop with a fake camera: badge shows, the camera closes after the snapshot, the picture is attached and sent.
+- 184 TypeScript tests and 6 Rust tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-03: Phase 5: workspace packs and starting setups
 

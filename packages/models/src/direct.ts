@@ -67,6 +67,7 @@ export function anthropicBody(model: string, req: ChatRequest) {
   const block = (b: Block) => {
     if (b.type === "text") return { type: "text", text: b.text, ...(b.cache ? { cache_control: { type: "ephemeral" } } : {}) };
     if (b.type === "tool_call") return { type: "tool_use", id: b.id, name: b.name, input: b.input };
+    if (b.type === "image") return { type: "image", source: { type: "base64", media_type: b.mediaType, data: b.data } };
     return { type: "tool_result", tool_use_id: b.id, content: b.content, ...(b.isError ? { is_error: true } : {}) };
   };
   return {
