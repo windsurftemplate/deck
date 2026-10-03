@@ -14,10 +14,19 @@ export interface VaultProofSettings {
 /** Which database adapter holds the workspace. Only SQLite ships today; adapters plug in behind the same interfaces. */
 export type StorageEngine = "sqlite";
 
+export type Provider = "anthropic" | "openai" | "gemini" | "openrouter";
+export const PROVIDERS: Provider[] = ["anthropic", "openai", "gemini", "openrouter"];
+export interface ModelChoice {
+  provider: Provider;
+  model: string;
+}
+
 export interface ModelSettings {
-  /** Model ids per role. */
-  heavy: string;
-  cheap: string;
+  /** Which provider and model handles each role. */
+  heavy: ModelChoice;
+  cheap: ModelChoice;
+  /** Tried when the main model fails (down, rate limited). Usually a different provider. */
+  fallback: ModelChoice | null;
   /** Daily token budget across all agents (always on). */
   dailyTokenCap: number;
 }
@@ -41,7 +50,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   version: 1,
   storage: { engine: "sqlite" },
-  models: { heavy: "claude-sonnet-5", cheap: "claude-haiku-4-5-20251001", dailyTokenCap: 2_000_000 },
+  models: { heavy: { provider: "anthropic", model: "claude-sonnet-5" }, cheap: { provider: "anthropic", model: "claude-haiku-4-5-20251001" }, fallback: null, dailyTokenCap: 2_000_000 },
   embeddings: { provider: "local" },
   preset: "balanced",
   onboarding: { done: false },
@@ -59,6 +68,15 @@ export class SettingsError extends Error {
     super(message);
     this.name = "SettingsError";
   }
+}
+
+/** Accepts {provider, model}, or an old plain model id (treated as Anthropic). */
+function toChoice(v: unknown, field: string): ModelChoice {
+  const c = typeof v === "string" ? { provider: "anthropic", model: v } : (v as Partial<ModelChoice>);
+  if (!c || !PROVIDERS.includes(c.provider as Provider)) throw new SettingsError(field, "Choose Anthropic, OpenAI, Gemini or OpenRouter.");
+  const model = String(c.model ?? "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,120}$/.test(model)) throw new SettingsError(field, "Pick a model from the list, or type its exact id.");
+  return { provider: c.provider as Provider, model };
 }
 
 /** The URL must be https (http only for local testing) and carry no credentials or query secrets. */
@@ -91,12 +109,14 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
   const next: Settings = structuredClone(current);
   if (patch.storage?.engine !== undefined && patch.storage.engine !== "sqlite") throw new SettingsError("storage.engine", "Only the SQLite database is available today.");
   if (patch.models) {
-    const m = patch.models;
-    for (const k of ["heavy", "cheap"] as const) {
-      if (m[k] !== undefined) {
-        if (!/^[a-z0-9][a-z0-9.\-]{2,80}$/.test(m[k]!)) throw new SettingsError(`models.${k}`, "Model ids are lowercase letters, digits, dots and dashes.");
-        next.models[k] = m[k]!;
+    const m = patch.models as DeepPartial<ModelSettings> & { heavy?: unknown; cheap?: unknown; fallback?: unknown };
+    for (const k of ["heavy", "cheap", "fallback"] as const) {
+      if (m[k] === undefined) continue;
+      if (k === "fallback" && m[k] === null) {
+        next.models.fallback = null;
+        continue;
       }
+      next.models[k] = toChoice(m[k], `models.${k}`);
     }
     if (m.dailyTokenCap !== undefined) {
       if (!Number.isInteger(m.dailyTokenCap) || m.dailyTokenCap < 10_000 || m.dailyTokenCap > 1_000_000_000) throw new SettingsError("models.dailyTokenCap", "Set a daily token budget between 10,000 and 1,000,000,000.");

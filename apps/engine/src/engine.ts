@@ -9,7 +9,7 @@ import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, s
 import { LocalEmbedder } from "@deck/embed-local";
 import { ApprovalQueue, redactSecrets } from "@deck/gate";
 import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder } from "@deck/memory";
-import { AnthropicDirect, ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, type ChatModel } from "@deck/models";
+import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, type ChatModel, type ModelRef } from "@deck/models";
 import type { Settings } from "@deck/settings";
 import { SqliteTrackerStore, Tracker } from "@deck/tracker";
 import type { Keychain } from "./keychain.js";
@@ -23,10 +23,11 @@ export interface EngineDeps {
   fetch?: typeof fetch;
   /** Overrides for tests. */
   makeEmbedder?: (s: Settings) => Embedder;
-  makeModel?: (id: string, getKey: () => Promise<string>) => ChatModel;
+  makeModel?: (ref: ModelRef, getKey: () => Promise<string>) => ChatModel;
 }
 
 type Turn = { from: "owner" | "agent"; text: string };
+const KEY_PHRASE: Record<ModelRef["provider"], string> = { anthropic: "an Anthropic key", openai: "an OpenAI key", gemini: "a Google Gemini key", openrouter: "an OpenRouter key" };
 const MEMORY_KEY = "memory.key";
 const AGENT = "chief-of-staff";
 
@@ -60,7 +61,7 @@ export class Engine {
 
   private embedder(): Embedder {
     if (this.d.makeEmbedder) return this.d.makeEmbedder(this.d.settings);
-    if (this.d.settings.embeddings.provider === "openai") return new OpenAIEmbedder(() => this.secret("provider.openai", "an OpenAI key"), 512, "text-embedding-3-small", this.d.fetch ?? fetch);
+    if (this.d.settings.embeddings.provider === "openai") return new OpenAIEmbedder(() => this.secret("provider.openai", KEY_PHRASE.openai), 512, "text-embedding-3-small", this.d.fetch ?? fetch);
     return new LocalEmbedder({ cacheDir: join(this.d.dataDir, "models") });
   }
 
@@ -86,10 +87,13 @@ export class Engine {
     this.writer = new MemoryWriter(this.store, embedder, this.clock);
     this.reader = new MemoryReader(this.store, embedder);
     this.tracker = new Tracker(new SqliteTrackerStore(this.store.connection), "VP", this.clock);
-    const getKey = () => this.secret("provider.anthropic", "an Anthropic key");
-    const make = this.d.makeModel ?? ((id: string, k: () => Promise<string>) => new AnthropicDirect(id, k, this.d.fetch ? { fetch: this.d.fetch } : {}));
     const m = this.d.settings.models;
-    this.router = new ModelRouter({ roles: { heavy: [m.heavy], cheap: [m.cheap] }, models: { [m.heavy]: make(m.heavy, getKey), [m.cheap]: make(m.cheap, getKey) }, prices: {}, caps: { tokens: m.dailyTokenCap }, clock: this.clock });
+    const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch));
+    const chosen = [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : [])];
+    const models: Record<string, ChatModel> = {};
+    for (const ref of chosen) models[refId(ref)] ??= make(ref, () => this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider]));
+    const chain = (ref: ModelRef) => [refId(ref), ...(m.fallback && refId(m.fallback) !== refId(ref) ? [refId(m.fallback)] : [])];
+    this.router = new ModelRouter({ roles: { heavy: chain(m.heavy), cheap: chain(m.cheap) }, models, prices: {}, caps: { tokens: m.dailyTokenCap }, clock: this.clock });
   }
 
   private async reembed(path: string, key: string, oldDim: number, embedder: Embedder) {
@@ -151,11 +155,13 @@ export class Engine {
         return { status: "ok", message: "Telegram bot ready." };
       },
       models: async () => {
-        if (!(await this.d.keychain.get("provider.anthropic"))) return { status: "waiting", message: "Add an Anthropic key in Settings > Models to ignite the core." };
+        for (const p of new Set([s.models.heavy.provider, s.models.cheap.provider])) {
+          if (!(await this.d.keychain.get(`provider.${p}`))) return { status: "waiting", message: `Add ${KEY_PHRASE[p]} in Settings > Models to ignite the core.` };
+        }
         const t0 = Date.now();
         try {
-          await this.router.chat("cheap", "selftest", { maxTokens: 5, messages: [{ role: "user", content: "Reply with: ok" }] });
-          return { status: "ok", message: `Test prompt to ${s.models.cheap} answered in ${Date.now() - t0} ms.` };
+          const res = await this.router.chat("cheap", "selftest", { maxTokens: 5, messages: [{ role: "user", content: "Reply with: ok" }] });
+          return { status: "ok", message: `Test prompt to ${res.attempts.at(-1)!.model} answered in ${Date.now() - t0} ms.` };
         } catch (err) {
           const e = err as Error;
           return { status: "degraded", message: e.message, fix: e instanceof ModelError && e.status === 401 ? "Replace the key in Settings > Models." : "Try again in a minute." };
@@ -217,12 +223,17 @@ export class Engine {
     return claims.length ? claims.map((c) => `- ${c}`).join("\n") : "The owner has not shared a profile yet. Prefer short, direct answers.";
   }
 
+  /** Models the saved key can use, read from the provider. */
+  async listModels(provider: ModelRef["provider"]): Promise<string[]> {
+    return listModels(provider, await this.secret(`provider.${provider}`, KEY_PHRASE[provider]), this.d.fetch ?? fetch);
+  }
+
   /** Cheap one-shot model test for onboarding. */
   async testModel(): Promise<{ ok: boolean; message: string }> {
     const t0 = Date.now();
     try {
       await this.router.chat("cheap", "selftest", { maxTokens: 5, messages: [{ role: "user", content: "Reply with: ok" }] });
-      return { ok: true, message: `Connected. ${this.d.settings.models.cheap} answered in ${Date.now() - t0} ms.` };
+      return { ok: true, message: `Connected. ${refId(this.d.settings.models.cheap)} answered in ${Date.now() - t0} ms.` };
     } catch (err) {
       return { ok: false, message: (err as Error).message };
     }

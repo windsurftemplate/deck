@@ -3,6 +3,7 @@ import { SettingsError, isVaultProofHost, type Settings } from "@deck/settings";
 import { loadSettings, saveSettings } from "./bridge";
 import { ModelKeys } from "./ModelKeys";
 import { EmbeddingsCard, TelegramCard } from "./ChatAndMemory";
+import { ModelRoles } from "./ModelRoles";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [s, setS] = useState<Settings | null>(null);
@@ -45,6 +46,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
       <ModelKeys />
+      <ModelRoles s={s} onSaved={setS} />
       <EmbeddingsCard s={s} onSaved={setS} />
       <TelegramCard s={s} onSaved={setS} />
       <div className="card">

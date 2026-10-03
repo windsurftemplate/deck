@@ -1,5 +1,7 @@
 import { useState } from "react";
+import type { Provider } from "@deck/settings";
 import { engineCall, inTauri, saveKey, saveSettings } from "../bridge";
+import { PROVIDER_LABEL, loadModelList } from "../ModelRoles";
 
 type Step = "llm" | "about" | "preset" | "done";
 const STEPS: Step[] = ["llm", "about", "preset", "done"];
@@ -16,6 +18,9 @@ const FIELDS: { id: string; label: string; hint: string; area?: boolean }[] = [
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState<Step>("llm");
   const [key, setKey] = useState("");
+  const [provider, setProvider] = useState<Provider>("anthropic");
+  const [models, setModels] = useState<string[]>([]);
+  const [model, setModel] = useState("");
   const [llm, setLlm] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [about, setAbout] = useState<Record<string, string>>({});
@@ -27,11 +32,18 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const connect = async () => {
     setBusy(true);
     setLlm(null);
-    const err = await saveKey("anthropic", key);
+    const err = await saveKey(provider, key);
     setKey("");
     if (err) {
       setBusy(false);
       return setLlm({ ok: false, text: err });
+    }
+    if (provider !== "anthropic") {
+      // Other providers: pick a model the key can use, and use it for both jobs.
+      const r = await loadModelList(provider);
+      setModels(r.models);
+      setBusy(false);
+      return setLlm(r.error ? { ok: false, text: r.error } : { ok: true, text: `Key saved. Pick a model below (${r.models.length} available).` });
     }
     await new Promise((r) => setTimeout(r, 1200)); // let the engine reload with the new key
     const res = await engineCall<{ ok: boolean; message: string }>("models.test").catch((e) => ({ ok: false, message: String(e) }));
@@ -65,8 +77,40 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === "llm" && (
         <section className="card">
           <h3>Connect an LLM</h3>
-          <p className="muted">Paste an Anthropic API key. It goes straight into your system keychain and is used only to call Claude. Until VaultProof is live, this is how the crew reaches a model.</p>
-          <input className="keyinput" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sk-ant-…" aria-label="Anthropic API key" autoComplete="off" spellCheck={false} />
+          <p className="muted">Choose a provider and paste its API key. It goes straight into your system keychain. You can add the others later and switch any time in Settings.</p>
+          <select aria-label="Provider" value={provider} onChange={(e) => (setProvider(e.target.value as Provider), setModels([]), setLlm(null))}>
+            {(["anthropic", "openai", "gemini", "openrouter"] as Provider[]).map((p) => (
+              <option key={p} value={p}>
+                {PROVIDER_LABEL[p]}
+              </option>
+            ))}
+          </select>
+          <input className="keyinput" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Paste API key" aria-label="API key" autoComplete="off" spellCheck={false} />
+          {models.length > 0 && (
+            <div className="row">
+              <select aria-label="Model" value={model} onChange={(e) => setModel(e.target.value)}>
+                <option value="">Pick a model</option>
+                {models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn"
+                type="button"
+                disabled={!model}
+                onClick={async () => {
+                  await saveSettings({ models: { heavy: { provider, model }, cheap: { provider, model } } });
+                  await new Promise((r) => setTimeout(r, 1200));
+                  const res = await engineCall<{ ok: boolean; message: string }>("models.test").catch((e) => ({ ok: false, message: String(e) }));
+                  setLlm(res ? { ok: res.ok, text: res.message } : { ok: true, text: "Saved." });
+                }}
+              >
+                Use this model
+              </button>
+            </div>
+          )}
           {llm && <p className={llm.ok ? "ok" : "error"}>{llm.text}</p>}
           <div className="row">
             <button className="primary" type="button" disabled={!key.trim() || busy} onClick={connect}>

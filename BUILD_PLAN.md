@@ -63,6 +63,8 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 3.10 | `packages/models/src/embeddings.ts` | OpenAI embeddings with the keychain key | Unit vectors in input order | done |
 | 3.11 | `packages/embed-local` | Local embedding model (free, private, 384 dims) | Memory evals 5/5 with the real model | done |
 | 3.12 | Settings: embeddings, Telegram, preset, onboarding | Choice of memory search model, bot token and chat id, approval preset | Validated; bad sections fall back on their own | done |
+| 3.13 | `packages/models/src/providers.ts` | OpenAI, Gemini and OpenRouter chat adapters; one factory; model lists read from each provider | Each adapter maps turns and usage; bad key and missing model explained | done |
+| 3.14 | `apps/desktop/src/ModelRoles.tsx` | Settings: provider and model for heavy work, quick tasks and a backup, with model lists from your keys | Switching saves and the engine reloads; backup takes over when the main model fails | done |
 
 ### Step 4: Orchestrator
 

@@ -2,6 +2,25 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Switch between Claude, GPT and Gemini
+
+**Changed**
+- `packages/models`: OpenAI-compatible adapter (OpenAI and OpenRouter) and Gemini adapter, beside Claude. One factory for every provider. Model lists come from each provider with your key, so nothing is guessed. Bad keys, missing models and outages get plain messages; only outages fall back.
+- Settings: each job (heavy work, quick tasks) has its own provider and model, plus an optional backup model that takes over when the main one fails. Old settings that stored a plain Claude model id still load.
+- Engine: each provider uses its own key from the keychain; the backup can be a different provider; `models.list` returns what your key can use.
+- Desktop: "Models: who does what" card with provider pickers, model lists and a backup. Onboarding lets you start with any of the four providers.
+
+**Verified**
+- 136 TypeScript tests pass; `pnpm check` runs 50 tasks green; no secrets in the repo.
+- Engine test: heavy work on Gemini fails over to OpenAI with each provider's own key.
+- Live check against the real Anthropic, OpenAI and Gemini APIs with a fake key: each reports the key was rejected (no real key used here).
+
+**Note**
+- OpenRouter lists its models publicly, so a bad OpenRouter key only shows up on the first chat.
+
+**Next**
+- Run the app on your Mac; then step 1.5, engine packaging.
+
 ## 2026-10-02: Agent engine, local embeddings, onboarding
 
 **Changed**

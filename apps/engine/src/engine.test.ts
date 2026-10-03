@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { HashEmbedder } from "@deck/memory";
-import type { ChatModel, ChatRequest } from "@deck/models";
+import { ModelError, type ChatModel, type ChatRequest } from "@deck/models";
 import { DEFAULTS, type Settings } from "@deck/settings";
 import { Engine } from "./engine.js";
 import { memoryKeychain, type Keychain } from "./keychain.js";
@@ -14,13 +14,13 @@ import { handleLine } from "./protocol.js";
 const ANTHROPIC = "sk-ant-" + "api03-" + "k".repeat(40);
 const dir = () => mkdtempSync(join(tmpdir(), "engine-"));
 const sent: ChatRequest[] = [];
-const fakeModel = (id: string): ChatModel => ({
+const fakeModel = (id: string, fail = false): ChatModel => ({
   id,
-  chat: async (req) => (sent.push(req), { text: `reply from ${id}`, model: id, stopReason: "end_turn", usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }),
+  chat: async (req) => { if (fail) throw new ModelError(`${id} down`, 503, true); sent.push(req); return { text: `reply from ${id}`, model: id, stopReason: "end_turn", usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }; },
 });
 const offline = (async () => { throw new TypeError("offline"); }) as unknown as typeof fetch;
 const make = (o: { dataDir?: string; keychain?: Keychain; settings?: Settings; dim?: number } = {}) =>
-  new Engine({ dataDir: o.dataDir ?? dir(), keychain: o.keychain ?? memoryKeychain(), settings: o.settings ?? DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(o.dim ?? 64), makeModel: (id) => fakeModel(id) });
+  new Engine({ dataDir: o.dataDir ?? dir(), keychain: o.keychain ?? memoryKeychain(), settings: o.settings ?? DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(o.dim ?? 64), makeModel: (ref) => fakeModel(ref.model) });
 
 describe("engine", () => {
   it("creates a memory key once and keeps the workspace encrypted", async () => {
@@ -100,6 +100,20 @@ describe("engine", () => {
     const mem = await (b as unknown as { reader: { retrieve: (q: string) => Promise<{ text: string }[]> } }).reader.retrieve("Acme timing");
     expect(mem.map((m) => m.text).join()).toContain("Not buying until Q2");
     await b.close();
+  });
+});
+
+describe("switching providers", () => {
+  it("uses the chosen provider's key and falls back to another provider", async () => {
+    const settings = { ...DEFAULTS, models: { ...DEFAULTS.models, heavy: { provider: "gemini" as const, model: "gem-x" }, fallback: { provider: "openai" as const, model: "gpt-x" } } };
+    const kc = memoryKeychain({ "provider.anthropic": ANTHROPIC });
+    const e = new Engine({ dataDir: dir(), keychain: kc, settings, fetch: offline, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref, getKey) => ({ id: ref.model, chat: async (req) => { await getKey(); return fakeModel(ref.model, ref.provider === "gemini").chat(req); } }) });
+    await e.open();
+    expect((await e.chat("hi")).reply).toMatch(/Add (a Google Gemini|an OpenAI) key in Settings > Models first/);
+    await kc.set("provider.gemini", "g-key");
+    await kc.set("provider.openai", "o-key");
+    expect((await e.chat("hi")).reply).toBe("reply from gpt-x");
+    await e.close();
   });
 });
 
