@@ -152,6 +152,18 @@ Gate to leave Phase 3: eval scores rise two weeks running.
 | P3.6 | Prompt evolution with evals | A prompt change ships only if every eval suite holds or improves | blocked: needs task evals on real models |
 | P3.7 | Task and safety eval suites | Replayed tasks and injection attempts scored in CI | safety done (9 cases); task evals need real models |
 
+## Phase 4: World and research (in progress)
+
+Gate to leave Phase 4: first agent PR merged after your review (needs repository tools).
+
+| # | What | Done when | Status |
+|---|------|-----------|--------|
+| P4.1 | 3D command deck from the Kenney Space Station Kit (CC0): 8 stations, crew astronauts, live status rings and tags, station panel with Approve and Reject, vault beams on approvals, archive lights when the crew learns, core dims when stopped; List view toggle | Stations follow live engine events | done |
+| P4.2 | Research agent: web research through Claude, OpenAI or Gemini search with sources (untrusted, 25 a day), crew track-record review, weekly self-review on Mondays | A delegated research task returns sourced findings | done |
+| P4.3 | Crew walking between stations, camera tours, 3D power-up | Motion follows real handoffs | todo |
+| P4.4 | Voice push-to-talk and camera snapshots in the app | Off by default; indicators always on | todo |
+| P4.5 | Research agent builds and tests changes in a sandbox and opens PRs | Needs repository access | blocked: GitHub skipped |
+
 ## Code signing
 
 - Not needed to build and run on your own Mac (apps you build yourself are not quarantined).

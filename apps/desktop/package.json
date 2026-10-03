@@ -17,7 +17,8 @@
     "react-dom": "^18.3.1",
     "@fontsource/chakra-petch": "^5.1.0",
     "@deck/settings": "workspace:*",
-    "@deck/models": "workspace:*"
+    "@deck/models": "workspace:*",
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
@@ -26,6 +27,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "@types/three": "^0.170.0"
   }
 }

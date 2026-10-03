@@ -14,11 +14,11 @@ This file has two parts:
 | 1. Core | Built and tested here; not yet run on your Mac | Morning briefing useful 5 workdays in a row |
 | 2. Swarm and safety | Mostly built (now with crew rules you can change); email, calendar and Jev routing waiting on you | No raw key anywhere; every external action approved |
 | 3. Learning | Started: skills, nightly learning, honeytoken, safety evals | Eval scores rise two weeks running |
-| 4. World and research | Not started (3D deck exists only as prototypes) | First agent PR merged after your review |
+| 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Not started | All earlier gates still hold |
 
 Code: about 7,800 lines of TypeScript, TSX and Rust across 2 apps and 10 packages, 17 commits.
-Tests (re-measured today): **162 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **177 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -151,6 +151,11 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - Task evals and prompt evolution: need real model runs.
 - Quarantined reader for emails and web pages: needs the email connector.
 
+## Phase 4: World and research (started)
+- 3D command deck in the chosen Kenney look, driven by live engine events, with approvals on the deck and a List view toggle.
+- Research agent with web research through the model's own search tool, a daily cap, a crew track-record review, and a weekly self-review.
+- Still open: crew walking on real handoffs, voice and camera in the app, sandbox PRs (needs repository access).
+
 ## Decisions made along the way
 - General app with VaultProof as the first workspace pack; codename `deck` until a name is chosen.
 - VaultProof Gateway API on hold; VaultProof MCP connection added as a setting.
@@ -161,7 +166,8 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - Local embedding model by default (free, private).
 - Encryption stays on; recovery key provided for the password manager.
 - No Apple code signing yet (build locally or right-click > Open); sign before wider sharing.
-- Dark ship theme in the app for now; Kenney look still a candidate.
+- Kenney space station is the chosen 3D look (dark theme kept for the app's chrome).
+- Research agent does web research through the model's own search tool, capped at 25 searches a day.
 
 ## Problems found and fixed
 - Settings view overlapped the deck (CSS overrode `hidden`).
@@ -177,16 +183,16 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 - Earlier test totals in this log were overstated; corrected.
 - The "ask first" list in agents' tool files was ignored by the approval gate; now honored.
 
-## Tests by package (counted 2026-10-03)
+## Tests by package (counted 2026-10-03, after Phase 4 work)
 
 | Package | Tests | Package | Tests |
 |---|---|---|---|
-| agents | 29 | tracker | 12 |
-| engine | 23 | settings | 10 |
-| memory | 23 | gate | 8 |
-| models | 23 | connectors | 7 |
+| agents | 33 | tracker | 12 |
+| engine | 28 | settings | 10 |
+| models | 27 | gate | 8 |
+| memory | 23 | connectors | 7 |
 | core | 16 | chat | 5 |
-| evals (memory, local model, safety) | 3 | desktop UI helpers | 2 |
+| desktop UI helpers | 4 | evals (memory, local model, safety) | 3 |
 | embed-local (real model) | 1 | Rust shell | 6 |
 
 ## Not verified yet
@@ -199,7 +205,7 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 2. Push the repo (VaultProof org or personal) so CI and releases run.
 3. Google sign-in app for Gmail and Calendar.
 4. Jev access; decide on Laya.
-5. Pick the visual direction (dark deck or Kenney station) and a product name.
+5. Pick a product name.
 
 ## Commit history
 1. `chore: repo scaffold (BUILD_PLAN step 0)`
@@ -223,6 +229,26 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-03: Phase 4: research agent and the 3D command deck
+
+**Changed**
+- Research agent (`packages/agents/research`): answers with sources, separates facts from interpretation, saves findings with their source, proposes fixes as issues. Cannot send or contact anyone.
+- `webResearch` in `packages/models`: one call using the provider's own search tool. Claude web search, OpenAI Responses web search, Gemini Google Search grounding. OpenRouter is refused with a clear message. Sources keep only http(s) links.
+- Engine tools: `web_research` (results wrapped as untrusted and secret-scrubbed, 25 searches a day) and `review_crew` (unfinished tasks, rejected actions, skills in trouble). The Chief of Staff can delegate to Research. Every Monday at 09:00 Research runs a self-review and reports.
+- 3D command deck in the app, built from the Kenney Space Station Kit (CC0; 45 models, 640 KB, license included): 8 stations (Command, Comms, Engineering, Operations, Science lab, Archive, Reactor core, Vault), an astronaut per crew member. Rings and tags show live status from engine events: working, needs you, not finished, standby. Click a station or use the chips to fly there; the side panel explains the station and has Approve and Reject for anything waiting. The vault sends a beam when you approve; the archive lights up when the crew learns; the core dims when agents are stopped.
+- List view toggle in the header (saved in settings) for older machines. Reduced motion respected. Approval messages use friendly agent names.
+- Plan doc: the Kenney look is now the chosen look.
+
+**Verified**
+- Provider tests for web research on Claude, OpenAI and Gemini (stand-in servers); unsupported provider and bad key messages.
+- Engine: research results wrapped as untrusted (an attacker's closing tag stays inside), daily cap, Research in the crew and delegate list, self-review report lists unfinished tasks and rejections.
+- 3D deck rendered in a headless browser with a stand-in engine: overview, a working station, an Operations approval shown on the deck and in chat, flying to a station, Approve from the panel. Station rules unit-tested.
+- 177 TypeScript tests and 6 Rust tests pass (counted); `pnpm check` green; no secrets in the repo.
+
+**Not verified yet**
+- Live web research (needs your key).
+- The 3D deck on your Mac's GPU (tested with a software renderer).
 
 ## 2026-10-03: Crew rules you can change
 

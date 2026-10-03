@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Deck3D } from "./deck3d/Deck3D";
 import { PowerUp } from "./boot/PowerUp";
-import { applyProposal, decideApproval, emergencyStop, listen, loadSettings, onEngineEvent, pendingApprovals, sendChat, type ActionRecord, type Approval, type Proposal } from "./bridge";
+import { applyProposal, decideApproval, emergencyStop, listen, loadSettings, onEngineEvent, pendingApprovals, saveSettings, sendChat, type ActionRecord, type Approval, type Proposal } from "./bridge";
 import { Onboarding } from "./onboarding/Onboarding";
 import { SettingsPanel } from "./SettingsPanel";
 
@@ -13,15 +14,26 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [crew, setCrew] = useState<Record<string, { status: string; task?: string }>>({});
+  const [pending, setPending] = useState<Approval[]>([]);
+  const [signal, setSignal] = useState<{ beam?: string; archive?: number }>({});
+  const [view, setView] = useState<"3d" | "list">("3d");
+  useEffect(() => void loadSettings().then((s) => setView(s.world.view)), []);
+  const switchView = async () => {
+    const next = view === "3d" ? "list" : "3d";
+    setView(next);
+    await saveSettings({ world: { view: next } }).catch(() => {});
+  };
 
   // Approvals and finished actions arrive from the engine at any time.
   useEffect(() => {
     let off = () => {};
-    const addApproval = (a: Approval) => setLog((l) => (l.some((x) => x.approval?.id === a.id) ? l : [...l, { from: "system", text: `${a.agent === "chief-of-staff" ? "Chief of Staff" : a.agent} needs your approval: ${a.summary}`, approval: a }]));
-    pendingApprovals().then((list) => list.forEach(addApproval));
+    const addApproval = (a: Approval) => setLog((l) => (l.some((x) => x.approval?.id === a.id) ? l : [...l, { from: "system", text: `${({ "chief-of-staff": "Chief of Staff", gtm: "GTM", ops: "Operations", code: "Engineering", research: "Research" } as Record<string, string>)[a.agent] ?? a.agent} needs your approval: ${a.summary}`, approval: a }]));
+    pendingApprovals().then((list) => (list.forEach(addApproval), setPending(list)));
     onEngineEvent((event, data) => {
       if (event === "approval") {
         const a = data as Approval;
+        setPending((p) => (a.status === "pending" ? [...p.filter((x) => x.id !== a.id), a] : p.filter((x) => x.id !== a.id)));
+        if (a.status === "approved") setSignal((s) => ({ ...s, beam: `${a.agent}#${a.id}` }));
         if (a.status === "pending") addApproval(a);
         else setLog((l) => l.map((x) => (x.approval?.id === a.id ? { ...x, settled: true } : x)));
       }
@@ -33,6 +45,7 @@ export function App() {
         setStopped(true);
         setLog((l) => [...l, { from: "system", text: (data as { message: string }).message }]);
       }
+      if (event === "learning" || event === "skill") setSignal((s) => ({ ...s, archive: Date.now() }));
       if (event === "learning") setLog((l) => [...l, { from: "system", text: `Learning: ${(data as { report: string }).report}` }]);
       if (event === "action") {
         const r = data as ActionRecord;
@@ -65,6 +78,9 @@ export function App() {
       <header className="bar">
         <b>Command deck</b>
         <div className="row">
+          <button className="btn" type="button" onClick={switchView}>
+            {view === "3d" ? "List view" : "3D view"}
+          </button>
           <button className="btn" type="button" onClick={() => setShowSettings((v) => !v)} aria-expanded={showSettings}>
             Settings
           </button>
@@ -76,7 +92,17 @@ export function App() {
       {showSettings ? (
         <SettingsPanel onClose={() => setShowSettings(false)} />
       ) : (
-      <div className="main">
+      <div className={`main ${view === "3d" ? "with-deck" : ""}`}>
+        {view === "3d" ? (
+          <Deck3D
+            state={{ crew, pending, stopped }}
+            signal={{ ...(signal.beam ? { beam: signal.beam.split("#")[0]! } : {}), ...(signal.archive ? { archive: signal.archive } : {}) }}
+            onDecide={async (id, approve) => {
+              const msg = await decideApproval(id, approve);
+              setLog((l) => [...l, { from: "system", text: msg }]);
+            }}
+          />
+        ) : (
         <aside className="crew" aria-label="Crew">
           <h2>Crew</h2>
           {[
@@ -96,6 +122,7 @@ export function App() {
             );
           })}
         </aside>
+        )}
         <section className="chat" aria-label="Chat with the Chief of Staff">
           <h2>Chat</h2>
           <div className="log" aria-live="polite">
