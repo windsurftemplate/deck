@@ -42,6 +42,8 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 2.2 | `packages/memory/db.ts` | SQLite + sqlite-vec + FTS5, SQLCipher key from keychain | Encrypted DB opens and closes | done |
 | 2.3 | `packages/memory/write.ts` | Log episode, extract facts, gate (dedupe, specific, contradicts), supersede | Contradiction lands in Needs-you | done |
 | 2.4 | `packages/memory/read.ts` | Hybrid retrieval: vector + keyword + one graph hop, token budget | Returns cited memories for a query | done |
+| 2.5 | `packages/memory/src/store.ts` | `MemoryStore` interface; SQLite and in-memory adapters; contract suite; export, import and `migrateMemory` | Both adapters pass the contract; SQLite to other store and back keeps everything | done |
+| 2.6 | `packages/tracker/src/store.ts` | `TrackerStore` interface; SQLite and in-memory adapters; contract suite | Both adapters pass the contract | done |
 
 ### Step 3: Models and Gateway
 
@@ -115,6 +117,12 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 |---|------|--------------|-----------|--------|
 | 10.1 | `evals/memory/questions.json` | 5 starter questions with fixture answers | Runs in CI | done (5/5) |
 | 10.2 | `evals/runner.ts` | Scores evals, posts diff on PRs | Regression blocks a PR | doing (score gate in CI done; PR comment todo) |
+
+## Database upgrade path
+
+1. Now: SQLite + sqlite-vec, superseded vectors removed so the index stays small.
+2. When sqlite-vec's rescore index leaves alpha: turn it on (schema change plus re-index).
+3. Only if memory passes about 1 million vectors, or the tracker needs sharing: add a Postgres + pgvector adapter, pass the contract suites, move data with `migrateMemory` and the tracker export.
 
 ## Later phases (detail added when Phase 1 passes its gate)
 

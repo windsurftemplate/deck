@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { HashEmbedder, MemoryReader, MemoryWriter, openMemory, type CandidateFact, type Embedder } from "@deck/memory";
+import { HashEmbedder, MemoryReader, MemoryWriter, SqliteMemoryStore, type CandidateFact, type Embedder } from "@deck/memory";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -26,16 +26,16 @@ export interface EvalReport {
  * and check the expected facts are recalled and forbidden (outdated) ones are not.
  */
 export async function runMemoryEvals(embedder: Embedder = new HashEmbedder(64), topN = 6): Promise<EvalReport> {
-  const db = openMemory({ path: ":memory:", key: "evals-only-not-a-secret", dim: embedder.dim });
+  const store = new SqliteMemoryStore({ path: ":memory:", key: "evals-only-not-a-secret", dim: embedder.dim });
   let t = Date.parse("2026-09-01T09:00:00Z");
-  const w = new MemoryWriter(db, embedder, () => new Date((t += 3_600_000)));
-  const r = new MemoryReader(db, embedder);
+  const w = new MemoryWriter(store, embedder, () => new Date((t += 3_600_000)));
+  const r = new MemoryReader(store, embedder);
   const fx = JSON.parse(readFileSync(join(root, "fixtures/memory.json"), "utf8")) as { steps: Step[] };
   let episode: number | undefined;
   for (const s of fx.steps) {
     if ("episode" in s) episode = await w.logEpisode(s.episode);
     else if ("fact" in s) await w.writeFact(s.fact, episode);
-    else w.addEdge(...s.edge);
+    else await w.addEdge(...s.edge);
   }
   const questions = JSON.parse(readFileSync(join(root, "memory/questions.json"), "utf8")) as Question[];
   const results = [];
@@ -48,7 +48,7 @@ export async function runMemoryEvals(embedder: Embedder = new HashEmbedder(64), 
     const forbidden = (q.forbid ?? []).filter((f) => text.includes(f));
     results.push({ id: q.id, pass: !missing.length && !forbidden.length, missing, forbidden });
   }
-  db.close();
+  await store.close();
   const passed = results.filter((x) => x.pass).length;
   return { suite: "memory", score: passed / results.length, passed, total: results.length, results };
 }

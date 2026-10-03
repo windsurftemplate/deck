@@ -11,8 +11,12 @@ export interface VaultProofSettings {
   sessionSecret: "vaultproof.session";
 }
 
+/** Which database adapter holds the workspace. Only SQLite ships today; adapters plug in behind the same interfaces. */
+export type StorageEngine = "sqlite";
+
 export interface Settings {
   version: 1;
+  storage: { engine: StorageEngine };
   general: { startAtLogin: boolean; runInBackground: boolean };
   vaultproof: VaultProofSettings;
   boot: { animation: "full" | "quick" | "off"; sound: boolean; narration: boolean };
@@ -20,6 +24,7 @@ export interface Settings {
 
 export const DEFAULTS: Settings = {
   version: 1,
+  storage: { engine: "sqlite" },
   general: { startAtLogin: true, runInBackground: true },
   vaultproof: { enabled: false, mcpUrl: "", sessionSecret: "vaultproof.session" },
   boot: { animation: "full", sound: false, narration: false },
@@ -63,6 +68,7 @@ export const isVaultProofHost = (url: string) => {
 /** Merge a partial update over current settings, validating what changed. Unknown keys are dropped. */
 export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Settings {
   const next: Settings = structuredClone(current);
+  if (patch.storage?.engine !== undefined && patch.storage.engine !== "sqlite") throw new SettingsError("storage.engine", "Only the SQLite database is available today.");
   if (patch.general) Object.assign(next.general, pick(patch.general, ["startAtLogin", "runInBackground"]));
   if (patch.boot) {
     if (patch.boot.animation && !["full", "quick", "off"].includes(patch.boot.animation)) throw new SettingsError("boot.animation", "Choose full, quick or off.");

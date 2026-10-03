@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULTS, applyUpdate, isVaultProofHost, parseSettings, validateMcpUrl } from "./index.js";
 
+describe("storage setting", () => {
+  it("defaults to SQLite and refuses engines that are not built yet", () => {
+    expect(DEFAULTS.storage.engine).toBe("sqlite");
+    expect(() => applyUpdate(DEFAULTS, { storage: { engine: "postgres" as "sqlite" } })).toThrow(/Only the SQLite/);
+  });
+});
+
 describe("VaultProof setting", () => {
   it("is off by default with no URL", () => {
     expect(DEFAULTS.vaultproof).toEqual({ enabled: false, mcpUrl: "", sessionSecret: "vaultproof.session" });

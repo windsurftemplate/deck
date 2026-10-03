@@ -1,5 +1,10 @@
 export { openMemory, type DB, type OpenOptions } from "./db.js";
+export type { MemoryStore, MemoryDump, NewFact, StoredFact, StoredFactRef, StoredEpisode, StoredEdge } from "./store.js";
+export { SqliteMemoryStore } from "./sqlite-store.js";
+export { InMemoryStore } from "./memory-store.js";
 export { MemoryWriter, type FactDecider, type WriteResult, type CurrentFact } from "./write.js";
-export { MemoryReader, ftsQuery, type RetrieveOptions } from "./read.js";
+export { MemoryReader, type RetrieveOptions } from "./read.js";
+export { migrateMemory } from "./migrate.js";
+export { ftsQuery } from "./fts.js";
 export { HashEmbedder } from "./testing.js";
 export * from "./types.js";

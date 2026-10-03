@@ -2,6 +2,23 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: Modular storage
+
+**Changed**
+- `packages/memory`: new `MemoryStore` interface. Writer and reader no longer know about SQLite. Adapters: `SqliteMemoryStore` (encrypted file, sqlite-vec, FTS5) and `InMemoryStore` (pure TypeScript). Shared contract suite (`@deck/memory/contract`), export and import, `migrateMemory` that re-embeds when the vector size changes. Superseded facts now leave the vector index.
+- `packages/tracker`: same pattern with `TrackerStore`, SQLite and in-memory adapters, and a contract suite (`@deck/tracker/contract`).
+- Settings: `storage.engine` (SQLite only for now).
+- `AGENTS.md` and plan: "Modular by design" table listing every interface, today's adapters and what can be swapped in.
+- `BUILD_PLAN.md`: database upgrade path.
+
+**Verified**
+- Memory contract passes on both adapters (7 behaviors each), tracker contract passes on both (6 each).
+- SQLite to in-memory migration keeps vectors; in-memory to SQLite with a different vector size re-embeds and recall still works.
+- 97 TypeScript tests pass; `pnpm check` runs 37 tasks green; memory evals still 5/5; no secrets in the repo.
+
+**Next**
+- Step 4.5: `apps/engine/src/main.ts`, the agent engine sidecar.
+
 ## 2026-10-02: API key settings and built-in issue tracker
 
 **Changed**

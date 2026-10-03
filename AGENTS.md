@@ -33,6 +33,25 @@ evals/                memory, task and safety suites (fake fixtures only)
 docs/decisions/       architecture decision records
 ```
 
+## Modular by design
+
+Every outside dependency sits behind an interface (a port) with swappable adapters. Logic never imports a database driver or vendor SDK directly.
+
+| Port | Adapters today | Swap in later |
+|------|----------------|---------------|
+| `MemoryStore` (`@deck/memory`) | SQLite (encrypted), in-memory | Postgres + pgvector, LanceDB, a server |
+| `TrackerStore` (`@deck/tracker`) | SQLite (same file), in-memory | Postgres, GitHub Issues sync |
+| `Embedder` | test hash embedder | OpenAI, local model |
+| `ChatModel` (`@deck/models`) | Claude direct, Claude via Gateway | OpenAI, Gemini, OpenRouter, local |
+| `BriefSources` (`@deck/connectors`) | Gmail, Calendar, tracker | any source |
+| `AgentRunner` (`@deck/core`) | fake runner | Claude Agent SDK |
+| `BotActions` (`@deck/chat`) | Telegram | Slack |
+
+Rules:
+- A new adapter is done when it passes the port's contract suite (`@deck/memory/contract`, `@deck/tracker/contract`).
+- Moving data between adapters uses the export and import methods (`migrateMemory` re-embeds when the vector size changes).
+- Every port method is atomic on its own; no transactions leak across the interface.
+
 ## Conventions
 
 - TypeScript, strict mode, ES modules. Node 22, pnpm 9 (see `mise.toml`).

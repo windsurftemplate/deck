@@ -1,1 +1,5 @@
-export { Tracker, type Issue, type IssueEvent, type IssueStatus, type Priority } from "./tracker.js";
+export { Tracker } from "./tracker.js";
+export type { Issue, IssueEvent, IssueStatus, Priority } from "./types.js";
+export type { TrackerStore, TrackerDump } from "./store.js";
+export { SqliteTrackerStore } from "./sqlite-store.js";
+export { InMemoryTrackerStore } from "./memory-store.js";
