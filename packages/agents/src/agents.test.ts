@@ -53,7 +53,7 @@ describe("tool policy", () => {
 
 describe("crew role files", () => {
   it("every agent's prompt fits the limits and its tools never include sending or deleting", () => {
-    for (const agent of ["chief-of-staff", "gtm", "ops", "code"]) {
+    for (const agent of ["chief-of-staff", "gtm", "ops", "code", "research"]) {
       expect(() => buildPrompt({ ...layers(), role: loadRole(agent) })).not.toThrow();
       const p = loadPolicy(agent);
       expect(p.allow.some((s) => /send|delete|merge|payments/.test(s))).toBe(false);

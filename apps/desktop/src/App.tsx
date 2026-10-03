@@ -84,6 +84,7 @@ export function App() {
             ["gtm", "GTM", "Comms"],
             ["code", "Engineering", "Engineering"],
             ["ops", "Operations", "Operations"],
+            ["research", "Research", "Science lab"],
           ].map(([id, name, station]) => {
             const c = crew[id!];
             const label = stopped ? "Stopped" : !c ? "Standby" : c.status === "running" ? `Working: ${c.task}` : c.status === "done" ? `Done: ${c.task}` : c.status === "failed" ? `Not finished: ${c.task}` : c.status;

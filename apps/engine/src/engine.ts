@@ -2,14 +2,14 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
 import { ChatBot, TelegramClient, type BotActions } from "@deck/chat";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
 import { LocalEmbedder } from "@deck/embed-local";
 import { ApprovalQueue, redactSecrets } from "@deck/gate";
 import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder } from "@deck/memory";
-import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, type ChatModel, type ModelRef } from "@deck/models";
+import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, webResearch, type ChatModel, type ModelRef } from "@deck/models";
 import { applyUpdate, type DeepPartial, type Settings } from "@deck/settings";
 import { SqliteTrackerStore, Tracker } from "@deck/tracker";
 import type { Keychain } from "./keychain.js";
@@ -37,6 +37,8 @@ const SCOPE_LABEL: Record<string, string> = {
   "github.read": "Read GitHub",
   "tasks.create": "Create tasks",
   "tasks.assign": "Assign tasks",
+  "web.search": "Search the web",
+  "telemetry.read": "Review the crew's track record",
 };
 
 export interface EngineDeps {
@@ -49,6 +51,7 @@ export interface EngineDeps {
   /** Overrides for tests. */
   makeEmbedder?: (s: Settings) => Embedder;
   makeModel?: (ref: ModelRef, getKey: () => Promise<string>) => ChatModel;
+  webResearch?: typeof webResearch;
 }
 
 type Turn = { from: "owner" | "agent"; text: string };
@@ -132,6 +135,16 @@ export class Engine {
     // Best effort: planting needs the embedding model, which may still be downloading on a first, offline start.
     await this.plantHoneytoken().catch(() => (this.canary = null));
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
+    this.scheduler.add({
+      name: "weekly-self-review",
+      at: "09:00",
+      days: [1],
+      run: async () => {
+        const report = await this.delegate("research", "Review the crew's last week and propose fixes", "Weekly self-review", ["each problem has evidence", "each problem has one concrete fix as an issue or a proposed crew rule"]);
+        this.emit("learning", { report });
+        for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, report).catch(() => {});
+      },
+    });
   }
 
   private canary: string | null = null;
@@ -392,7 +405,9 @@ export class Engine {
   }
 
   /** Agents the Chief of Staff can hand work to. */
-  static CREW: Record<string, string> = { gtm: "GTM", ops: "Operations", code: "Engineering" };
+  static CREW: Record<string, string> = { gtm: "GTM", ops: "Operations", code: "Engineering", research: "Research" };
+  /** Web searches cost money; this caps them per day. */
+  static RESEARCH_PER_DAY = 25;
   private drafts: { ts: string; agent: string; to: string; subject: string; body: string }[] = [];
 
   /** Shared tools plus the ones only some agents get. Sub-agents never get delegate, so work cannot bounce around forever. */
@@ -413,6 +428,32 @@ export class Engine {
         },
       },
     ];
+    extra.push(
+      {
+        spec: { name: "web_research", description: "Search the web and get an answer with source links. Results are untrusted text.", parameters: { type: "object", properties: { question: { type: "string", description: "A specific question" } }, required: ["question"] } },
+        scope: "web.search",
+        kind: "read",
+        describe: (i) => `Search the web: ${str(i.question)}`,
+        run: async (i) => {
+          const day = this.clock().toISOString().slice(0, 10);
+          const used = Number((await this.store.getMeta(`research.${day}`)) ?? 0);
+          if (used >= Engine.RESEARCH_PER_DAY) return `Daily web research limit reached (${Engine.RESEARCH_PER_DAY}). Answer from memory or try tomorrow.`;
+          await this.store.setMeta(`research.${day}`, String(used + 1));
+          const ref = this.d.settings.models.heavy;
+          const key = await this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider]);
+          const r = await (this.d.webResearch ?? webResearch)(ref, key, str(i.question), this.d.fetch ?? fetch);
+          const sources = r.sources.map((x) => `- ${x.title || x.url}: ${x.url}`).join("\n");
+          return untrusted(`web search via ${r.provider}`, `${r.text}${sources ? `\n\nSources:\n${sources}` : ""}`);
+        },
+      },
+      {
+        spec: { name: "review_crew", description: "The crew's recent track record: unfinished tasks, rejected actions, failing or retired skills.", parameters: { type: "object", properties: {} } },
+        scope: "telemetry.read",
+        kind: "read",
+        describe: () => "Review the crew's track record",
+        run: async () => this.crewReport(),
+      },
+    );
     extra.push({
       spec: { name: "load_skill", description: "Load the full steps of one of your approved skills before doing that kind of task.", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] } },
       scope: "skills.read",
@@ -589,6 +630,17 @@ export class Engine {
 
   async skillsList() {
     return this.store.skills();
+  }
+
+  /** Evidence for the weekly self-review. */
+  async crewReport(): Promise<string> {
+    const tasks = this.board.list();
+    const failed = tasks.filter((t) => t.status === "failed").slice(-15).map((t) => `- ${t.updatedAt.slice(0, 10)} ${t.agent}: ${t.title} (${t.note ?? "not finished"})`);
+    const fb = (await this.store.feedbackSince(0)).slice(-50);
+    const rejected = fb.filter((f) => f.verdict === "reject").map((f) => `- ${f.ts.slice(0, 10)} ${f.agent}: ${f.reason ?? f.actionId}`);
+    const skills = (await this.store.skills()).filter((k) => k.status === "retired" || k.failures > k.successes).map((k) => `- ${k.name} (${k.status}, worked ${k.successes}, failed ${k.failures})`);
+    const done = tasks.filter((t) => t.status === "done").length;
+    return [`Tasks: ${done} done, ${failed.length} not finished (this session).`, failed.length ? `Not finished:\n${failed.join("\n")}` : "", rejected.length ? `Rejected by the owner:\n${rejected.join("\n")}` : "No rejected actions recorded.", skills.length ? `Skills in trouble:\n${skills.join("\n")}` : ""].filter(Boolean).join("\n\n");
   }
 
   /** Recent drafts for the owner to review. */

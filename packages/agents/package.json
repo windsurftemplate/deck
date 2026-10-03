@@ -24,11 +24,12 @@
     "@deck/gate": "workspace:*"
   },
   "files": [
-    "dist",
-    "core-rules.md",
     "chief-of-staff",
+    "code",
+    "core-rules.md",
+    "dist",
     "gtm",
     "ops",
-    "code"
+    "research"
   ]
 }

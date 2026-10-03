@@ -4,3 +4,4 @@ export { ModelRouter, SpendCapError, costOf, type RouterConfig, type RouteResult
 export { AnthropicDirect, checkKeyShape, KEY_SHAPES, type ProviderId } from "./direct.js";
 export { OpenAIEmbedder, type TextEmbedder } from "./embeddings.js";
 export { OpenAICompatible, GeminiDirect, makeChatModel, listModels, refId, BASE_URLS, type ModelRef } from "./providers.js";
+export { webResearch, type ResearchResult } from "./research.js";
