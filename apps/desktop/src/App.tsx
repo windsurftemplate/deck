@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { PowerUp } from "./boot/PowerUp";
-import { applyProposal, emergencyStop, listen, loadSettings, sendChat, type Proposal } from "./bridge";
+import { applyProposal, decideApproval, emergencyStop, listen, loadSettings, onEngineEvent, pendingApprovals, sendChat, type ActionRecord, type Approval, type Proposal } from "./bridge";
 import { Onboarding } from "./onboarding/Onboarding";
 import { SettingsPanel } from "./SettingsPanel";
 
-type Line = { from: "you" | "agent" | "system"; text: string; proposal?: Proposal; settled?: boolean };
+type Line = { from: "you" | "agent" | "system"; text: string; proposal?: Proposal; approval?: Approval; actions?: ActionRecord[]; settled?: boolean };
 
 export function App() {
   const [phase, setPhase] = useState<"boot" | "onboarding" | "shell">("boot");
@@ -12,6 +12,25 @@ export function App() {
   const [log, setLog] = useState<Line[]>([{ from: "system", text: "Chief of Staff is ready. Ask anything, or open Settings to add keys." }]);
   const [draft, setDraft] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+
+  // Approvals and finished actions arrive from the engine at any time.
+  useEffect(() => {
+    let off = () => {};
+    const addApproval = (a: Approval) => setLog((l) => (l.some((x) => x.approval?.id === a.id) ? l : [...l, { from: "system", text: `${a.agent === "chief-of-staff" ? "Chief of Staff" : a.agent} needs your approval: ${a.summary}`, approval: a }]));
+    pendingApprovals().then((list) => list.forEach(addApproval));
+    onEngineEvent((event, data) => {
+      if (event === "approval") {
+        const a = data as Approval;
+        if (a.status === "pending") addApproval(a);
+        else setLog((l) => l.map((x) => (x.approval?.id === a.id ? { ...x, settled: true } : x)));
+      }
+      if (event === "action") {
+        const r = data as ActionRecord;
+        setLog((l) => [...l, { from: "system", text: r.status === "done" ? `Done: ${r.summary}${r.result ? ` (${r.result})` : ""}` : r.status === "failed" ? `Failed: ${r.summary}: ${r.result ?? ""}` : `Not done: ${r.summary}` }]);
+      }
+    }).then((fn) => (off = fn));
+    return () => off();
+  }, []);
 
   useEffect(() => {
     let off = () => {};
@@ -62,6 +81,39 @@ export function App() {
               <div key={i} className={`msg ${l.from}`}>
                 {l.from === "you" ? "You: " : ""}
                 {l.text}
+                {l.actions && l.actions.length > 0 && (
+                  <ul className="actions-done">
+                    {l.actions.map((a, k) => (
+                      <li key={k} className={a.status}>
+                        {a.status === "done" ? "Did" : a.status === "denied" ? "Not allowed" : "Failed"}: {a.summary}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {l.approval && !l.settled && (
+                  <div className="row proposal">
+                    <button
+                      className="primary"
+                      type="button"
+                      onClick={async () => {
+                        const msg = await decideApproval(l.approval!.id, true);
+                        setLog((all) => [...all.map((x, j) => (j === i ? { ...x, settled: true } : x)), { from: "system", text: msg }]);
+                      }}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={async () => {
+                        const msg = await decideApproval(l.approval!.id, false);
+                        setLog((all) => [...all.map((x, j) => (j === i ? { ...x, settled: true } : x)), { from: "system", text: msg }]);
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
                 {l.proposal && !l.settled && (
                   <div className="row proposal">
                     <button
@@ -90,7 +142,7 @@ export function App() {
               const text = draft.trim();
               setLog((l) => [...l, { from: "you", text }, { from: "system", text: "Thinking…" }]);
               setDraft("");
-              sendChat(text).then((r) => setLog((l) => [...l.slice(0, -1), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}) }]));
+              sendChat(text).then((r) => setLog((l) => [...l.slice(0, -1), { from: "agent", text: r.reply, ...(r.proposal ? { proposal: r.proposal } : {}), ...(r.actions?.length ? { actions: r.actions.filter((a) => a.status !== "waiting") } : {}) }]));
             }}
           >
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Message the Chief of Staff, or say: switch heavy work to Gemini" aria-label="Message" />

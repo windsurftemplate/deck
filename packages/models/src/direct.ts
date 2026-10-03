@@ -1,4 +1,4 @@
-import { ModelError, type ChatModel, type ChatRequest, type ChatResponse, type Fetch } from "./types.js";
+import { ModelError, blocksOf, type Block, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type ToolCallBlock } from "./types.js";
 
 export type ProviderId = "anthropic" | "openai" | "gemini" | "openrouter";
 
@@ -39,14 +39,7 @@ export class AnthropicDirect implements ChatModel {
 
   async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
     const key = await this.getKey();
-    const block = (b: { text: string; cache?: boolean }) => ({ type: "text", text: b.text, ...(b.cache ? { cache_control: { type: "ephemeral" } } : {}) });
-    const body = {
-      model: this.id,
-      max_tokens: req.maxTokens,
-      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-      ...(req.system?.length ? { system: req.system.map(block) } : {}),
-      messages: req.messages.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : m.content.map(block) })),
-    };
+    const body = anthropicBody(this.id, req);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     signal?.addEventListener("abort", () => ctrl.abort(), { once: true });
@@ -65,17 +58,40 @@ export class AnthropicDirect implements ChatModel {
     }
     if (res.status === 401) throw new ModelError("anthropic: the API key was rejected. Check it in Settings > Models.", 401, false);
     if (!res.ok) throw new ModelError(`anthropic: ${this.id} returned ${res.status}`, res.status, res.status === 429 || res.status >= 500);
-    const j = (await res.json()) as {
-      model: string;
-      stop_reason: string | null;
-      content: { type: string; text?: string }[];
-      usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
-    };
-    return {
-      text: j.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join(""),
-      model: j.model,
-      stopReason: j.stop_reason,
-      usage: { inputTokens: j.usage.input_tokens, outputTokens: j.usage.output_tokens, cacheReadTokens: j.usage.cache_read_input_tokens ?? 0, cacheWriteTokens: j.usage.cache_creation_input_tokens ?? 0 },
-    };
+    return anthropicResponse(await res.json());
   }
+}
+
+/** Anthropic Messages request body, shared by direct and Gateway calls. */
+export function anthropicBody(model: string, req: ChatRequest) {
+  const block = (b: Block) => {
+    if (b.type === "text") return { type: "text", text: b.text, ...(b.cache ? { cache_control: { type: "ephemeral" } } : {}) };
+    if (b.type === "tool_call") return { type: "tool_use", id: b.id, name: b.name, input: b.input };
+    return { type: "tool_result", tool_use_id: b.id, content: b.content, ...(b.isError ? { is_error: true } : {}) };
+  };
+  return {
+    model,
+    max_tokens: req.maxTokens,
+    ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+    ...(req.system?.length ? { system: req.system.map(block) } : {}),
+    ...(req.tools?.length ? { tools: req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })) } : {}),
+    messages: req.messages.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : blocksOf(m.content).map(block) })),
+  };
+}
+
+export function anthropicResponse(raw: unknown): ChatResponse {
+  const j = raw as {
+    model: string;
+    stop_reason: string | null;
+    content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[];
+    usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+  };
+  const toolCalls: ToolCallBlock[] = j.content.filter((c) => c.type === "tool_use").map((c) => ({ type: "tool_call", id: c.id!, name: c.name!, input: c.input ?? {} }));
+  return {
+    text: j.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join(""),
+    ...(toolCalls.length ? { toolCalls } : {}),
+    model: j.model,
+    stopReason: j.stop_reason,
+    usage: { inputTokens: j.usage.input_tokens, outputTokens: j.usage.output_tokens, cacheReadTokens: j.usage.cache_read_input_tokens ?? 0, cacheWriteTokens: j.usage.cache_creation_input_tokens ?? 0 },
+  };
 }

@@ -2,6 +2,27 @@
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-02: The crew can act (Phase 2 begins)
+
+**Changed**
+- `packages/models`: tool calling on all three providers. Claude uses tool_use blocks, OpenAI uses function tool_calls, Gemini uses functionCall with its thought signatures passed back unchanged. Bad tool arguments are kept, not crashed on.
+- `packages/agents/src/act.ts`: the agent loop with an action gate. Every tool call is checked against the agent's permissions; reads run, writes run or wait depending on the preset (Cautious asks first), and anything that leaves the machine always waits for approval, even on Autonomous. Approved actions run after you decide; rejected or expired ones never run. Secrets are stripped from tool results. Stops after 6 steps.
+- Chief of Staff tools: list, create, update and comment on issues; search memory; remember a fact (contradictions with what you stated still go to you).
+- Engine: chat runs through the loop; approvals list and decide; finished actions are logged to memory and reported. Telegram gets approval cards with buttons and a message when an approved action finishes. Emergency stop rejects everything waiting and blocks late approvals.
+- Desktop chat: shows what the crew did under each reply, and approval cards with Approve and Reject that also update when you decide on Telegram.
+
+**Verified**
+- 166 TypeScript tests pass; `pnpm check` green; no secrets in the repo.
+- Provider tests for tool requests and replies on Claude, OpenAI and Gemini (stand-in servers, not live calls).
+- Engine: Balanced creates an issue and saves a fact in one message; Cautious waits, then creates on approval; emergency stop cancels what is waiting.
+- Desktop: actions list, approval card, approve, and the finished-action message.
+
+**Not verified yet**
+- Live tool calls against each provider with a real key (needs your keys on your Mac).
+
+**Next**
+- Your call: the verifier (checks work before saying done) or more agents (GTM, Code, Ops). Email drafts need Google sign-in first.
+
 ## 2026-10-02: Recovery key, signing decision, GitHub skipped
 
 **Changed**

@@ -42,6 +42,8 @@ async function main() {
     "issues.get": (p) => engine.issues().get(p as never),
     "profile.save": (p) => engine.saveProfile((p ?? {}) as Record<string, string>),
     "models.test": () => engine.testModel(),
+    "approvals.list": async () => engine.pendingApprovals(),
+    "approvals.decide": async (p) => engine.decide(String((p as { id?: string })?.id ?? ""), !!(p as { approve?: boolean })?.approve),
     "settings.apply": (p) => engine.applyProposal(String((p as { id?: string })?.id ?? "")),
     "models.list": (p) => engine.listModels((p as { provider: "anthropic" | "openai" | "gemini" | "openrouter" }).provider),
     /** Settings changed in the app: reopen with the new settings (re-embeds if the embedding model changed). */

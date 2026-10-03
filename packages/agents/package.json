@@ -20,7 +20,8 @@
     "@deck/memory": "workspace:*",
     "@deck/models": "workspace:*",
     "@deck/connectors": "workspace:*",
-    "@deck/settings": "workspace:*"
+    "@deck/settings": "workspace:*",
+    "@deck/gate": "workspace:*"
   },
   "files": [
     "dist",

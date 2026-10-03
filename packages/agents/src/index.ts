@@ -3,3 +3,4 @@ export { decideTool, effectiveScopes, type ToolPolicy, type ToolDecision } from 
 export { loadCoreRules, loadRole, loadPolicy } from "./load.js";
 export { composeBrief, type Brief, type BriefInput } from "./brief.js";
 export { parseModelCommand, describeModels, ROLE_LABEL, PROVIDER_LABEL, type ModelCommand, type Role } from "./commands.js";
+export { runAgent, needsApproval, type AgentTool, type ActionRecord, type ActionKind, type Preset, type RunAgentInput } from "./act.js";

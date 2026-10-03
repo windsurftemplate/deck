@@ -32,6 +32,11 @@ export class ChatBot {
     if (!owners.length) throw new Error("chat: at least one owner chat id is required");
   }
 
+  /** Plain message to the owner (for example: an approved action finished). */
+  notify(chatId: number, text: string) {
+    return this.tg.sendMessage(chatId, text);
+  }
+
   /** Approval card with buttons. */
   notifyApproval(chatId: number, a: { id: string; agent: string; summary: string; detail: string }) {
     return this.tg.sendMessage(chatId, `${a.agent} needs you\n${a.summary}\n\n${a.detail.slice(0, 1500)}\n\nid ${a.id}`, [

@@ -188,6 +188,55 @@ describe("switching models from chat", () => {
   });
 });
 
+describe("the crew acts with tools", () => {
+  const scripted = (turns: ChatResponseLike[]) => (ref: { model: string }) => ({ id: ref.model, chat: async () => turns.shift() ?? { text: "ok", model: ref.model, stopReason: "end_turn", usage: U } });
+  type ChatResponseLike = { text: string; toolCalls?: { type: "tool_call"; id: string; name: string; input: Record<string, unknown> }[]; model: string; stopReason: string; usage: typeof U };
+  const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const tool = (name: string, input: Record<string, unknown>): ChatResponseLike => ({ text: "", toolCalls: [{ type: "tool_call", id: `c-${name}`, name, input }], model: "m", stopReason: "tool_use", usage: U });
+  const text = (t: string): ChatResponseLike => ({ text: t, model: "m", stopReason: "end_turn", usage: U });
+  const engine = (preset: "cautious" | "balanced", turns: ChatResponseLike[]) =>
+    new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: { ...DEFAULTS, preset }, fetch: offline, makeEmbedder: () => new HashEmbedder(64), makeModel: scripted(turns) });
+
+  it("Balanced: creates an issue and remembers a fact right away", async () => {
+    const e = engine("balanced", [tool("issues_create", { title: "Acme follow-up", priority: 2 }), tool("memory_remember", { subject: "Acme", topic: "timing", fact: "Not buying until Q2" }), text("Created VP-1 and noted Acme's timing.")]);
+    await e.open();
+    const r = await e.chat("Make an issue for the Acme follow-up, and remember they are not buying until Q2");
+    expect(r.reply).toBe("Created VP-1 and noted Acme's timing.");
+    expect(r.actions!.map((a) => `${a.status}:${a.summary}`)).toEqual(["done:Create issue: Acme follow-up", "done:Remember about Acme: Not buying until Q2"]);
+    expect((await e.issues().list()).map((i) => [i.key, i.title, i.priority])).toEqual([["VP-1", "Acme follow-up", 2]]);
+    await e.close();
+  });
+
+  it("Cautious: the issue waits for approval, then gets created", async () => {
+    const e = engine("cautious", [tool("issues_create", { title: "Needs a yes" }), text("That is waiting for your approval.")]);
+    const events: string[] = [];
+    (e as unknown as { d: { emit: (ev: string, data: unknown) => void } }).d.emit = (ev, data) => events.push(`${ev}:${(data as { status?: string }).status ?? ""}`);
+    await e.open();
+    const r = await e.chat("Make an issue: Needs a yes");
+    expect(r.actions![0]!.status).toBe("waiting");
+    expect(await e.issues().list()).toEqual([]);
+    expect(e.pendingApprovals()).toHaveLength(1);
+    expect(e.decide("nope", true)).toMatch(/no request/);
+    expect(e.decide(r.actions![0]!.approvalId!, true)).toBe("Approved: Create issue: Needs a yes");
+    await new Promise((res) => setTimeout(res, 30));
+    expect((await e.issues().list()).map((i) => i.title)).toEqual(["Needs a yes"]);
+    expect(events).toContain("action:done");
+    await e.close();
+  });
+
+  it("emergency stop rejects what is waiting and blocks late approvals", async () => {
+    const e = engine("cautious", [tool("issues_create", { title: "Stop me" }), text("Waiting.")]);
+    await e.open();
+    const r = await e.chat("Make an issue: Stop me");
+    e.kill();
+    expect(e.pendingApprovals()).toHaveLength(0);
+    expect(e.decide(r.actions![0]!.approvalId!, true)).toMatch(/stopped/);
+    await new Promise((res) => setTimeout(res, 30));
+    expect(await e.issues().list()).toEqual([]);
+    await e.close();
+  });
+});
+
 describe("onboarding", () => {
   it("saves the interview as stated facts and uses them in chat", async () => {
     const e = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });

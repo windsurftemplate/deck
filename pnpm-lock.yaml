@@ -128,6 +128,9 @@ importers:
       '@deck/connectors':
         specifier: workspace:*
         version: link:../connectors
+      '@deck/gate':
+        specifier: workspace:*
+        version: link:../gate
       '@deck/memory':
         specifier: workspace:*
         version: link:../memory

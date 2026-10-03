@@ -1,4 +1,4 @@
-import { ModelError, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type TextBlock } from "./types.js";
+import { ModelError, blocksOf, type ChatMessage, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type ToolCallBlock } from "./types.js";
 import { AnthropicDirect, type ProviderId } from "./direct.js";
 
 export interface ModelRef {
@@ -7,7 +7,37 @@ export interface ModelRef {
 }
 export const refId = (r: ModelRef) => `${r.provider}:${r.model}`;
 
-const text = (c: string | TextBlock[]) => (typeof c === "string" ? c : c.map((b) => b.text).join("\n\n"));
+const joinText = (m: ChatMessage) => blocksOf(m.content).flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n\n");
+
+/** OpenAI chat messages: tool results become role "tool" messages right after the assistant turn that asked for them. */
+export function openaiMessages(req: ChatRequest) {
+  const out: Record<string, unknown>[] = [];
+  if (req.system?.length) out.push({ role: "system", content: req.system.map((b) => b.text).join("\n\n") });
+  for (const m of req.messages) {
+    const blocks = blocksOf(m.content);
+    if (m.role === "assistant") {
+      const calls = blocks.filter((b): b is ToolCallBlock => b.type === "tool_call");
+      out.push({ role: "assistant", content: joinText(m) || null, ...(calls.length ? { tool_calls: calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: JSON.stringify(c.input) } })) } : {}) });
+    } else {
+      for (const b of blocks) if (b.type === "tool_result") out.push({ role: "tool", tool_call_id: b.id, content: b.content });
+      const t = joinText(m);
+      if (t) out.push({ role: "user", content: t });
+    }
+  }
+  return out;
+}
+
+/** Gemini contents: assistant is "model"; tool calls are replayed exactly as received (keeps thought signatures). */
+export function geminiContents(req: ChatRequest) {
+  return req.messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: blocksOf(m.content).map((b) => {
+      if (b.type === "text") return { text: b.text };
+      if (b.type === "tool_call") return (b.meta as object | undefined) ?? { functionCall: { name: b.name, args: b.input } };
+      return { functionResponse: { name: b.name, response: b.isError ? { error: b.content } : { result: b.content } } };
+    }),
+  }));
+}
 
 async function send(f: Fetch, url: string, init: RequestInit, provider: string, model: string, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
   const ctrl = new AbortController();
@@ -39,16 +69,14 @@ export class OpenAICompatible implements ChatModel {
   ) {}
 
   async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
-    const messages = [
-      ...(req.system?.length ? [{ role: "system", content: req.system.map((b) => b.text).join("\n\n") }] : []),
-      ...req.messages.map((m) => ({ role: m.role, content: text(m.content) })),
-    ];
+    const messages = openaiMessages(req);
+    const tools = req.tools?.length ? { tools: req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) } : {};
     const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${await this.o.getKey()}` };
     if (this.o.provider === "openrouter") headers["x-title"] = "deck";
     const res = await send(
       this.o.fetch ?? fetch,
       `${this.o.baseUrl.replace(/\/$/, "")}/chat/completions`,
-      { method: "POST", headers, body: JSON.stringify({ model: this.id, messages, max_completion_tokens: req.maxTokens, ...(req.temperature !== undefined ? { temperature: req.temperature } : {}) }) },
+      { method: "POST", headers, body: JSON.stringify({ model: this.id, messages, ...tools, max_completion_tokens: req.maxTokens, ...(req.temperature !== undefined ? { temperature: req.temperature } : {}) }) },
       this.o.provider,
       this.id,
       this.o.timeoutMs ?? 120_000,
@@ -56,12 +84,22 @@ export class OpenAICompatible implements ChatModel {
     );
     const j = (await res.json()) as {
       model?: string;
-      choices: { message: { content: string | null }; finish_reason: string | null }[];
+      choices: { message: { content: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }; finish_reason: string | null }[];
       usage?: { prompt_tokens: number; completion_tokens: number; prompt_tokens_details?: { cached_tokens?: number } };
     };
     const cached = j.usage?.prompt_tokens_details?.cached_tokens ?? 0;
+    const toolCalls: ToolCallBlock[] = (j.choices[0]?.message.tool_calls ?? []).map((c) => {
+      let input: Record<string, unknown>;
+      try {
+        input = JSON.parse(c.function.arguments || "{}") as Record<string, unknown>;
+      } catch {
+        input = { _unparsed: c.function.arguments };
+      }
+      return { type: "tool_call", id: c.id, name: c.function.name, input };
+    });
     return {
       text: j.choices[0]?.message.content ?? "",
+      ...(toolCalls.length ? { toolCalls } : {}),
       model: j.model ?? this.id,
       stopReason: j.choices[0]?.finish_reason ?? null,
       usage: { inputTokens: (j.usage?.prompt_tokens ?? 0) - cached, outputTokens: j.usage?.completion_tokens ?? 0, cacheReadTokens: cached, cacheWriteTokens: 0 },
@@ -79,7 +117,8 @@ export class GeminiDirect implements ChatModel {
   async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
     const body = {
       ...(req.system?.length ? { systemInstruction: { parts: [{ text: req.system.map((b) => b.text).join("\n\n") }] } } : {}),
-      contents: req.messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: text(m.content) }] })),
+      contents: geminiContents(req),
+      ...(req.tools?.length ? { tools: [{ functionDeclarations: req.tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })) }] } : {}),
       generationConfig: { maxOutputTokens: req.maxTokens, ...(req.temperature !== undefined ? { temperature: req.temperature } : {}) },
     };
     const res = await send(
@@ -92,14 +131,17 @@ export class GeminiDirect implements ChatModel {
       signal,
     );
     const j = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+      candidates?: { content?: { parts?: { text?: string; thought?: boolean; functionCall?: { name: string; args?: Record<string, unknown> } }[] }; finishReason?: string }[];
       usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; cachedContentTokenCount?: number };
       modelVersion?: string;
     };
     const c = j.candidates?.[0];
     const cached = j.usageMetadata?.cachedContentTokenCount ?? 0;
+    const parts = c?.content?.parts ?? [];
+    const toolCalls: ToolCallBlock[] = parts.filter((p) => p.functionCall).map((p) => ({ type: "tool_call", id: `call_${globalThis.crypto.randomUUID().slice(0, 8)}`, name: p.functionCall!.name, input: p.functionCall!.args ?? {}, meta: p }));
     return {
-      text: (c?.content?.parts ?? []).map((p) => p.text ?? "").join(""),
+      text: parts.filter((p) => !p.thought && !p.functionCall).map((p) => p.text ?? "").join(""),
+      ...(toolCalls.length ? { toolCalls } : {}),
       model: j.modelVersion ?? this.id,
       stopReason: c?.finishReason ?? null,
       usage: { inputTokens: (j.usageMetadata?.promptTokenCount ?? 0) - cached, outputTokens: j.usageMetadata?.candidatesTokenCount ?? 0, cacheReadTokens: cached, cacheWriteTokens: 0 },

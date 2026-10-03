@@ -96,10 +96,10 @@ export function reloadEngine() {
 
 /** Send a message to the Chief of Staff through the engine. */
 export type Proposal = { id: string; summary: string };
-export async function sendChat(text: string): Promise<{ reply: string; redacted: string[]; proposal?: Proposal }> {
+export async function sendChat(text: string): Promise<{ reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }> {
   if (!inTauri) return { reply: "Preview mode: the agent engine only runs inside the desktop app.", redacted: [] };
   try {
-    return await invoke<{ reply: string; redacted: string[]; proposal?: Proposal }>("engine_call", { method: "chat.send", params: { text } });
+    return await invoke<{ reply: string; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }>("engine_call", { method: "chat.send", params: { text } });
   } catch (e) {
     return { reply: `Agent engine unavailable: ${String(e)}`, redacted: [] };
   }
@@ -176,6 +176,28 @@ export async function restoreRecoveryKey(key: string): Promise<string | null> {
     await invoke("recovery_key_restore", { key });
     await invoke("engine_restart");
     return null;
+  } catch (e) {
+    return String(e);
+  }
+}
+
+export type Approval = { id: string; agent: string; summary: string; detail: string; status: "pending" | "approved" | "rejected" | "expired" };
+export type ActionRecord = { tool: string; summary: string; status: "done" | "waiting" | "denied" | "failed"; approvalId?: string; result?: string };
+
+/** Engine events (approvals, finished actions). Returns an unsubscribe function. */
+export async function onEngineEvent(fn: (event: string, data: unknown) => void): Promise<() => void> {
+  if (!inTauri) return () => {};
+  const { listen: tauriListen } = await import("@tauri-apps/api/event");
+  return tauriListen<{ event: string; data: unknown }>("engine-event", (e) => fn(e.payload.event, e.payload.data));
+}
+
+export async function pendingApprovals(): Promise<Approval[]> {
+  return (await engineCall<Approval[]>("approvals.list").catch(() => null)) ?? [];
+}
+
+export async function decideApproval(id: string, approve: boolean): Promise<string> {
+  try {
+    return (await engineCall<string>("approvals.decide", { id, approve })) ?? "Preview mode.";
   } catch (e) {
     return String(e);
   }

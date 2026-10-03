@@ -7,9 +7,36 @@ export interface TextBlock {
   cache?: boolean;
 }
 
+/** The model asked to run a tool. `meta` carries provider data that must be sent back unchanged (for example Gemini thought signatures). */
+export interface ToolCallBlock {
+  type: "tool_call";
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  meta?: unknown;
+}
+
+/** What the tool returned, sent back to the model. */
+export interface ToolResultBlock {
+  type: "tool_result";
+  id: string;
+  name: string;
+  content: string;
+  isError?: boolean;
+}
+
+export type Block = TextBlock | ToolCallBlock | ToolResultBlock;
+
 export interface ChatMessage {
   role: "user" | "assistant";
-  content: string | TextBlock[];
+  content: string | Block[];
+}
+
+/** A tool the model may call. Schemas stay simple (type, properties, required, enum, description) so every provider accepts them. */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: { type: "object"; properties: Record<string, unknown>; required?: string[] };
 }
 
 export interface ChatRequest {
@@ -17,6 +44,7 @@ export interface ChatRequest {
   messages: ChatMessage[];
   maxTokens: number;
   temperature?: number;
+  tools?: ToolSpec[];
 }
 
 export interface Usage {
@@ -28,6 +56,8 @@ export interface Usage {
 
 export interface ChatResponse {
   text: string;
+  /** Tools the model wants to run, in order. Empty when it answered directly. */
+  toolCalls?: ToolCallBlock[];
   model: string;
   usage: Usage;
   stopReason: string | null;
@@ -60,3 +90,7 @@ export class ModelError extends Error {
 }
 
 export type Fetch = typeof fetch;
+
+/** All text in a message, ignoring tool blocks. */
+export const textOf = (c: string | Block[]): string => (typeof c === "string" ? c : c.filter((b): b is TextBlock => b.type === "text").map((b) => b.text).join("\n\n"));
+export const blocksOf = (c: string | Block[]): Block[] => (typeof c === "string" ? [{ type: "text", text: c }] : c);

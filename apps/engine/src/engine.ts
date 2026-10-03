@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, buildPrompt, composeBrief, describeModels, loadCoreRules, loadRole, parseModelCommand } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, runAgent, type ActionRecord, type AgentTool } from "@deck/agents";
 import { ChatBot, TelegramClient, type BotActions } from "@deck/chat";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
@@ -58,7 +58,10 @@ export class Engine {
   constructor(private d: EngineDeps) {
     this.clock = d.clock ?? (() => new Date());
     this.board = new TaskBoard(this.bus, this.clock);
-    this.approvals = new ApprovalQueue((a) => this.emit("approval", a));
+    this.approvals = new ApprovalQueue((a) => {
+      this.emit("approval", a);
+      if (a.status === "pending") for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notifyApproval(id, a).catch(() => {});
+    });
     this.scheduler = new Scheduler(this.bus, this.clock);
     this.bus.on("*", (e) => this.emit("deck", e));
   }
@@ -198,6 +201,82 @@ export class Engine {
   }
 
   /** The owner talks to the Chief of Staff. Secrets are stripped before anything leaves the machine. */
+  /** What the Chief of Staff can do. Reads run directly; writes follow the preset; anything external always needs approval. */
+  private tools(): AgentTool[] {
+    const str = (v: unknown) => String(v ?? "").trim();
+    const pr = (v: unknown) => (v === undefined || v === null || v === "" ? undefined : (Math.max(0, Math.min(4, Math.round(Number(v)))) as 0 | 1 | 2 | 3 | 4));
+    const STATUS = ["todo", "doing", "blocked", "done", "cancelled"] as const;
+    const status = (v: unknown) => (STATUS.includes(v as never) ? (v as (typeof STATUS)[number]) : undefined);
+    const line = (i: { key: string; title: string; status: string; priority: number }) => `${i.key} ${i.title} (${i.status}${i.priority ? `, priority ${i.priority}` : ""})`;
+    return [
+      {
+        spec: { name: "issues_list", description: "List issues in the owner's tracker. Defaults to open issues.", parameters: { type: "object", properties: { status: { type: "string", enum: ["open", ...STATUS], description: "Which issues to list" } } } },
+        scope: "issues.read",
+        kind: "read",
+        describe: () => "List issues",
+        run: async (i) => {
+          const list = await this.tracker.list({ status: (i.status as "open") ?? "open" });
+          return list.length ? list.slice(0, 30).map(line).join("\n") : "No issues.";
+        },
+      },
+      {
+        spec: { name: "issues_create", description: "Create an issue in the owner's tracker.", parameters: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, priority: { type: "integer", description: "0 none, 1 urgent, 2 high, 3 medium, 4 low" } }, required: ["title"] } },
+        scope: "issues.write",
+        kind: "write",
+        describe: (i) => `Create issue: ${str(i.title)}`,
+        run: async (i) => {
+          const p = pr(i.priority);
+          const issue = await this.tracker.create({ title: str(i.title), body: str(i.body), ...(p !== undefined ? { priority: p } : {}), by: AGENT });
+          return `Created ${issue.key}: ${issue.title}`;
+        },
+      },
+      {
+        spec: { name: "issues_update", description: "Change an issue's status, priority or title.", parameters: { type: "object", properties: { key: { type: "string", description: "Like VP-3" }, status: { type: "string", enum: [...STATUS] }, priority: { type: "integer" }, title: { type: "string" } }, required: ["key"] } },
+        scope: "issues.write",
+        kind: "write",
+        describe: (i) => `Update ${str(i.key)}${i.status ? ` to ${str(i.status)}` : ""}${i.title ? `: ${str(i.title)}` : ""}`,
+        run: async (i) => {
+          const s = status(i.status);
+          const p = pr(i.priority);
+          const issue = await this.tracker.update(str(i.key), AGENT, { ...(s ? { status: s } : {}), ...(p !== undefined ? { priority: p } : {}), ...(i.title ? { title: str(i.title) } : {}) });
+          return `Updated ${line(issue)}`;
+        },
+      },
+      {
+        spec: { name: "issues_comment", description: "Add a comment to an issue.", parameters: { type: "object", properties: { key: { type: "string" }, text: { type: "string" } }, required: ["key", "text"] } },
+        scope: "issues.write",
+        kind: "write",
+        describe: (i) => `Comment on ${str(i.key)}`,
+        run: async (i) => (await this.tracker.comment(str(i.key), AGENT, str(i.text)), `Commented on ${str(i.key)}`),
+      },
+      {
+        spec: { name: "memory_search", description: "Search the owner's memory for facts and past events.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
+        scope: "memory.read",
+        kind: "read",
+        describe: (i) => `Search memory: ${str(i.query)}`,
+        run: async (i) => MemoryReader.format(await this.reader.retrieve(str(i.query), { tokenBudget: 600 })) || "Nothing found.",
+      },
+      {
+        spec: { name: "memory_remember", description: "Save a lasting fact the owner told you (a person, company, preference or decision).", parameters: { type: "object", properties: { subject: { type: "string", description: "Who or what it is about" }, topic: { type: "string", description: "Short label, like role or timing" }, fact: { type: "string" } }, required: ["subject", "fact"] } },
+        scope: "memory.write",
+        kind: "write",
+        describe: (i) => `Remember about ${str(i.subject)}: ${str(i.fact)}`,
+        run: async (i) => {
+          const r = await this.writer.writeFact({ subject: str(i.subject), attribute: str(i.topic) || "note", claim: str(i.fact), source: "inferred" });
+          return { new: "Saved.", update: "Saved; replaced the older version.", duplicate: "Already known.", contradicts: "This conflicts with something the owner stated; sent to the owner to decide.", rejected: "Not saved: too vague." }[r.verdict.kind];
+        },
+      },
+    ];
+  }
+
+  /** An approved action finished (or was rejected) after the chat turn ended. */
+  private later(r: ActionRecord) {
+    this.emit("action", r);
+    void this.writer.logEpisode({ agent: AGENT, kind: "action", summary: `${r.summary}: ${r.status}${r.result ? ` (${r.result.slice(0, 200)})` : ""}` }).catch(() => {});
+    const msg = r.status === "done" ? `Done: ${r.summary}${r.result ? `\n${r.result.slice(0, 500)}` : ""}` : r.status === "failed" ? `Failed: ${r.summary}\n${r.result ?? ""}` : `Not done: ${r.summary} (${r.result ?? "rejected"})`;
+    for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, msg).catch(() => {});
+  }
+
   /** Model requests in chat ("switch heavy work to Gemini") become a proposal the owner confirms. */
   private async modelCommand(text: string): Promise<{ reply: string; proposal?: Proposal } | null> {
     const cmd = parseModelCommand(text);
@@ -251,7 +330,7 @@ export class Engine {
     return { applied: true, summary: `Done: ${p.summary}.`, settings: next };
   }
 
-  async chat(text: string): Promise<{ reply: string; memories: string[]; redacted: string[]; proposal?: Proposal }> {
+  async chat(text: string): Promise<{ reply: string; memories: string[]; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[] }> {
     if (this.stopped) return { reply: "All agents are stopped. Resume them to continue.", memories: [], redacted: [] };
     const command = await this.modelCommand(text);
     if (command) {
@@ -272,9 +351,24 @@ export class Engine {
       working: [recent && `Recent conversation:\n${recent}`, open.length ? `Open issues:\n${open.map((i) => `- ${i.key} ${i.title} (${i.status})`).join("\n")}` : ""].filter(Boolean).join("\n\n"),
     });
     let reply: string;
+    let actions: ActionRecord[] = [];
     try {
-      const res = await this.router.chat("heavy", AGENT, { system: p.system, messages: [{ role: "user", content: `${p.user}\n\n# Owner's message\n${clean}` }], maxTokens: 800 });
-      reply = res.text.trim() || "(no reply)";
+      const policy = loadPolicy(AGENT);
+      const out = await runAgent({
+        agent: AGENT,
+        chat: (req) => this.router.chat("heavy", AGENT, req),
+        system: p.system,
+        messages: [{ role: "user", content: `${p.user}\n\n# Owner's message\n${clean}` }],
+        tools: this.tools(),
+        policy,
+        taskScopes: policy.allow,
+        preset: this.d.settings.preset,
+        approvals: this.approvals,
+        onLater: (r) => this.later(r),
+      });
+      actions = out.actions;
+      reply = out.text || (actions.length ? actions.map((a) => `${a.status === "waiting" ? "Waiting for you" : a.status === "done" ? "Done" : a.status}: ${a.summary}`).join("\n") : "(no reply)");
+      for (const a of actions) if (a.status === "done") await this.writer.logEpisode({ agent: AGENT, kind: "action", summary: `${a.summary}: done` });
     } catch (err) {
       reply = err instanceof SpendCapError ? `${err.message}. Raise it in Settings > Models or wait until tomorrow.` : (err as Error).message;
     }
@@ -282,7 +376,7 @@ export class Engine {
     this.turns.push({ from: "owner", text: clean }, { from: "agent", text: reply });
     this.turns = this.turns.slice(-40);
     await this.writer.logEpisode({ agent: AGENT, kind: "chat", summary: `Owner: ${clean.slice(0, 300)} | Reply: ${reply.slice(0, 300)}` });
-    return { reply, memories: memories.map((m) => m.id), redacted: findings.map((f) => f.name) };
+    return { reply, memories: memories.map((m) => m.id), redacted: findings.map((f) => f.name), ...(actions.length ? { actions } : {}) };
   }
 
   /** Onboarding interview answers become stated facts about the owner. Empty answers are skipped. */
@@ -334,6 +428,21 @@ export class Engine {
     };
   }
 
+  /** The owner approves or rejects a queued action (desktop card or Telegram). */
+  decide(id: string, approve: boolean): string {
+    if (approve && this.stopped) return "Agents are stopped. Resume them first.";
+    try {
+      const a = this.approvals.decide(id.trim(), approve);
+      return a.status === "approved" ? `Approved: ${a.summary}` : a.status === "expired" ? `Expired: ${a.summary}` : `Rejected: ${a.summary}`;
+    } catch (err) {
+      return (err as Error).message.replace(/^approvals: /, "");
+    }
+  }
+
+  pendingApprovals() {
+    return this.approvals.pending();
+  }
+
   /** Emergency stop: cancel tasks, reject pending approvals, refuse new work until resumed. */
   kill(agent = "all"): string {
     this.stopped = agent === "all" ? true : this.stopped;
@@ -361,8 +470,8 @@ export class Engine {
       brief: () => this.brief(),
       tasks: () => this.board.list().filter((x) => !["done", "cancelled"].includes(x.status)).map((x) => `- ${x.title} (${x.status})`).join("\n") || "No open tasks.",
       status: () => this.status(),
-      approve: (id) => (this.approvals.decide(id, true), `Approved ${id}`),
-      reject: (id) => (this.approvals.decide(id, false), `Rejected ${id}`),
+      approve: (id) => this.decide(id, true),
+      reject: (id) => this.decide(id, false),
       undo: () => "Nothing to undo.",
       kill: (a) => this.kill(a),
       message: async (text) => {

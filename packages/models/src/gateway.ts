@@ -1,4 +1,5 @@
 import { ModelError, type ChatModel, type ChatRequest, type ChatResponse, type Fetch } from "./types.js";
+import { anthropicBody, anthropicResponse } from "./direct.js";
 
 /**
  * Shapes of real provider secrets. The app must only ever hold a scoped VaultProof token,
@@ -45,18 +46,7 @@ export class GatewayClaude implements ChatModel {
   }
 
   async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
-    const body = {
-      model: this.id,
-      max_tokens: req.maxTokens,
-      ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-      ...(req.system?.length
-        ? { system: req.system.map((b) => ({ type: "text", text: b.text, ...(b.cache ? { cache_control: { type: "ephemeral" } } : {}) })) }
-        : {}),
-      messages: req.messages.map((m) => ({
-        role: m.role,
-        content: typeof m.content === "string" ? m.content : m.content.map((b) => ({ type: "text", text: b.text, ...(b.cache ? { cache_control: { type: "ephemeral" } } : {}) })),
-      })),
-    };
+    const body = anthropicBody(this.id, req);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.cfg.timeoutMs ?? 120_000);
     signal?.addEventListener("abort", () => ctrl.abort(), { once: true });
@@ -77,22 +67,6 @@ export class GatewayClaude implements ChatModel {
       const retryable = res.status === 429 || res.status === 408 || res.status >= 500;
       throw new ModelError(`gateway: ${this.id} returned ${res.status}`, res.status, retryable);
     }
-    const j = (await res.json()) as {
-      model: string;
-      stop_reason: string | null;
-      content: { type: string; text?: string }[];
-      usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
-    };
-    return {
-      text: j.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join(""),
-      model: j.model,
-      stopReason: j.stop_reason,
-      usage: {
-        inputTokens: j.usage.input_tokens,
-        outputTokens: j.usage.output_tokens,
-        cacheReadTokens: j.usage.cache_read_input_tokens ?? 0,
-        cacheWriteTokens: j.usage.cache_creation_input_tokens ?? 0,
-      },
-    };
+    return anthropicResponse(await res.json());
   }
 }
