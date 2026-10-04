@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { extractFile, fetchPage, readAppleNotes, readNotionZip, parseMarkdown, type Extracted } from "@deck/ingest";
 import { embedChunks, type Embedder, type MemoryStore } from "@deck/memory";
+import { scanInjection } from "@deck/gate";
 
 export interface BrainDeps {
   store: MemoryStore;
@@ -37,11 +38,18 @@ export class Brain {
     return this.d.clock().toISOString();
   }
 
-  private async save(x: Extracted, kind: string, source: string): Promise<{ id: number; title: string; chunks: number }> {
+  private async save(x: Extracted, kind: string, source: string): Promise<{ id: number; title: string; chunks: number; warning?: string }> {
     if (!x.text.trim()) throw new Error(`${x.title || source}: no text to add.`);
+    const scan = scanInjection(x.text);
+    x = { ...x, text: scan.clean };
     const chunks = await embedChunks(this.d.embedder, x.title, x.text);
     const id = await this.d.store.addDocument({ title: x.title.slice(0, 200), kind, source: source.slice(0, 500), text: x.text }, chunks, this.now());
     for (const to of x.links.slice(0, 50)) await this.d.store.addEdge(x.title, "links to", to, this.now());
+    if (scan.score >= 0.5) {
+      const warning = `"${x.title}" contains text that tries to instruct the crew (${scan.signals.join("; ")}). It was added, and the crew will see a warning whenever it reads it.`;
+      await this.d.log(`Scanner: ${warning}`);
+      return { id, title: x.title, chunks: chunks.length, warning };
+    }
     return { id, title: x.title, chunks: chunks.length };
   }
 

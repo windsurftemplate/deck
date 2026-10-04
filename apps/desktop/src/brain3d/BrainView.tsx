@@ -61,9 +61,10 @@ export function BrainView() {
     setBusy(true);
     setStatus({ ok: true, text: `${label}…` });
     try {
-      const r = (await f()) as { added?: number; skipped?: number; errors?: string[]; title?: string } | null;
+      const r = (await f()) as { added?: number; skipped?: number; errors?: string[]; title?: string; warning?: string } | null;
       if (!inTauri) setStatus({ ok: true, text: "Preview mode: adding works inside the desktop app." });
       else if (r && typeof r.added === "number") setStatus({ ok: !r.errors?.length, text: `Added ${r.added}${r.skipped ? `, ${r.skipped} already there` : ""}${r.errors?.length ? `. Could not add ${r.errors.length}: ${r.errors.slice(0, 2).join("; ")}` : "."}` });
+      else if (r?.warning) setStatus({ ok: false, text: `Added, with a warning: ${r.warning}` });
       else setStatus({ ok: true, text: `Added "${r?.title ?? "it"}". The crew can use it now.` });
       await refresh();
     } catch (e) {

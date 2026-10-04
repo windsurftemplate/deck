@@ -8,7 +8,7 @@ import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from 
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
 import { LocalEmbedder } from "@deck/embed-local";
-import { ApprovalQueue, redactSecrets } from "@deck/gate";
+import { ApprovalQueue, redactPII, redactSecrets } from "@deck/gate";
 import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder, type Memory } from "@deck/memory";
 import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, webResearch, type ChatModel, type ModelRef } from "@deck/models";
 import { applyUpdate, type DeepPartial, type Settings } from "@deck/settings";
@@ -493,7 +493,9 @@ export class Engine {
           await this.store.setMeta(`research.${day}`, String(used + 1));
           const ref = this.d.settings.models.heavy;
           const key = await this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider]);
-          const r = await (this.d.webResearch ?? webResearch)(ref, key, str(i.question), this.d.fetch ?? fetch);
+          // Personal data stays here: emails, phone numbers, card and ID numbers are removed from the search question.
+          const q = redactPII(str(i.question));
+          const r = await (this.d.webResearch ?? webResearch)(ref, key, q.text, this.d.fetch ?? fetch);
           const sources = r.sources.map((x) => `- ${x.title || x.url}: ${x.url}`).join("\n");
           return untrusted(`web search via ${r.provider}`, `${r.text}${sources ? `\n\nSources:\n${sources}` : ""}`);
         },

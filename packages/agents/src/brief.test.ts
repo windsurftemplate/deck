@@ -20,7 +20,7 @@ describe("morning briefing", () => {
       chat: async (req) => ((sent = req), { text: "- 10:00 AM Acme call\n- Needs you: PR #212", model: "m", stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } }),
     });
     const user = sent!.messages[0]!.content as string;
-    expect(user).toContain('<untrusted source="gmail">');
+    expect(user).toMatch(/<untrusted source="gmail"( flagged="true")?>/);
     expect(user.match(/<\/untrusted>/g)!.length).toBe(2);
     expect(user).toContain("10:00 AM Acme design partner call");
     expect(user).toContain("could not be read; say so in one line: Issues");
