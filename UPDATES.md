@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 66 commits.
-Tests (counted): **260 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 67 commits.
+Tests (counted): **261 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -283,10 +283,24 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 64. `feat: research swarm (parallel searches, combined brief) and meeting prep (professional sources only)`
 65. `feat: capture business cards, whiteboards and documents into the second brain (text only, never people)`
 66. `feat: investigation board; docs`
+67. `feat: helper agents (agents create temporary helpers under strict limits)`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Helper agents (agents creating agents)
+
+**Changed**
+- `create_helpers` tool for the Chief of Staff, built-in crew and custom crew members (scope `crew.helpers`, kind write: asks first on Cautious; practice runs only record it).
+- `spawnHelpers`: up to `helpers.max` per call (default 10, 1 to 20), at most 5 running at once; each helper gets a role, one task, done-when checks, and tools that are both in its creator's set and in a safe list (no external kinds, no delegation, no helpers of its own); a shared token budget per call split across helpers; the verifier checks each; Crew chat shows every step as "Helper N (Creator)"; helpers are dissolved after reporting.
+- Recent helpers (last 30) kept for review; `keepHelper` turns one into a custom crew member only when the owner asks (Settings > Helper agents).
+- Settings > Helper agents: on or off, most per task, token budget per task, recent helpers.
+- Manual: helper agents and the limits table.
+
+**Verified**
+- GTM creates 12 helpers: capped at 10; at most 5 at once; helpers get only GTM's safe tools (no repository access since GTM has none, no create_helpers, no delegate); each checked; dissolved with a summary; none kept automatically; keeping one creates a crew member; off disables it.
+- 261 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: Research swarm, meeting prep, capture, investigation board (from JARVIS, without the surveillance)
 

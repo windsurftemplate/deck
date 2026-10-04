@@ -6,7 +6,8 @@
     "issues.write",
     "memory.read",
     "memory.write",
-    "skills.read"
+    "skills.read",
+    "crew.helpers"
   ],
   "requiresApproval": [],
   "deny": [

@@ -1,6 +1,19 @@
 {
   "agent": "research",
-  "allow": ["web.search", "telemetry.read", "memory.read", "memory.write", "issues.read", "issues.write", "skills.read"],
+  "allow": [
+    "web.search",
+    "telemetry.read",
+    "memory.read",
+    "memory.write",
+    "issues.read",
+    "issues.write",
+    "skills.read",
+    "crew.helpers"
+  ],
   "requiresApproval": [],
-  "deny": ["gmail.send", "*.delete", "payments.*"]
+  "deny": [
+    "gmail.send",
+    "*.delete",
+    "payments.*"
+  ]
 }

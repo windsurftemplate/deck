@@ -18,13 +18,26 @@ Crew members cannot hand work further down. Only the Chief of Staff delegates.
 
 In **Settings > Your crew members** you can add up to 8 more: give each a name, describe what it does, and pick its tools from a safe list (search memory, save facts, read and change issues, write drafts, web research, use skills). They follow the same rules as the built-in crew: no delegation, nothing that leaves your machine, and every task is checked. The Chief of Staff can hand them work, and so can automations and workflows. They appear in Crew chat and the list view; the 3D deck shows the built-in stations only.
 
+### Helper agents
+
+The Chief of Staff and every crew member (yours included) can create temporary **helpers** when part of a task can run in parallel, for example 8 helpers each researching one market segment.
+
+- Up to 10 per task by default (change it in **Settings > Helper agents**, 1 to 20). At most 5 run at the same moment.
+- A helper gets only tools its creator has, from a safe list: memory, issues, drafts, web research, skills, and (if on) repository and Gmail reading. Nothing that leaves your machine.
+- Helpers cannot create helpers or hand work to others.
+- All helpers in a task share a token budget (300,000 by default).
+- Each helper's work is checked, everything shows in Crew chat as "Helper 1 (GTM)" and so on, and helpers disappear after reporting.
+- Keeping one is your call: **Settings > Helper agents > Recent helpers > Keep as crew member**.
+- On Cautious, creating helpers asks you first.
+
 ### How many agents, and the limits
 
-deck does not create agents on its own. You have the Chief of Staff, the four built-in crew members, and up to 8 of your own.
+You have the Chief of Staff, the four built-in crew members, up to 8 of your own, and temporary helpers for each task.
 
 | What | Limit |
 |---|---|
 | Delegation | One level: only the Chief of Staff hands out work |
+| Helpers | Up to 10 per task (setting: 1 to 20), 5 at once, one level (helpers cannot create helpers), shared token budget per task |
 | Tasks at once | One, or 2 to 4 with Parallel work (Labs) |
 | Steps per task | 6, plus one retry with the checker's notes, plus one escalation to the strong model |
 | Crew votes | Up to 5 members |

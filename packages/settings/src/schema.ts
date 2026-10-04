@@ -94,6 +94,8 @@ export interface Settings {
   notifications: { enabled: boolean };
   /** How agents think: a plan step for complex work, built-in model reasoning for hard work. */
   thinking: { mode: "auto" | "always" | "off"; reasoning: "low" | "medium" | "high"; idlePrep: boolean };
+  /** Helper agents: the Chief of Staff and crew can create temporary helpers for a task. */
+  helpers: { enabled: boolean; max: number; tokenBudget: number };
   /** Labs: features that are off until you turn them on. Each has its own settings. */
   labs: Labs;
   /** Camera snapshots in chat. The camera is on only while you take a picture; pictures go to your chosen model and are not stored. */
@@ -118,6 +120,7 @@ export const DEFAULTS: Settings = {
   voice: { enabled: false, whisperBin: "", modelPath: "", speakReplies: false, handsFree: false, wakeWord: "deck" },
   notifications: { enabled: true },
   thinking: { mode: "auto", reasoning: "medium", idlePrep: true },
+  helpers: { enabled: true, max: 10, tokenBudget: 300_000 },
   labs: {
     routing: false,
     ollama: { enabled: false, baseUrl: "http://localhost:11434" },
@@ -302,6 +305,18 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
   if (patch.camera?.enabled !== undefined) next.camera.enabled = !!patch.camera.enabled;
   if (patch.notifications?.enabled !== undefined) next.notifications.enabled = !!patch.notifications.enabled;
   if (patch.labs) next.labs = applyLabs(next.labs, patch.labs as DeepPartial<Labs>);
+  if (patch.helpers) {
+    const h = patch.helpers;
+    if (h.enabled !== undefined) next.helpers.enabled = !!h.enabled;
+    if (h.max !== undefined) {
+      if (!Number.isInteger(h.max) || h.max < 1 || h.max > 20) throw new SettingsError("helpers.max", "Choose 1 to 20 helpers per task.");
+      next.helpers.max = h.max;
+    }
+    if (h.tokenBudget !== undefined) {
+      if (!Number.isInteger(h.tokenBudget) || h.tokenBudget < 20_000 || h.tokenBudget > 5_000_000) throw new SettingsError("helpers.tokenBudget", "Choose a budget between 20,000 and 5,000,000 tokens.");
+      next.helpers.tokenBudget = h.tokenBudget;
+    }
+  }
   if (patch.thinking) {
     const t = patch.thinking;
     if (t.mode !== undefined) {
@@ -349,7 +364,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "helpers", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

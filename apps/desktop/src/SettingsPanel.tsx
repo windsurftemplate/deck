@@ -12,7 +12,7 @@ import { CameraCard } from "./Camera";
 import { BackupCard } from "./Backup";
 import { LabsCard } from "./Labs";
 import { ThinkingCard } from "./Thinking";
-import { CustomCrewCard } from "./CustomCrew";
+import { CustomCrewCard, HelpersCard } from "./CustomCrew";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [s, setS] = useState<Settings | null>(null);
@@ -60,6 +60,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <TelegramCard s={s} onSaved={setS} />
       <CrewCard />
       <CustomCrewCard />
+      <HelpersCard s={s} onSaved={setS} />
       <VoiceCard s={s} onSaved={setS} />
       <NotificationsCard s={s} onSaved={setS} />
       <CameraCard s={s} onSaved={setS} />

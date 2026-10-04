@@ -849,7 +849,7 @@ describe("custom crew members", () => {
     expect(delegate.spec.description).toContain("investor-relations: Prepares investor updates");
     const r = await e.delegate("investor-relations", "Draft this week's investor update", "weekly cadence", ["a draft exists"]);
     expect(r).toMatch(/^Investor Relations report:/);
-    expect(sent[0]!.tools.sort()).toEqual(["draft_message", "memory_search"]);
+    expect(sent[0]!.tools.sort()).toEqual(["create_helpers", "draft_message", "memory_search"]); // custom members can create helpers too
     expect(sent[0]!.sys).toContain("# Role: Investor Relations");
     e.automationCreate({ name: "Friday update", agent: "investor-relations", instruction: "Draft the update", at: "16:00", days: [5] });
     await e.customDelete("investor-relations");
@@ -914,6 +914,51 @@ describe("capture", () => {
     const off = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });
     await off.open();
     await expect(off.capture({ image: img, kind: "card" })).rejects.toThrow(/Camera and pictures/);
+    await off.close();
+  });
+});
+
+describe("helper agents", () => {
+  it("a crew member creates helpers that run in parallel with narrower tools, report, dissolve, and can be kept only on request", async () => {
+    const U = { inputTokens: 100, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    let running = 0, peak = 0;
+    const seenTools: Record<string, string[]> = {};
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: { ...DEFAULTS, helpers: { enabled: true, max: 10, tokenBudget: 300_000 } }, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        if (req.tools?.length) {
+          const role = JSON.stringify(req.system).match(/# Role: ([^(\\]+)/)?.[1]?.trim() ?? "?";
+          seenTools[role] = req.tools.map((t) => t.name);
+          running++, (peak = Math.max(peak, running));
+          await new Promise((r) => setTimeout(r, 20));
+          running--;
+          return { text: `${role} found 3 leads.`, model: ref.model, stopReason: "end_turn", usage: U };
+        }
+        return { text: '{"missing": []}', model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    const names = (e as unknown as { toolsFor: (a: string) => { spec: { name: string } }[] }).toolsFor("gtm").map((t) => t.spec.name);
+    expect(names).toContain("create_helpers");
+    const specs = Array.from({ length: 12 }, (_, k) => ({ name: `Lead scout ${k + 1}`, role: "Finds design partner leads in one segment.", task: `Find leads in segment ${k + 1}`, doneWhen: ["three leads listed"], tools: ["memory.read", "drafts.write", "repo.read"] }));
+    const r = await e.spawnHelpers("gtm", specs);
+    expect(r.results).toHaveLength(10); // capped at the setting
+    expect(r.results.every((x) => x.passed)).toBe(true);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(5);
+    // GTM has no repository access, so its helpers cannot get it; helpers never get create_helpers or delegate.
+    expect(seenTools["Lead scout 1"]!.sort()).toEqual(["draft_message", "memory_search"]);
+    expect(r.report).toMatch(/^## Lead scout 1\nLead scout 1 found 3 leads\./);
+    expect(e.crewMessages("activity").some((m) => /10 helpers finished and were dissolved/.test(m.text))).toBe(true);
+    expect(e.crewInfo().some((c) => c.id.startsWith("helper"))).toBe(false); // nothing kept automatically
+    const recent = await e.recentHelpersList();
+    const kept = await e.keepHelper(recent[0]!.id, "Lead Scout");
+    expect(kept.name).toBe("Lead Scout");
+    expect(e.crewInfo().map((c) => c.id)).toContain("lead-scout");
+    await e.customDelete("lead-scout");
+    // Off means off.
+    const off = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: { ...DEFAULTS, helpers: { enabled: false, max: 10, tokenBudget: 300_000 } } });
+    await e.close();
+    await off.open();
+    expect((await off.spawnHelpers("gtm", specs)).report).toMatch(/off/);
     await off.close();
   });
 });

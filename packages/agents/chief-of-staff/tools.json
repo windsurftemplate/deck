@@ -17,7 +17,8 @@
     "plugins.use",
     "google.read",
     "google.draft",
-    "federation.message"
+    "federation.message",
+    "crew.helpers"
   ],
   "requiresApproval": [
     "google.draft"

@@ -18,7 +18,11 @@ const WHO: Record<string, { name: string; color: string }> = {
 // Custom crew members get their name from the crew list and a steady color from their id.
 const NAMES: Record<string, string> = {};
 const tint = (id: string) => `hsl(${[...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7)} 70% 72%)`;
-const who = (id: string) => WHO[id] ?? { name: NAMES[id] ?? id.replace(/_/g, " "), color: NAMES[id] ? tint(id) : "#8f8ab8" };
+const who = (id: string) => {
+  const h = id.match(/^helper:([^:]+):(\d+)$/);
+  if (h) return { name: `Helper ${h[2]} (${WHO[h[1]!]?.name ?? NAMES[h[1]!] ?? h[1]})`, color: "#9aa3b5" };
+  return WHO[id] ?? { name: NAMES[id] ?? id.replace(/_/g, " "), color: NAMES[id] ? tint(id) : "#8f8ab8" };
+};
 const KIND: Record<string, string> = { handoff: "Hands off", report: "Reports", tool: "Uses a tool", check: "Checks", approval: "Asks you", decision: "Decides", summary: "Sums up", topic: "Topic", note: "Note", thinking: "Thinks" };
 
 /** Where the crew talks: the live feed of handoffs, tool use, reports, checks and approvals, plus discussions you start. */

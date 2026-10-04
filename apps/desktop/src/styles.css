@@ -546,3 +546,6 @@ input, textarea, select { font-family: var(--font); }
 .board-detail header { display: flex; justify-content: space-between; align-items: center; }
 .board-detail ul { margin: 0; padding-left: 18px; font-size: 13.5px; display: grid; gap: 4px; }
 @media (prefers-reduced-motion: reduce) { .pin-card { transform: none !important; } }
+.recent-helpers { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.recent-helpers li { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--seam); border-radius: var(--r); }
+.recent-helpers p { margin: 2px 0 0; font-size: 13px; }

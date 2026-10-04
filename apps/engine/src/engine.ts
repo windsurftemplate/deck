@@ -54,6 +54,7 @@ const SCOPE_LABEL: Record<string, string> = {
   "tasks.assign": "Assign tasks",
   "web.search": "Search the web",
   "plugins.use": "Use plugins (Labs)",
+  "crew.helpers": "Create helper agents",
   "repo.read": "Read the repository (Labs)",
   "repo.propose": "Open pull requests (Labs)",
   "google.read": "Read Gmail and Calendar (Labs)",
@@ -82,6 +83,8 @@ export interface EngineDeps {
 type Turn = { from: "owner" | "agent"; text: string };
 const KEY_PHRASE: Record<ModelRef["provider"], string> = { anthropic: "an Anthropic key", openai: "an OpenAI key", gemini: "a Google Gemini key", openrouter: "an OpenRouter key", ollama: "no key (local)" };
 const MEMORY_KEY = "memory.key";
+/** Tools a helper may be given (and only if its creator has them). Nothing external, no delegation, no helpers. */
+const HELPER_SCOPES = ["memory.read", "memory.write", "issues.read", "issues.write", "drafts.write", "web.search", "skills.read", "repo.read", "google.read"];
 /** Tools a custom crew member may be given. Nothing here sends, deletes or delegates. */
 const CUSTOM_SCOPES = ["memory.read", "memory.write", "issues.read", "issues.write", "drafts.write", "web.search", "skills.read"];
 export interface CustomAgent {
@@ -275,7 +278,7 @@ export class Engine {
   }
   private basePolicy(agent: string): ToolPolicy {
     const c = this.custom.find((x) => x.id === agent);
-    return c ? { agent: c.id, allow: c.scopes.filter((x) => CUSTOM_SCOPES.includes(x)), requiresApproval: [], deny: [] } : loadPolicy(agent);
+    return c ? { agent: c.id, allow: [...c.scopes.filter((x) => CUSTOM_SCOPES.includes(x)), "crew.helpers"], requiresApproval: [], deny: [] } : loadPolicy(agent);
   }
 
   /** Every agent's rules for Settings > Crew: defaults, your changes, tools with their mode, and the locked rules. */
@@ -680,6 +683,29 @@ export class Engine {
         run: async (i) => this.delegate(str(i.agent), str(i.goal), str(i.why) || "Asked by the Chief of Staff", (Array.isArray(i.done_when) ? i.done_when : [i.done_when]).map(str).filter(Boolean)),
       });
     if (agent === AGENT && this.d.settings.labs.plugins.enabled) extra.push(...this.pluginTools());
+    if (this.d.settings.helpers?.enabled !== false && (agent === AGENT || Engine.CREW[agent]))
+      extra.push({
+        spec: {
+          name: "create_helpers",
+          description: `Create 1 to ${this.d.settings.helpers?.max ?? 10} temporary helper agents for parts of your task that can run in parallel. Give each a short name, its role, one clear task, done-when checks, and the tools it needs (only from your own). Helpers work at the same time, their work is checked, they report back to you, and then they are gone. Helpers cannot create helpers or do anything that leaves the machine.`,
+          parameters: {
+            type: "object",
+            properties: {
+              helpers: {
+                type: "array",
+                minItems: 1,
+                maxItems: this.d.settings.helpers?.max ?? 10,
+                items: { type: "object", properties: { name: { type: "string" }, role: { type: "string" }, task: { type: "string" }, done_when: { type: "array", items: { type: "string" } }, tools: { type: "array", items: { type: "string", enum: HELPER_SCOPES } } }, required: ["name", "role", "task", "done_when", "tools"] },
+              },
+            },
+            required: ["helpers"],
+          },
+        },
+        scope: "crew.helpers",
+        kind: "write", // creates agents and spends tokens: asks first on Cautious; practice runs only record it
+        describe: (i) => `Create ${Array.isArray(i.helpers) ? i.helpers.length : 0} helper agent(s): ${(Array.isArray(i.helpers) ? (i.helpers as Record<string, unknown>[]) : []).map((h) => String(h.name)).join(", ")}`,
+        run: async (i) => (await this.spawnHelpers(agent, ((Array.isArray(i.helpers) ? i.helpers : []) as Record<string, unknown>[]).map((h) => ({ name: String(h.name ?? ""), role: String(h.role ?? ""), task: String(h.task ?? ""), doneWhen: (Array.isArray(h.done_when) ? h.done_when : [h.done_when]).map((x) => String(x ?? "")).filter(Boolean), tools: (Array.isArray(h.tools) ? h.tools : []).map(String) })))).report,
+      });
     if (agent === AGENT)
       extra.push({
         spec: { name: "meeting_prep", description: "Prepare a short brief for a meeting with someone, by name: who they are professionally, their company's context and news, our history, talking points and questions. Professional sources only; never personal life. Needs their company unless they are already in memory.", parameters: { type: "object", properties: { name: { type: "string" }, company: { type: "string" }, when: { type: "string" }, context: { type: "string" } }, required: ["name"] } },
@@ -730,6 +756,99 @@ export class Engine {
         run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
       });
     return [...this.tools(), ...extra];
+  }
+
+  /* ---------- helper agents ---------- */
+  private recentHelpers: { id: string; name: string; role: string; scopes: string[]; creator: string; task: string; passed: boolean; at: string }[] = [];
+  /**
+   * Temporary helpers created by an agent for one task. Rules, enforced here rather than by prompts:
+   * at most the configured number per call; tools only from the creator's own and from a safe list (nothing
+   * external, no delegation, no helpers of their own); a shared token budget per call; every helper's work is
+   * checked; all of it shows in Crew chat. Helpers vanish after reporting; keeping one is the owner's choice.
+   */
+  async spawnHelpers(creator: string, specs: { name: string; role: string; task: string; doneWhen: string[]; tools: string[] }[]): Promise<{ report: string; results: { name: string; passed: boolean }[] }> {
+    const cfg = this.d.settings.helpers ?? { enabled: true, max: 10, tokenBudget: 300_000 };
+    if (cfg.enabled === false) return { report: "Helper agents are off in Settings.", results: [] };
+    if (this.stopped) return { report: "Agents are stopped.", results: [] };
+    if (creator !== AGENT && !Engine.CREW[creator]) return { report: "Only the Chief of Staff and crew members can create helpers.", results: [] };
+    const list = specs.filter((h) => h.name.trim() && h.task.trim()).slice(0, cfg.max);
+    if (!list.length) return { report: "Describe at least one helper with a name and a task.", results: [] };
+    const creatorScopes = new Set(this.policyFor(creator).allow);
+    const creatorName = creator === AGENT ? "Chief of Staff" : Engine.CREW[creator]!;
+    const perHelper = Math.floor(cfg.tokenBudget / list.length);
+    this.say({ sender: creator, recipient: "crew", kind: "handoff", text: `${creatorName} created ${list.length} helper${list.length > 1 ? "s" : ""}: ${list.map((h) => h.name.trim()).join(", ")}. Token budget: ${cfg.tokenBudget.toLocaleString("en-US")}.` });
+    const run = async (h: (typeof list)[number], n: number) => {
+      const name = h.name.trim().slice(0, 40);
+      const id = `helper:${creator}:${n + 1}`;
+      const scopes = [...new Set(h.tools.filter((x) => HELPER_SCOPES.includes(x) && creatorScopes.has(x)))];
+      if (!scopes.includes("memory.read") && creatorScopes.has("memory.read")) scopes.push("memory.read");
+      const policy = { agent: id, allow: scopes, requiresApproval: [], deny: [] };
+      const role = `# Role: ${name} (temporary helper for ${creatorName})\n\n${h.role.trim().slice(0, 1500)}\n\n## How you work\n- Do only the task you were given, with only your tools.\n- You cannot create helpers, hand work to others, or do anything that leaves the machine.\n- Report what you did, what you found, and anything you could not do.`;
+      const doneWhen = h.doneWhen.length ? h.doneWhen.slice(0, 6) : ["the task is done and the report says what was found"];
+      const memories = await this.reader.retrieve(h.task, { tokenBudget: 400 });
+      const p = buildPrompt({ coreRules: loadCoreRules(), role, userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal: h.task.trim(), why: `Helper for ${creatorName}`, doneWhen, returnFormat: "A short report: what you did and found, and anything you could not do." }, memories: formatMemories(memories), working: "" });
+      const tools = this.toolsFor(creator).filter((t) => scopes.includes(t.scope) && t.kind !== "external" && !["create_helpers", "delegate", "delegate_parallel", "crew_vote", "research_swarm", "meeting_prep"].includes(t.spec.name));
+      let used = 0;
+      const chat = async (req: ChatRequest) => {
+        if (used >= perHelper) throw new Error(`token budget for this helper reached (${perHelper.toLocaleString("en-US")})`);
+        const r = await this.router.chat(this.mainRole(creator === AGENT ? AGENT : creator), id, req);
+        used += r.usage.inputTokens + r.usage.outputTokens;
+        return r;
+      };
+      try {
+        const out = await runAgent({
+          agent: id,
+          chat,
+          system: p.system,
+          messages: [{ role: "user", content: p.user }],
+          tools,
+          policy,
+          taskScopes: scopes,
+          preset: this.d.settings.preset,
+          approvals: this.approvals,
+          onLater: (r) => this.later(r),
+          tripwire: this.tripwire,
+          onTripwire: (t) => this.onTripwire(id, t),
+          verify: { goal: h.task, doneWhen, chat: (req) => this.router.chat("cheap", "verifier", req) },
+          onAction: (a) => this.say({ sender: id, recipient: a.tool, kind: "tool", text: `${a.status}: ${a.summary}` }),
+          onThought: (kind, text) => this.say({ sender: id, recipient: "owner", kind: "thinking", text: `${THOUGHT_LABEL[kind]}: ${text}` }),
+        });
+        const passed = !!out.verdict?.passed;
+        this.say({ sender: id, recipient: creator, kind: "report", text: `${name}: ${out.text}` });
+        if (out.verdict) this.say({ sender: "verifier", recipient: id, kind: "check", text: passed ? `${name}: checked.` : `${name} did not finish: ${out.verdict.missing.join("; ")}` });
+        this.recentHelpers = [{ id: `${Date.now().toString(36)}-${n}`, name, role: h.role.trim(), scopes, creator, task: h.task.trim(), passed, at: this.clock().toISOString() }, ...this.recentHelpers].slice(0, 30);
+        return { name, passed, text: `## ${name}${passed ? "" : " (not finished)"}\n${out.text}`, tokens: used };
+      } catch (e) {
+        this.say({ sender: id, recipient: creator, kind: "report", text: `${name} stopped: ${(e as Error).message}` });
+        return { name, passed: false, text: `## ${name} (stopped)\n${(e as Error).message}`, tokens: used };
+      }
+    };
+    // At most 5 at the same time, to stay within provider rate limits.
+    const out: Awaited<ReturnType<typeof run>>[] = new Array(list.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(5, list.length) }, async () => {
+      while (next < list.length) {
+        const k = next++;
+        out[k] = await run(list[k]!, k);
+      }
+    }));
+    await this.store.setMeta("helpers.recent", JSON.stringify(this.recentHelpers));
+    const tokens = out.reduce((a, r) => a + r.tokens, 0);
+    this.say({ sender: creator, recipient: "owner", kind: "note", text: `${list.length} helper${list.length > 1 ? "s" : ""} finished and were dissolved (${out.filter((r) => r.passed).length} checked, ${tokens.toLocaleString("en-US")} tokens). To keep one as a crew member, use Settings, Your crew members, Recent helpers.` });
+    return { report: out.map((r) => r.text).join("\n\n"), results: out.map((r) => ({ name: r.name, passed: r.passed })) };
+  }
+  async recentHelpersList() {
+    if (!this.recentHelpers.length) this.recentHelpers = JSON.parse((await this.store.getMeta("helpers.recent")) ?? "[]");
+    return this.recentHelpers;
+  }
+  /** Keeping a helper is your decision: it becomes one of your crew members (same safe-tool rules). */
+  async keepHelper(id: string, name?: string) {
+    const h = (await this.recentHelpersList()).find((x) => x.id === id);
+    if (!h) throw new Error("That helper is no longer in the recent list.");
+    const kept = await this.customSave({ name: (name ?? h.name).replace(/[^A-Za-z0-9 &'-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 30), role: h.role.length >= 20 ? h.role : `${h.role}. Helps with tasks like: ${h.task}`, scopes: h.scopes.filter((x) => CUSTOM_SCOPES.includes(x)) });
+    this.recentHelpers = this.recentHelpers.filter((x) => x.id !== id);
+    await this.store.setMeta("helpers.recent", JSON.stringify(this.recentHelpers));
+    return kept;
   }
 
   /* ---------- research: one search, swarm, meeting prep ---------- */
