@@ -5,11 +5,12 @@ Open Settings from the sidebar or with <kbd>Cmd</kbd> + <kbd>,</kbd>. Every card
 | Card | What you set | Notes |
 |---|---|---|
 | **API keys** | One key per provider | Stored in the keychain. Only the last 4 characters are ever shown. Remove deletes it from the keychain |
-| **Models** | Heavy, cheap and fallback model; daily token budget | **Load models** lists what your key can use |
+| **Models** | Heavy, cheap and fallback model; OpenAI auto-pick; escalation and the strong model; daily token budget | Default: newest OpenAI reasoning model and mini, re-checked weekly |
 | **Memory search** | Local or OpenAI embeddings | Switching rebuilds search automatically |
 | **Approvals** | Cautious, Balanced or Autonomous | Anything external always asks |
 | **Telegram** | Bot token, your chat id, on or off | Only your chat id is answered |
 | **VaultProof** | MCP address, on or off | Off by default. Connection status shows on the power-up screen |
+| **Your crew members** | Up to 8 members you define: name, role, tools from a safe list | Same rules as the built-in crew |
 | **Crew** | Per agent: instructions, rules, tool modes; history and undo; learned guidance | Changes only make agents more careful |
 | **Learning** | Run learning now, Tune prompts now, last report | Nightly at 02:00, tuning Sunday nights |
 | **Voice** | whisper.cpp program and model paths; push-to-talk; read replies aloud; hands-free and wake word | All speech stays on your machine |

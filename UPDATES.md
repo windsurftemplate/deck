@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 61 commits.
-Tests (counted): **254 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 63 commits.
+Tests (counted): **258 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -278,10 +278,26 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 59. `feat: idle-time memory prep (sleep-time compute) feeding the Observe step`
 60. `feat: skills in the open SKILL.md format (import for approval, export)`
 61. `feat: escalation controls in settings; docs for research-driven upgrades`
+62. `feat: OpenAI by default, auto-picking the newest reasoning model and mini, re-checked weekly`
+63. `feat: custom crew members (up to 8, safe tools, same rules); docs`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: OpenAI by default (auto-pick) and custom crew members
+
+**Changed**
+- Default models are OpenAI `auto` (heavy) and `auto-mini` (cheap). `pickOpenAIModels` reads the key's model list and chooses the newest full reasoning model and the newest mini, skipping dated snapshots, chat, audio, realtime, search, codex and pro variants. Resolved on start and when settings change, cached for a week, with a Crew chat note when a newer model is adopted. `models()` resolves auto everywhere the engine uses models.
+- OpenAI reasoning detection widened beyond o-series and GPT-5 (so future names such as GPT-6 get built-in reasoning), excluding chat-latest and non-text variants.
+- Onboarding: OpenAI first; with OpenAI, deck auto-picks and shows the chosen models. Settings > Models: auto-pick status, Use OpenAI auto-pick, Check for newer models.
+- Custom crew members: up to 8, each with a name, role and tools from a safe list (memory read and write, issues read and write, drafts, web research, skills). They cannot delegate or send; work is checked; roles are scanned for injection; duplicates and reserved names refused. Delegation, automations, workflows, crew votes, the arena and Crew chat include them. Removing one removes its automations and settings.
+- Manual: OpenAI auto-pick, custom members, and a table of the crew's limits.
+
+**Verified**
+- Auto-pick picks gpt-5.5 and gpt-5.5-mini from a mixed list, keeps the pick for a week, then moves to gpt-6 with a note; future names recognized as reasoning models.
+- Custom member: unsafe scope dropped, injection-like role refused, delegated task uses only its tools and role, appears in the delegate tool, removal cleans up.
+- 258 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: Ideas from current research: escalation, lessons, playbooks, plan lock, idle notes, SKILL.md
 

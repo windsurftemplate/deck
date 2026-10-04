@@ -3,12 +3,13 @@ import { Trophy } from "lucide-react";
 import { engineCall } from "../bridge";
 import { toast } from "../ui/toast";
 import { Empty } from "../ui/states";
+import { useCrew } from "../ui/crew";
 
 type R = { agent: string; results: { model: string; provider: string; score: number; tokens: number }[]; summary: string; proposalId?: string };
-const AGENTS: [string, string][] = [["gtm", "GTM"], ["ops", "Operations"], ["code", "Engineering"], ["research", "Research"], ["chief-of-staff", "Chief of Staff"]];
 
 /** Model arena: which model does this agent's real work best, for the fewest tokens. */
 export function ArenaCard() {
+  const AGENTS = useCrew().filter(([id]) => id !== "chief-of-staff").concat([["chief-of-staff", "Chief of Staff"]]);
   const [agent, setAgent] = useState("gtm");
   const [busy, setBusy] = useState(false);
   const [r, setR] = useState<R | null>(null);

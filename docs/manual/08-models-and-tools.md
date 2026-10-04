@@ -13,6 +13,8 @@ deck uses models in roles, set in **Settings > Models**.
 
 **Escalation** (on by default): when delegated work fails its check on a smaller model (an agent's own model from the arena, or a local model), deck tries once more on the strong model, telling it what was missing. Choose the strong model in Settings > Models; none means the heavy model.
 
+**OpenAI auto-pick** is the default: heavy work uses the newest OpenAI reasoning model your key can use, and quick work the newest mini model. deck re-checks weekly and tells you in Crew chat when it moves to a newer model. **Check for newer models** checks now; picking a specific model turns auto-pick off; **Use OpenAI auto-pick** turns it back on. OpenAI reasoning models get built-in reasoning on hard work automatically.
+
 **Load models** lists what your key can use, straight from the provider. Model names change often; pick from the list rather than typing.
 
 ## Providers

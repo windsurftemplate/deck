@@ -10,7 +10,7 @@ This chapter takes you from download to your first conversation.
 |---|---|
 | A Mac (Apple Silicon or Intel), Windows 10 or 11 (64-bit), or Linux (Ubuntu, Debian, Fedora, or others via AppImage) | deck is a desktop app |
 | About 5 GB of free disk space for the first install | Build tools and the app itself |
-| An API key from Anthropic (Claude), OpenAI or Google (Gemini), or an OpenRouter key | The crew's thinking happens in these models |
+| An API key from OpenAI (recommended), Anthropic (Claude) or Google (Gemini), or an OpenRouter key | The crew's thinking happens in these models |
 | An internet connection | To reach the model provider |
 
 You do not need to know how to code.
@@ -60,7 +60,7 @@ Every time deck starts, it runs a short power-up check. Each segment of the ring
 
 The first time you open deck, a short setup walks you through five steps.
 
-1. **Connect an LLM.** Choose a provider, paste your API key, and press **Test**. deck makes a tiny request to confirm the key works. The key goes into your system keychain, never into a file.
+1. **Connect an LLM.** OpenAI is selected first. Paste your API key and press **Test**. deck reads the models your key can use and picks the newest OpenAI reasoning model for heavy work and the newest mini model for quick work, then makes a tiny request to confirm it works. It re-checks weekly and moves to newer models on its own. The key goes into your system keychain, never into a file. You can choose another provider or a specific model here or later in Settings, Models.
 2. **Starting setup.** Pick a pack that matches your work: Startup founder, Freelancer or consultant, Student, VaultProof, or Start blank. A pack gives the crew a few rules, skills and first issues. Packs can only make the crew more careful.
 3. **About you.** A few questions: your name, role, priorities, the people you work with, and how you like answers. These become facts the crew remembers.
 4. **How much to ask.** Choose an approval preset: Cautious, Balanced or Autonomous. You can change it any time. See chapter 2.

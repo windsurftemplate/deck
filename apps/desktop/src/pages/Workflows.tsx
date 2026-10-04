@@ -3,14 +3,15 @@ import { ArrowDown, Plus, Play, Trash2, Workflow as WorkflowIcon } from "lucide-
 import { engineCall, onEngineEvent } from "../bridge";
 import { toast } from "../ui/toast";
 import { Empty } from "../ui/states";
+import { useCrew } from "../ui/crew";
 
 type Step = { agent: string; instruction: string };
 type W = { id: string; name: string; steps: Step[]; lastRun?: string; lastResult?: string };
-const WHO: [string, string][] = [["research", "Research"], ["gtm", "GTM"], ["ops", "Operations"], ["code", "Engineering"], ["chief-of-staff", "Chief of Staff"]];
-const name = (id: string) => WHO.find(([w]) => w === id)?.[1] ?? id;
 
 /** Multi-step workflows: each step's result is handed to the next. */
 export function WorkflowsPanel() {
+  const WHO = useCrew();
+  const name = (id: string) => WHO.find(([w]) => w === id)?.[1] ?? id;
   const [list, setList] = useState<W[]>([]);
   const [templates, setTemplates] = useState<{ name: string; steps: Step[] }[]>([]);
   const [edit, setEdit] = useState<{ id?: string; name: string; steps: Step[] } | null>(null);

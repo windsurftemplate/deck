@@ -3,14 +3,15 @@ import { engineCall, onEngineEvent } from "../bridge";
 import { CalendarClock } from "lucide-react";
 import { Empty } from "../ui/states";
 import { WorkflowsPanel } from "./Workflows";
+import { useCrew } from "../ui/crew";
 
 type Auto = { id: string; name: string; agent: string; instruction: string; at: string; days: number[]; enabled: boolean; schedule: string; lastRun?: string; lastResult?: string };
-const WHO: [string, string][] = [["chief-of-staff", "Chief of Staff"], ["gtm", "GTM"], ["ops", "Operations"], ["code", "Engineering"], ["research", "Research"]];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const blank = { name: "", agent: "chief-of-staff", instruction: "", at: "09:00", days: [1] as number[] };
 
 /** Recurring jobs: who does what, and when. */
 export function Automations() {
+  const WHO = useCrew();
   const [list, setList] = useState<Auto[]>([]);
   const [form, setForm] = useState<typeof blank & { id?: string }>(blank);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);

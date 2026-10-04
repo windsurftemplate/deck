@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { homedir } from "node:os";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, parseSkillMd, toSkillMd, skillSlug, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, parseSkillMd, toSkillMd, skillSlug, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode, type ToolPolicy } from "@deck/agents";
 import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
 import { GitHubRepo, GoogleApi, McpHttpClient, googleSignIn, type McpTool } from "@deck/connectors";
 import { execFile } from "node:child_process";
@@ -82,6 +82,15 @@ export interface EngineDeps {
 type Turn = { from: "owner" | "agent"; text: string };
 const KEY_PHRASE: Record<ModelRef["provider"], string> = { anthropic: "an Anthropic key", openai: "an OpenAI key", gemini: "a Google Gemini key", openrouter: "an OpenRouter key", ollama: "no key (local)" };
 const MEMORY_KEY = "memory.key";
+/** Tools a custom crew member may be given. Nothing here sends, deletes or delegates. */
+const CUSTOM_SCOPES = ["memory.read", "memory.write", "issues.read", "issues.write", "drafts.write", "web.search", "skills.read"];
+export interface CustomAgent {
+  id: string;
+  name: string;
+  role: string;
+  scopes: string[];
+  createdAt: string;
+}
 const THOUGHT_LABEL = { plan: "Plan", thinking: "Thinking", reflect: "Rethinking" } as const;
 const AGENT = "chief-of-staff";
 
@@ -193,6 +202,8 @@ export class Engine {
     this.startIdlePrep();
     if (this.d.settings.labs.federation.enabled) await this.startFederation().catch((e) => this.emit("status", { message: `Federation did not start: ${(e as Error).message}` }));
     this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
+    this.custom = JSON.parse((await this.store.getMeta("crew.custom")) ?? "[]") as CustomAgent[];
+    Engine.CREW = { ...Engine.BASE_CREW, ...Object.fromEntries(this.custom.map((c) => [c.id, c.name])) };
     await this.resolveAuto().catch(() => {});
     this.buildRouter();
     this.crew = JSON.parse((await this.store.getMeta("crew.overrides")) ?? "{}") as CrewOverrides;
@@ -246,7 +257,7 @@ export class Engine {
   private toolProposals: Proposal[] = [];
 
   private policyFor(agent: string) {
-    return effectivePolicy(loadPolicy(agent), this.crew[agent]);
+    return effectivePolicy(this.basePolicy(agent), this.crew[agent]);
   }
   /** The model role for an agent's main work: its own model from the arena if chosen, else heavy. */
   private mainRole(agent: string): "heavy" | `heavy:${string}` {
@@ -254,18 +265,29 @@ export class Engine {
   }
 
   private roleFor(agent: string) {
-    return effectiveRole(loadRole(agent), this.crew[agent]);
+    return effectiveRole(this.baseRole(agent), this.crew[agent]);
+  }
+  /** A member's built-in role: the shipped file, or the one you wrote for a custom member. */
+  private baseRole(agent: string): string {
+    const c = this.custom.find((x) => x.id === agent);
+    if (!c) return loadRole(agent);
+    return `# Role: ${c.name}\n\n${c.role.trim()}\n\n## How you work\n- You are a crew member: do the task yourself; you cannot hand work to others.\n- Use only your tools. Anything that would leave the machine is not available to you.\n- Report what you did, what is waiting for the owner, and anything you could not do.`;
+  }
+  private basePolicy(agent: string): ToolPolicy {
+    const c = this.custom.find((x) => x.id === agent);
+    return c ? { agent: c.id, allow: c.scopes.filter((x) => CUSTOM_SCOPES.includes(x)), requiresApproval: [], deny: [] } : loadPolicy(agent);
   }
 
   /** Every agent's rules for Settings > Crew: defaults, your changes, tools with their mode, and the locked rules. */
   crewInfo() {
     return [AGENT, ...Object.keys(Engine.CREW)].map((id) => {
-      const base = loadPolicy(id);
+      const base = this.basePolicy(id);
       const o = this.crew[id] ?? {};
       return {
         id,
         name: id === AGENT ? "Chief of Staff" : Engine.CREW[id]!,
-        defaultInstructions: loadRole(id),
+        defaultInstructions: this.baseRole(id),
+        custom: this.custom.some((c) => c.id === id),
         instructions: o.instructions ?? null,
         rules: o.rules ?? [],
         learned: o.learned ?? null,
@@ -290,7 +312,7 @@ export class Engine {
     // The playbook stays unless the change sets it (an empty list clears it).
     const playbook = "playbook" in override ? override.playbook : this.crew[agent]?.playbook;
     if (playbook?.length) clean.playbook = playbook.map((e) => ({ id: String(e.id), text: String(e.text).trim(), helpful: Number(e.helpful) || 0, harmful: Number(e.harmful) || 0, added: String(e.added) }));
-    const err = validateOverride(loadPolicy(agent), clean);
+    const err = validateOverride(this.basePolicy(agent), clean);
     if (err) throw new Error(err);
     const before = this.crew[agent] ?? {};
     const name = agent === AGENT ? "Chief of Staff" : Engine.CREW[agent]!;
@@ -518,7 +540,10 @@ export class Engine {
   }
 
   /** Agents the Chief of Staff can hand work to. */
-  static CREW: Record<string, string> = { gtm: "GTM", ops: "Operations", code: "Engineering", research: "Research" };
+  static readonly BASE_CREW: Record<string, string> = { gtm: "GTM", ops: "Operations", code: "Engineering", research: "Research" };
+  /** The crew: the four built-in members plus any you created. */
+  static CREW: Record<string, string> = { ...Engine.BASE_CREW };
+  private custom: CustomAgent[] = [];
   /** Web searches cost money; this caps them per day. */
   static RESEARCH_PER_DAY = 25;
   private drafts: { ts: string; agent: string; to: string; subject: string; body: string }[] = [];
@@ -607,7 +632,7 @@ export class Engine {
           if (i.remove_rule) next.rules = (next.rules ?? []).filter((r) => r !== str(i.remove_rule));
           if (i.tool_scope && i.tool_mode) next.tools = { ...(next.tools ?? {}), [str(i.tool_scope)]: str(i.tool_mode) as ToolMode };
           if (target !== AGENT && !Engine.CREW[target]) return `There is no crew member called ${target}.`;
-          const err = validateOverride(loadPolicy(target), next);
+          const err = validateOverride(this.basePolicy(target), next);
           if (err) return `Cannot propose that: ${err}`;
           const summary = describeOverrideChange(target === AGENT ? "Chief of Staff" : Engine.CREW[target]!, cur, next);
           const p: Proposal = { id: randomBytes(3).toString("hex"), summary, patch: {}, crew: { agent: target, override: next } };
@@ -651,7 +676,7 @@ export class Engine {
       extra.push({
         spec: {
           name: "delegate",
-          description: "Hand a task to a crew member and get their checked report back. gtm: leads, outreach drafts. ops: tracker cleanup, admin drafts. code: engineering breakdowns and decisions.",
+          description: `Hand a task to a crew member and get their checked report back. gtm: leads, outreach drafts. ops: tracker cleanup, admin drafts. code: engineering breakdowns and decisions. research: web research with sources.${this.custom.map((c) => ` ${c.id}: ${c.role.split(/[.\n]/)[0]!.slice(0, 100)}.`).join("")}`,
           parameters: { type: "object", properties: { agent: { type: "string", enum: Object.keys(Engine.CREW) }, goal: { type: "string" }, why: { type: "string" }, done_when: { type: "array", items: { type: "string" }, description: "Checks that prove the task is finished" } }, required: ["agent", "goal", "done_when"] },
         },
         scope: "crew.delegate",
@@ -702,6 +727,52 @@ export class Engine {
         run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
       });
     return [...this.tools(), ...extra];
+  }
+
+  /* ---------- custom crew members ---------- */
+  customList() {
+    return this.custom.map((c) => ({ ...c }));
+  }
+  /**
+   * Creates or updates a crew member you define: a name, what it does, and which tools it may use (from a safe
+   * list: memory, issues, drafts, web research, skills). Custom members follow every rule the built-in crew does:
+   * they cannot delegate, cannot send anything, and their work is checked.
+   */
+  async customSave(input: { id?: string; name: string; role: string; scopes: string[] }): Promise<CustomAgent> {
+    const name = String(input.name ?? "").trim();
+    if (!/^[A-Za-z][A-Za-z0-9 &'-]{1,29}$/.test(name)) throw new Error("Give the crew member a name of 2 to 30 letters, numbers or spaces.");
+    const role = String(input.role ?? "").trim();
+    if (role.length < 20) throw new Error("Describe what this crew member does in at least a sentence.");
+    if (role.length > 4000) throw new Error("Keep the description under 4,000 characters.");
+    const scopes = [...new Set((input.scopes ?? []).filter((x) => CUSTOM_SCOPES.includes(x)))];
+    if (!scopes.length) throw new Error("Pick at least one tool.");
+    const existing = input.id ? this.custom.find((c) => c.id === input.id) : undefined;
+    if (input.id && !existing) throw new Error("That crew member no longer exists.");
+    const id = existing?.id ?? name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
+    const reserved = [AGENT, ...Object.keys(Engine.BASE_CREW), "owner", "crew", "verifier", "learning", "arena", "federation", "scanner", "activity"];
+    if (!existing && (reserved.includes(id) || this.custom.some((c) => c.id === id) || Object.values(Engine.CREW).some((n) => n.toLowerCase() === name.toLowerCase()))) throw new Error(`There is already a crew member called ${name}.`);
+    if (!existing && this.custom.length >= 8) throw new Error("You can have up to 8 crew members of your own.");
+    const scan = scanInjection(role);
+    if (scan.score >= 0.5) throw new Error(`The description looks like it tries to override the crew's rules (${scan.signals.join("; ")}).`);
+    const agent: CustomAgent = { id, name, role, scopes, createdAt: existing?.createdAt ?? this.clock().toISOString() };
+    this.custom = existing ? this.custom.map((c) => (c.id === id ? agent : c)) : [...this.custom, agent];
+    await this.store.setMeta("crew.custom", JSON.stringify(this.custom));
+    Engine.CREW = { ...Engine.BASE_CREW, ...Object.fromEntries(this.custom.map((c) => [c.id, c.name])) };
+    this.say({ sender: "owner", recipient: id, kind: "note", text: `${existing ? "Updated" : "Added"} crew member ${name} (tools: ${scopes.join(", ")}).` });
+    this.emit("crew", {});
+    return agent;
+  }
+  async customDelete(id: string) {
+    const c = this.custom.find((x) => x.id === id);
+    if (!c) return;
+    this.custom = this.custom.filter((x) => x.id !== id);
+    await this.store.setMeta("crew.custom", JSON.stringify(this.custom));
+    for (const a of this.automations?.list() ?? []) if (a.agent === id) this.automationDelete(a.id);
+    const { [id]: _gone, ...rest } = this.crew;
+    this.crew = rest;
+    await this.store.setMeta("crew.overrides", JSON.stringify(this.crew));
+    Engine.CREW = { ...Engine.BASE_CREW, ...Object.fromEntries(this.custom.map((x) => [x.id, x.name])) };
+    this.emit("crew", {});
   }
 
   /* ---------- OpenAI auto-pick ---------- */
@@ -1353,7 +1424,7 @@ export class Engine {
    */
   private async practice(agent: string, c: { goal: string; why: string; doneWhen: string[] }, o: { adds?: string[]; chat: (req: ChatRequest) => Promise<ChatResponse> }): Promise<{ score: number; tokens: number }> {
     const cur = this.crew[agent] ?? {};
-    const role = effectiveRole(loadRole(agent), o.adds?.length ? { ...cur, playbook: applyPlaybookDelta(cur.playbook ?? [], { add: o.adds }, "practice") } : cur);
+    const role = effectiveRole(this.baseRole(agent), o.adds?.length ? { ...cur, playbook: applyPlaybookDelta(cur.playbook ?? [], { add: o.adds }, "practice") } : cur);
     const p = buildPrompt({ coreRules: loadCoreRules(), role, userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal: c.goal, why: c.why, doneWhen: c.doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(await this.reader.retrieve(c.goal, { tokenBudget: 500 })), working: "(practice run: nothing you do is saved or sent)" });
     const tools = this.toolsFor(agent).map((t) => (t.kind === "read" && t.spec.name !== "web_research" ? t : { ...t, kind: "read" as const, run: async () => "Recorded (practice run: nothing was changed or sent)." }));
     let tokens = 0;
@@ -1585,7 +1656,7 @@ export class Engine {
       const tools = { ...(cur.tools ?? {}) };
       for (const [scope, mode] of Object.entries(pack.tools[agent] ?? {})) if (tools[scope] !== "off") tools[scope] = mode;
       // Tool limits only apply to tools the agent actually has.
-      for (const scope of Object.keys(tools)) if (!loadPolicy(agent).allow.includes(scope)) delete tools[scope];
+      for (const scope of Object.keys(tools)) if (!this.basePolicy(agent).allow.includes(scope)) delete tools[scope];
       if (!add.length && JSON.stringify(tools) === JSON.stringify(cur.tools ?? {})) continue;
       rules += add.length;
       await this.crewUpdate(agent, { ...cur, rules: [...(cur.rules ?? []), ...add], tools }, "pack");
@@ -1626,6 +1697,8 @@ export class Engine {
     }
     const next = this.writeSettings(applyUpdate(this.d.settings, p.patch));
     this.proposals.delete(id);
+    this.custom = JSON.parse((await this.store.getMeta("crew.custom")) ?? "[]") as CustomAgent[];
+    Engine.CREW = { ...Engine.BASE_CREW, ...Object.fromEntries(this.custom.map((c) => [c.id, c.name])) };
     await this.resolveAuto().catch(() => {});
     this.buildRouter();
     this.emit("settings", next);

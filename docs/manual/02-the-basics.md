@@ -14,6 +14,26 @@ This chapter explains the ideas you will meet everywhere in the app. Read it onc
 
 Crew members cannot hand work further down. Only the Chief of Staff delegates.
 
+### Your own crew members
+
+In **Settings > Your crew members** you can add up to 8 more: give each a name, describe what it does, and pick its tools from a safe list (search memory, save facts, read and change issues, write drafts, web research, use skills). They follow the same rules as the built-in crew: no delegation, nothing that leaves your machine, and every task is checked. The Chief of Staff can hand them work, and so can automations and workflows. They appear in Crew chat and the list view; the 3D deck shows the built-in stations only.
+
+### How many agents, and the limits
+
+deck does not create agents on its own. You have the Chief of Staff, the four built-in crew members, and up to 8 of your own.
+
+| What | Limit |
+|---|---|
+| Delegation | One level: only the Chief of Staff hands out work |
+| Tasks at once | One, or 2 to 4 with Parallel work (Labs) |
+| Steps per task | 6, plus one retry with the checker's notes, plus one escalation to the strong model |
+| Crew votes | Up to 5 members |
+| Workflows | 2 to 6 steps |
+| Tokens | Your daily budget (2 million by default) |
+| Web research | 25 searches a day |
+| Never possible | Sending email, paying, merging code, deleting: these tools do not exist |
+| When deck is closed | Nothing runs |
+
 ## Delegation and the checker
 
 When the Chief of Staff hands work to a crew member, it writes a task brief: the goal, why it matters, and a **done when** list (what must be true for the task to count as finished). The crew member works on it, then a separate, cheaper model, the **verifier**, checks the report against the done-when list. If something is missing, the crew member gets one retry with the exact gaps. The result is reported as checked, not finished, or not checked.

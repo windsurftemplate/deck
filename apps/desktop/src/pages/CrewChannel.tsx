@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { engineCall, loadSettings, onEngineEvent } from "../bridge";
 import { MessagesSquare } from "lucide-react";
 import { Empty } from "../ui/states";
+import { useCrew } from "../ui/crew";
 
 type Msg = { id: number; ts: string; channel: string; sender: string; recipient: string; kind: string; text: string; taskId?: string };
 type Discussion = { id: string; topic: string; agents: string[]; createdAt: string; status: string };
@@ -14,18 +15,23 @@ const WHO: Record<string, { name: string; color: string }> = {
   verifier: { name: "Verifier", color: "#9fb7ff" },
   owner: { name: "You", color: "#ff9a3d" },
 };
-const who = (id: string) => WHO[id] ?? { name: id.replace(/_/g, " "), color: "#8f8ab8" };
+// Custom crew members get their name from the crew list and a steady color from their id.
+const NAMES: Record<string, string> = {};
+const tint = (id: string) => `hsl(${[...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7)} 70% 72%)`;
+const who = (id: string) => WHO[id] ?? { name: NAMES[id] ?? id.replace(/_/g, " "), color: NAMES[id] ? tint(id) : "#8f8ab8" };
 const KIND: Record<string, string> = { handoff: "Hands off", report: "Reports", tool: "Uses a tool", check: "Checks", approval: "Asks you", decision: "Decides", summary: "Sums up", topic: "Topic", note: "Note", thinking: "Thinks" };
-const CREW = ["gtm", "ops", "code", "research"];
 
 /** Where the crew talks: the live feed of handoffs, tool use, reports, checks and approvals, plus discussions you start. */
 export function CrewChannel() {
+  const crewList = useCrew();
+  for (const [id, n] of crewList) NAMES[id] = n;
+  const CREW = crewList.map(([id]) => id).filter((id) => id !== "chief-of-staff");
   const [channel, setChannel] = useState("activity");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [topic, setTopic] = useState("");
-  const [picked, setPicked] = useState<string[]>(CREW);
+  const [picked, setPicked] = useState<string[]>(["gtm", "ops", "code", "research"]);
   const [rounds, setRounds] = useState(2);
   const [say, setSay] = useState("");
   const [err, setErr] = useState<string | null>(null);
