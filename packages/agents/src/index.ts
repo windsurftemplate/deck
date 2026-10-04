@@ -7,3 +7,4 @@ export { runAgent, needsApproval, verifyWork, type Verdict, type AgentTool, type
 export { reflect, extractFacts, jsonFrom, skillName, type SkillDraft } from "./learn.js";
 export { LOCKED_RULES, validateOverride, checkLearned, effectivePolicy, effectiveRole, describeOverrideChange, type CrewOverride, type CrewOverrides, type ToolMode } from "./crew-config.js";
 export { draftGuidance, practiceScore, shouldAdopt } from "./tune.js";
+export { routeComplexity } from "./route.js";

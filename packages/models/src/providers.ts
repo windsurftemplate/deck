@@ -69,7 +69,7 @@ async function send(f: Fetch, url: string, init: RequestInit, provider: string, 
 export class OpenAICompatible implements ChatModel {
   constructor(
     public id: string,
-    private o: { provider: "openai" | "openrouter"; baseUrl: string; getKey: () => Promise<string>; fetch?: Fetch; timeoutMs?: number },
+    private o: { provider: "openai" | "openrouter" | "ollama"; baseUrl: string; getKey: () => Promise<string>; fetch?: Fetch; timeoutMs?: number },
   ) {}
 
   async chat(req: ChatRequest, signal?: AbortSignal, onText?: (delta: string) => void): Promise<ChatResponse> {
@@ -201,11 +201,16 @@ export class GeminiDirect implements ChatModel {
 }
 
 export const BASE_URLS = { openai: "https://api.openai.com/v1", openrouter: "https://openrouter.ai/api/v1" } as const;
+/** Where a local Ollama listens unless settings say otherwise. Ollama speaks the OpenAI chat format under /v1. */
+export const OLLAMA_DEFAULT = "http://localhost:11434";
 
 /** One factory for every provider, so the engine and settings never special-case. */
-export function makeChatModel(ref: ModelRef, getKey: () => Promise<string>, f?: Fetch): ChatModel {
+export function makeChatModel(ref: ModelRef, getKey: () => Promise<string>, f?: Fetch, o: { ollamaUrl?: string } = {}): ChatModel {
   const opt = f ? { fetch: f } : {};
   switch (ref.provider) {
+    case "ollama":
+      // Local models need no key; the request never leaves this machine (unless the address points elsewhere).
+      return new OpenAICompatible(ref.model, { provider: "ollama", baseUrl: `${(o.ollamaUrl ?? OLLAMA_DEFAULT).replace(/\/+$/, "")}/v1`, getKey: async () => "ollama", ...opt });
     case "anthropic":
       return new AnthropicDirect(ref.model, getKey, opt);
     case "openai":
@@ -217,7 +222,7 @@ export function makeChatModel(ref: ModelRef, getKey: () => Promise<string>, f?: 
 }
 
 /** Chat models the key can use, straight from the provider. Nothing is guessed or hard-coded. */
-export async function listModels(provider: ProviderId, key: string, f: Fetch = fetch): Promise<string[]> {
+export async function listModels(provider: ProviderId, key: string, f: Fetch = fetch, o: { ollamaUrl?: string } = {}): Promise<string[]> {
   const get = async (url: string, headers: Record<string, string>) => {
     const res = await f(url, { headers });
     if (res.status === 401 || res.status === 403) throw new Error(`${provider}: the API key was rejected.`);
@@ -229,6 +234,15 @@ export async function listModels(provider: ProviderId, key: string, f: Fetch = f
     return res.json() as Promise<unknown>;
   };
   switch (provider) {
+    case "ollama": {
+      let j: { models?: { name: string }[] };
+      try {
+        j = (await get(`${(o.ollamaUrl ?? OLLAMA_DEFAULT).replace(/\/+$/, "")}/api/tags`, {})) as typeof j;
+      } catch {
+        throw new Error("ollama: not reachable. Start Ollama (ollama serve) and pull a model, for example: ollama pull llama3.2");
+      }
+      return (j.models ?? []).map((m) => m.name).sort();
+    }
     case "anthropic": {
       const j = (await get("https://api.anthropic.com/v1/models?limit=100", { "x-api-key": key, "anthropic-version": "2023-06-01" })) as { data: { id: string }[] };
       return j.data.map((m) => m.id);

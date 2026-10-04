@@ -29,6 +29,7 @@ function modelId(text: string, provider: Provider): string | null {
     openai: /^(gpt|o\d|chatgpt)[\w.-]*$/i,
     gemini: /^gemini-/i,
     openrouter: /\//,
+    ollama: /:/,
   };
   return tokens.find((t) => looksLikeId(t) && byProvider[provider].test(t)) ?? null;
 }
@@ -50,7 +51,7 @@ export function parseModelCommand(text: string): ModelCommand | null {
 }
 
 export const ROLE_LABEL: Record<Role, string> = { heavy: "heavy work", cheap: "quick tasks", fallback: "backup" };
-export const PROVIDER_LABEL: Record<Provider, string> = { anthropic: "Claude", openai: "OpenAI", gemini: "Gemini", openrouter: "OpenRouter" };
+export const PROVIDER_LABEL: Record<Provider, string> = { anthropic: "Claude", openai: "OpenAI", gemini: "Gemini", openrouter: "OpenRouter", ollama: "Ollama (local)" };
 
 export function describeModels(m: { heavy: ModelChoice; cheap: ModelChoice; fallback: ModelChoice | null }): string {
   const one = (c: ModelChoice) => `${PROVIDER_LABEL[c.provider]} ${c.model}`;

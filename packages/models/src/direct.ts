@@ -1,7 +1,7 @@
 import { sseJson } from "./stream.js";
 import { ModelError, blocksOf, type Block, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type ToolCallBlock } from "./types.js";
 
-export type ProviderId = "anthropic" | "openai" | "gemini" | "openrouter";
+export type ProviderId = "anthropic" | "openai" | "gemini" | "openrouter" | "ollama";
 
 /** Key shapes, used to catch a key pasted into the wrong provider. Not a security check. */
 export const KEY_SHAPES: Record<ProviderId, RegExp> = {
@@ -9,6 +9,7 @@ export const KEY_SHAPES: Record<ProviderId, RegExp> = {
   openai: /^sk-(proj-)?[A-Za-z0-9_-]{20,}$/,
   gemini: /^AIza[0-9A-Za-z_-]{30,}$/,
   openrouter: /^sk-or-[A-Za-z0-9_-]{20,}$/,
+  ollama: /^.*$/, // local: no key
 };
 
 export function checkKeyShape(provider: ProviderId, key: string): string | null {
@@ -17,7 +18,7 @@ export function checkKeyShape(provider: ProviderId, key: string): string | null 
   if (/\s/.test(k)) return "The key has spaces in it. Copy it again.";
   if (provider === "openai" && k.startsWith("sk-ant-")) return "That is an Anthropic key. Paste it under Anthropic.";
   if (provider === "openai" && k.startsWith("sk-or-")) return "That is an OpenRouter key. Paste it under OpenRouter.";
-  const name = { anthropic: "an Anthropic", openai: "an OpenAI", gemini: "a Google Gemini", openrouter: "an OpenRouter" }[provider];
+  const name = { anthropic: "an Anthropic", openai: "an OpenAI", gemini: "a Google Gemini", openrouter: "an OpenRouter", ollama: "an Ollama" }[provider];
   if (!KEY_SHAPES[provider].test(k)) return `That does not look like ${name} key.`;
   return null;
 }

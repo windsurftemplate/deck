@@ -103,7 +103,7 @@ async function main() {
     "approvals.list": async () => engine.pendingApprovals(),
     "approvals.decide": async (p) => engine.decide(String((p as { id?: string })?.id ?? ""), !!(p as { approve?: boolean })?.approve),
     "settings.apply": (p) => engine.applyProposal(String((p as { id?: string })?.id ?? "")),
-    "models.list": (p) => engine.listModels((p as { provider: "anthropic" | "openai" | "gemini" | "openrouter" }).provider),
+    "models.list": (p) => engine.listModels((p as { provider: "anthropic" | "openai" | "gemini" | "openrouter" | "ollama" }).provider),
     /** Settings changed in the app: reopen with the new settings (re-embeds if the embedding model changed). */
     reload: async () => {
       await engine.close();

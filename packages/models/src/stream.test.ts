@@ -47,3 +47,21 @@ describe("streaming replies", () => {
     expect(res).toMatchObject({ text: "Answer.", stopReason: "STOP", usage: { inputTokens: 4, outputTokens: 2 } });
   });
 });
+
+describe("ollama (local)", () => {
+  it("talks OpenAI format to the local server without a key, and lists pulled models", async () => {
+    const calls: string[] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      calls.push(`${u} ${String((init?.headers as Record<string, string> | undefined)?.authorization ?? "")}`);
+      if (u.endsWith("/api/tags")) return new Response(JSON.stringify({ models: [{ name: "qwen2.5:7b" }, { name: "llama3.2:latest" }] }));
+      return new Response(JSON.stringify({ choices: [{ message: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 1 } }));
+    }) as unknown as typeof fetch;
+    const { makeChatModel, listModels } = await import("./index.js");
+    const r = await makeChatModel({ provider: "ollama", model: "llama3.2" }, async () => "", f, { ollamaUrl: "http://localhost:11434/" }).chat({ maxTokens: 5, messages: [{ role: "user", content: "hi" }] });
+    expect(r.text).toBe("hi");
+    expect(calls[0]).toBe("http://localhost:11434/v1/chat/completions Bearer ollama");
+    expect(await listModels("ollama", "", f)).toEqual(["llama3.2:latest", "qwen2.5:7b"]);
+    const down = (async () => { throw new Error("ECONNREFUSED"); }) as unknown as typeof fetch;
+    await expect(listModels("ollama", "", down)).rejects.toThrow(/ollama serve/);
+  });
+});

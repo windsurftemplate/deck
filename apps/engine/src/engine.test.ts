@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { HashEmbedder } from "@deck/memory";
 import { ModelError, type ChatModel, type ChatRequest } from "@deck/models";
-import { DEFAULTS, type Settings } from "@deck/settings";
+import { applyUpdate, DEFAULTS, type Settings } from "@deck/settings";
 import { Engine } from "./engine.js";
 import { memoryKeychain, type Keychain } from "./keychain.js";
 import { handleLine } from "./protocol.js";
@@ -508,6 +508,29 @@ describe("research agent", () => {
     expect(report).toContain("ops: Close stale issues (Not finished: every stale issue is closed)");
     expect(report).toContain("gtm: Send email to x");
     await e.close();
+  });
+});
+
+describe("labs: complexity routing and local models", () => {
+  it("routes simple chat to the cheap model only when the switch is on, and keeps Ollama behind its switch", async () => {
+    const used: string[] = [];
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const mk = (labs: object) => new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: { ...DEFAULTS, labs: { ...DEFAULTS.labs, ...labs } }, fetch: offline, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => ({ id: ref.model, chat: async () => (used.push(ref.model), { text: "ok", model: ref.model, stopReason: "end_turn", usage: U }) }) });
+    const off = mk({});
+    await off.open();
+    await off.chat("thanks");
+    expect(used.at(-1)).toBe(DEFAULTS.models.heavy.model);
+    await expect(off.listModels("ollama")).rejects.toThrow(/Labs first/);
+    await off.close();
+    const on = mk({ routing: true });
+    await on.open();
+    await on.chat("thanks");
+    expect(used.at(-1)).toBe(DEFAULTS.models.cheap.model);
+    await on.chat("Draft a follow-up to Dana about the pilot");
+    expect(used.at(-1)).toBe(DEFAULTS.models.heavy.model);
+    await on.close();
+    expect(() => applyUpdate(DEFAULTS, { models: { heavy: { provider: "ollama", model: "llama3.2" } } })).toThrow(/Labs first/);
+    expect(applyUpdate(DEFAULTS, { labs: { ollama: { enabled: true } }, models: { heavy: { provider: "ollama", model: "llama3.2" } } }).models.heavy.provider).toBe("ollama");
   });
 });
 

@@ -95,3 +95,16 @@ it("hands-free needs voice on and a simple wake word; notifications on by defaul
   expect(on.voice).toMatchObject({ handsFree: true, wakeWord: "computer" });
   expect(() => applyUpdate(on, { voice: { wakeWord: "deck!!" } })).toThrow(/letters only/);
 });
+
+it("labs: everything off by default, each setting validated", () => {
+  const L = DEFAULTS.labs;
+  expect([L.routing, L.ollama.enabled, L.fanout, L.consensus, L.plugins.enabled, L.github.enabled, L.google.enabled, L.federation.enabled, L.tours, L.powerUp3d]).toEqual(Array(10).fill(false));
+  expect(() => applyUpdate(DEFAULTS, { labs: { ollama: { baseUrl: "http://10.0.0.5:11434" } } })).toThrow(/localhost/);
+  expect(() => applyUpdate(DEFAULTS, { labs: { github: { repo: "not a repo" } } })).toThrow(/owner\/name/);
+  expect(() => applyUpdate(DEFAULTS, { labs: { plugins: { servers: [{ id: "", name: "Linear", url: "http://linear.app/mcp", enabled: true, trustReadOnly: false }] } } })).toThrow(/https/);
+  const s = applyUpdate(DEFAULTS, { labs: { routing: true, plugins: { enabled: true, servers: [{ id: "", name: "Linear", url: "https://mcp.linear.app/mcp", enabled: true, trustReadOnly: false }] }, federation: { port: 8800 } } });
+  expect(s.labs.routing).toBe(true);
+  expect(s.labs.plugins.servers[0]).toEqual({ id: "linear", name: "Linear", url: "https://mcp.linear.app/mcp", enabled: true, trustReadOnly: false });
+  expect(s.labs.federation.port).toBe(8800);
+  expect(s.labs.consensus).toBe(false);
+});

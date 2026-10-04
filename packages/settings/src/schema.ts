@@ -14,11 +14,43 @@ export interface VaultProofSettings {
 /** Which database adapter holds the workspace. Only SQLite ships today; adapters plug in behind the same interfaces. */
 export type StorageEngine = "sqlite";
 
-export type Provider = "anthropic" | "openai" | "gemini" | "openrouter";
-export const PROVIDERS: Provider[] = ["anthropic", "openai", "gemini", "openrouter"];
+export type Provider = "anthropic" | "openai" | "gemini" | "openrouter" | "ollama";
+export const PROVIDERS: Provider[] = ["anthropic", "openai", "gemini", "openrouter", "ollama"];
 export interface ModelChoice {
   provider: Provider;
   model: string;
+}
+
+export interface PluginServer {
+  id: string;
+  name: string;
+  /** MCP Streamable HTTP address (https, or http on this machine) */
+  url: string;
+  enabled: boolean;
+  /** Tools the server marks read-only may run without asking. Off: every call asks you. */
+  trustReadOnly: boolean;
+}
+
+export interface Labs {
+  /** Simple requests go to the cheap model, hard ones to the heavy model. */
+  routing: boolean;
+  /** Local models through Ollama (no key, nothing leaves the machine). */
+  ollama: { enabled: boolean; baseUrl: string };
+  /** The Chief of Staff can hand several tasks out at once. */
+  fanout: boolean;
+  /** Crew votes: each member answers on its own, then they rank each other's answers. */
+  consensus: boolean;
+  /** Outside MCP servers as tools. */
+  plugins: { enabled: boolean; servers: PluginServer[] };
+  /** Engineering can open pull requests (never merge) in one repository. */
+  github: { enabled: boolean; repo: string };
+  /** Gmail and Calendar, read only, plus Gmail drafts. */
+  google: { enabled: boolean; clientId: string };
+  /** Talk to crews on other computers you trust; every outgoing message needs your approval. */
+  federation: { enabled: boolean; port: number; name: string };
+  /** 3D deck extras. */
+  tours: boolean;
+  powerUp3d: boolean;
 }
 
 export interface ModelSettings {
@@ -56,6 +88,8 @@ export interface Settings {
   };
   /** Desktop notifications when deck is in the background. */
   notifications: { enabled: boolean };
+  /** Labs: features that are off until you turn them on. Each has its own settings. */
+  labs: Labs;
   /** Camera snapshots in chat. The camera is on only while you take a picture; pictures go to your chosen model and are not stored. */
   camera: { enabled: boolean };
   /** Outside tools the crew can use. Keys live in the OS keychain, never here. */
@@ -77,6 +111,18 @@ export const DEFAULTS: Settings = {
   world: { view: "3d" },
   voice: { enabled: false, whisperBin: "", modelPath: "", speakReplies: false, handsFree: false, wakeWord: "deck" },
   notifications: { enabled: true },
+  labs: {
+    routing: false,
+    ollama: { enabled: false, baseUrl: "http://localhost:11434" },
+    fanout: false,
+    consensus: false,
+    plugins: { enabled: false, servers: [] },
+    github: { enabled: false, repo: "" },
+    google: { enabled: false, clientId: "" },
+    federation: { enabled: false, port: 7787, name: "" },
+    tours: false,
+    powerUp3d: false,
+  },
   camera: { enabled: false },
   tools: { jev: { enabled: false, baseUrl: "" } },
   chat: { telegram: { enabled: false, ownerChatIds: [] } },
@@ -96,9 +142,64 @@ export class SettingsError extends Error {
 }
 
 /** Accepts {provider, model}, or an old plain model id (treated as Anthropic). */
+const LOCAL_HTTP = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/.*)?$/;
+function applyLabs(cur: Labs, p: DeepPartial<Labs>): Labs {
+  const n: Labs = JSON.parse(JSON.stringify(cur));
+  for (const k of ["routing", "fanout", "consensus", "tours", "powerUp3d"] as const) if (p[k] !== undefined) n[k] = !!p[k];
+  if (p.ollama) {
+    if (p.ollama.baseUrl !== undefined) {
+      const u = String(p.ollama.baseUrl).trim().replace(/\/+$/, "");
+      if (!LOCAL_HTTP.test(u) && !/^https:\/\/[^\s@/]+(\/\S*)?$/.test(u)) throw new SettingsError("labs.ollama.baseUrl", "Use http://localhost:11434 or an https address.");
+      n.ollama.baseUrl = u;
+    }
+    if (p.ollama.enabled !== undefined) n.ollama.enabled = !!p.ollama.enabled;
+  }
+  if (p.plugins) {
+    if (p.plugins.enabled !== undefined) n.plugins.enabled = !!p.plugins.enabled;
+    if (p.plugins.servers !== undefined) {
+      const list = (p.plugins.servers as PluginServer[]).slice(0, 12).map((x) => {
+        const url = String(x.url ?? "").trim();
+        if (!LOCAL_HTTP.test(url) && !/^https:\/\/[^\s@/]+(\/\S*)?$/.test(url)) throw new SettingsError("labs.plugins", `${x.name || "A plugin"}: use an https address, or http on this machine.`);
+        const name = String(x.name ?? "").trim().slice(0, 40);
+        if (!name) throw new SettingsError("labs.plugins", "Every plugin needs a name.");
+        const id = String(x.id || name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "plugin";
+        return { id, name, url, enabled: !!x.enabled, trustReadOnly: !!x.trustReadOnly };
+      });
+      if (new Set(list.map((x) => x.id)).size !== list.length) throw new SettingsError("labs.plugins", "Two plugins have the same name.");
+      n.plugins.servers = list;
+    }
+  }
+  if (p.github) {
+    if (p.github.repo !== undefined) {
+      const r = String(p.github.repo).trim();
+      if (r && !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) throw new SettingsError("labs.github.repo", "Use owner/name, like vaultproof/deck.");
+      n.github.repo = r;
+    }
+    if (p.github.enabled !== undefined) n.github.enabled = !!p.github.enabled;
+  }
+  if (p.google) {
+    if (p.google.clientId !== undefined) {
+      const c = String(p.google.clientId).trim();
+      if (c && !/^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(c)) throw new SettingsError("labs.google.clientId", "Paste the client id that ends in .apps.googleusercontent.com.");
+      n.google.clientId = c;
+    }
+    if (p.google.enabled !== undefined) n.google.enabled = !!p.google.enabled;
+  }
+  if (p.federation) {
+    if (p.federation.port !== undefined) {
+      const port = Number(p.federation.port);
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new SettingsError("labs.federation.port", "Use a port between 1024 and 65535.");
+      n.federation.port = port;
+    }
+    if (p.federation.name !== undefined) n.federation.name = String(p.federation.name).trim().slice(0, 40);
+    if (p.federation.enabled !== undefined) n.federation.enabled = !!p.federation.enabled;
+  }
+  return n;
+}
+
 function toChoice(v: unknown, field: string): ModelChoice {
   const c = typeof v === "string" ? { provider: "anthropic", model: v } : (v as Partial<ModelChoice>);
-  if (!c || !PROVIDERS.includes(c.provider as Provider)) throw new SettingsError(field, "Choose Anthropic, OpenAI, Gemini or OpenRouter.");
+  if (!c || !PROVIDERS.includes(c.provider as Provider)) throw new SettingsError(field, "Choose Anthropic, OpenAI, Gemini, OpenRouter or Ollama.");
   const model = String(c.model ?? "").trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{1,120}$/.test(model)) throw new SettingsError(field, "Pick a model from the list, or type its exact id.");
   return { provider: c.provider as Provider, model };
@@ -191,6 +292,7 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
   }
   if (patch.camera?.enabled !== undefined) next.camera.enabled = !!patch.camera.enabled;
   if (patch.notifications?.enabled !== undefined) next.notifications.enabled = !!patch.notifications.enabled;
+  if (patch.labs) next.labs = applyLabs(next.labs, patch.labs as DeepPartial<Labs>);
   if (patch.tools?.jev) {
     const j = patch.tools.jev;
     if (j.baseUrl !== undefined) {
@@ -214,6 +316,8 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
     if (patch.vaultproof.enabled !== undefined) next.vaultproof.enabled = !!patch.vaultproof.enabled;
     if (next.vaultproof.enabled && !next.vaultproof.mcpUrl) throw new SettingsError("vaultproof.mcpUrl", "Add the VaultProof MCP server URL before turning it on.");
   }
+  const usesOllama = [next.models.heavy, next.models.cheap, next.models.fallback, ...Object.values(next.models.agents ?? {})].some((m) => m?.provider === "ollama");
+  if (usesOllama && !next.labs.ollama.enabled) throw new SettingsError("models", "Turn on local models (Ollama) in Settings, Labs first.");
   return next;
 }
 
@@ -224,7 +328,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

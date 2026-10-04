@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { homedir } from "node:os";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, draftGuidance, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, draftGuidance, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
 import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
@@ -68,7 +68,7 @@ export interface EngineDeps {
 }
 
 type Turn = { from: "owner" | "agent"; text: string };
-const KEY_PHRASE: Record<ModelRef["provider"], string> = { anthropic: "an Anthropic key", openai: "an OpenAI key", gemini: "a Google Gemini key", openrouter: "an OpenRouter key" };
+const KEY_PHRASE: Record<ModelRef["provider"], string> = { anthropic: "an Anthropic key", openai: "an OpenAI key", gemini: "a Google Gemini key", openrouter: "an OpenRouter key", ollama: "no key (local)" };
 const MEMORY_KEY = "memory.key";
 const AGENT = "chief-of-staff";
 
@@ -320,11 +320,11 @@ export class Engine {
 
   private buildRouter() {
     const m = this.d.settings.models;
-    const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch));
+    const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch, { ollamaUrl: this.d.settings.labs.ollama.baseUrl }));
     const own = Object.entries(m.agents ?? {}) as [string, ModelRef][];
     const chosen = [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : []), ...own.map(([, r]) => r)];
     const models: Record<string, ChatModel> = {};
-    for (const ref of chosen) models[refId(ref)] ??= make(ref, () => this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider]));
+    for (const ref of chosen) models[refId(ref)] ??= make(ref, () => (ref.provider === "ollama" ? Promise.resolve("") : this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider])));
     const chain = (ref: ModelRef) => [refId(ref), ...(m.fallback && refId(m.fallback) !== refId(ref) ? [refId(m.fallback)] : [])];
     this.router = new ModelRouter({ roles: { heavy: chain(m.heavy), cheap: chain(m.cheap), ...Object.fromEntries(own.map(([a, r]) => [`heavy:${a}`, [refId(r), ...chain(m.heavy).filter((x) => x !== refId(r))]])) }, models, prices: {}, caps: { tokens: m.dailyTokenCap }, clock: this.clock, onUsage: (u) => this.activity?.logUsage(u) });
   }
@@ -804,7 +804,7 @@ export class Engine {
     const uniq = [...new Map(pool.map((r) => [refId(r), r])).values()].slice(0, 4);
     const tasks = this.activity!.practiceCases(agent, cases);
     if (tasks.length < 2) throw new Error(`${name} needs at least 2 finished tasks to compare models.`);
-    const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch));
+    const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch, { ollamaUrl: this.d.settings.labs.ollama.baseUrl }));
     const results: { model: string; provider: string; score: number; tokens: number }[] = [];
     for (const ref of uniq) {
       const model = make(ref, () => this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider]));
@@ -1090,9 +1090,13 @@ export class Engine {
     try {
       const policy = this.policyFor(AGENT);
       this.toolProposals = [];
+    // Labs: complexity routing sends simple requests to the cheap model.
+    const route = this.d.settings.labs.routing ? routeComplexity(clean, this.turns.length) : null;
+    const chatRole = route?.level === "simple" ? ("cheap" as const) : this.mainRole(AGENT);
+    if (route) this.emit("routing", { level: route.level, reason: route.reason });
       const out = await runAgent({
         agent: AGENT,
-        chat: (req, onText) => this.router.chat(this.mainRole(AGENT), AGENT, req, undefined, onText),
+        chat: (req, onText) => this.router.chat(chatRole, AGENT, req, undefined, onText),
         onText: (delta) => this.emit("chat.delta", { threadId: tid, delta }),
         onAction: (a) => this.say({ sender: AGENT, recipient: a.tool, kind: "tool", text: `${a.status}: ${a.summary}` }),
         system: p.system,
@@ -1141,6 +1145,10 @@ export class Engine {
 
   /** Models the saved key can use, read from the provider. */
   async listModels(provider: ModelRef["provider"]): Promise<string[]> {
+    if (provider === "ollama") {
+      if (!this.d.settings.labs.ollama.enabled) throw new Error("Turn on local models (Ollama) in Settings, Labs first.");
+      return listModels("ollama", "", this.d.fetch ?? fetch, { ollamaUrl: this.d.settings.labs.ollama.baseUrl });
+    }
     return listModels(provider, await this.secret(`provider.${provider}`, KEY_PHRASE[provider]), this.d.fetch ?? fetch);
   }
 
