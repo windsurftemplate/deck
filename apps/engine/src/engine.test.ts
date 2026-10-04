@@ -1112,6 +1112,53 @@ describe("API key tests", () => {
   });
 });
 
+describe("evals in the app", () => {
+  it("runs memory, safety and behavior suites without tokens, keeps history, and reports drops", async () => {
+    const e = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });
+    await e.open();
+    await e.customSave({ name: "Investor Relations", role: "Prepares investor updates from closed issues and goals.", scopes: ["memory.read"] });
+    const r = await e.runEvals();
+    const by = Object.fromEntries(r.suites.map((x) => [x.suite, x]));
+    const failing = r.suites.flatMap((x) => x.cases.filter((c) => !c.passed).map((c) => `${x.suite}/${c.id}: ${c.detail}`));
+    expect(failing).toEqual([]);
+    expect(by.memory!.total).toBe(5);
+    expect(by.safety!.total).toBe(13);
+    expect(by.behavior!.cases.map((c) => c.id)).toEqual(["delegation-is-checked", "escalation-after-failure", "failure-lesson-recalled", "helpers-capped-and-narrowed", "custom-member-safe-tools", "approval-review-advice-only"]);
+    expect(r.suites.every((x) => x.tokens === 0)).toBe(true);
+    expect(e.crewInfo().map((c) => c.id)).toContain("investor-relations"); // the sandbox did not disturb the real crew
+    await e.runEvals();
+    const ov = e.evalsOverview();
+    expect(ov.suites.map((x) => x.suite)).toEqual(["memory", "safety", "behavior"]);
+    expect(ov.suites[0]!.history).toHaveLength(2);
+    expect((await e.health()).checks.find((c) => c.id === "evals")!.ok).toBe(true);
+    // A drop is reported against the previous run.
+    (e as unknown as { activity: { saveEvalRun: (r: object, ts: string) => void } }).activity.saveEvalRun({ suite: "memory", title: "Memory recall", score: 1, passed: 5, total: 5, ms: 1, tokens: 0, cases: [] }, "2026-10-04T00:00:00Z");
+    const ok = await e.runEvals();
+    expect(ok.drops).toEqual([]);
+    await e.close();
+  });
+  it("the live suite runs real-style tasks and scores them", async () => {
+    const U = { inputTokens: 50, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const m = JSON.stringify(req.messages);
+        const sys = JSON.stringify(req.system);
+        if (req.tools?.some((t) => t.name === "issues_create") && !m.includes("tool_result")) return { text: "", toolCalls: [{ type: "tool_call", id: "t1", name: "issues_create", input: { title: "Renew the vaultproof.dev domain", priority: 3 } }], model: ref.model, stopReason: "tool_use", usage: U };
+        if (req.tools?.some((t) => t.name === "read_email") && !m.includes("tool_result")) return { text: "", toolCalls: [{ type: "tool_call", id: "t2", name: "read_email", input: {} }], model: ref.model, stopReason: "tool_use", usage: U };
+        if (req.tools?.length) return { text: "Done.", model: ref.model, stopReason: "end_turn", usage: U };
+        if (sys.includes("Extract the person")) return { text: '{"name":"Dana Wright","company":"Acme Robotics","role":"CISO"}', model: ref.model, stopReason: "end_turn", usage: U };
+        if (sys.includes("You check whether work is finished")) return { text: m.includes("$2,000") ? '{"missing": []}' : '{"missing": ["the draft mentions the pilot price"]}', model: ref.model, stopReason: "end_turn", usage: U };
+        return { text: "ok", model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    const r = await e.runEvals({ live: true });
+    const live = r.suites.find((x) => x.suite === "live")!;
+    expect(live.cases.filter((c) => !c.passed).map((c) => `${c.id}: ${c.detail}`)).toEqual([]);
+    expect(live.tokens).toBeGreaterThan(0);
+    await e.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");

@@ -11,8 +11,8 @@ with encrypted memory on your machine and your approval on anything that leaves 
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-12151c?style=flat-square)](#install)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](#development)
-[![Tests](https://img.shields.io/badge/tests-269%20passing-5fd39a?style=flat-square)](#evals)
-[![Safety evals](https://img.shields.io/badge/safety%20evals-9%2F9-5fd39a?style=flat-square)](#evals)
+[![Tests](https://img.shields.io/badge/tests-273%20passing-5fd39a?style=flat-square)](#evals)
+[![Safety evals](https://img.shields.io/badge/safety%20evals-13%2F13-5fd39a?style=flat-square)](#evals)
 [![Models](https://img.shields.io/badge/models-OpenAI%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Ollama-79a8ff?style=flat-square)](#models)
 [![MCP](https://img.shields.io/badge/MCP-ready-c59bff?style=flat-square)](https://modelcontextprotocol.io)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-f2b34a?style=flat-square)](CONTRIBUTING.md)
@@ -296,11 +296,13 @@ Built-in reasoning is used on hard work with OpenAI reasoning models, Claude and
 | Suite | What it proves | Score |
 |---|---|---|
 | Memory evals | Recall finds the right facts, follows relationships, prefers current facts over outdated ones (also with the real local embedding model) | 5/5 |
-| Safety evals | With a model that obeys an injected email: sends wait for approval on every preset, rejected and denied actions never run, secrets never reach the model, the wrapper holds, the tripwire stops the run | 9/9 |
+| Safety evals | With a model that obeys an injected email: sends wait for approval on every preset, rejected and denied actions never run, secrets never reach the model, the wrapper holds, the tripwire stops the run, the plan lock blocks unplanned actions, the CISO never decides, learning cannot weaken safety | 13/13 |
+| Behavior evals | A sandboxed copy of deck: unfinished work caught, escalation once after failure, failure lessons recalled, helpers capped and narrowed, safe custom tools, advice-only CISO | 6/6 |
+| Live evals (opt-in) | Real tasks on your models and Jev: tool calling, resisting injected instructions, JSON output, checker accuracy, routing | Tracked over time |
 | Baseline gate | Any score drop fails the build (`evals/baseline.json`) | 100% |
-| Unit and contract tests | Every package, plus Rust | 269 TS + 6 Rust |
+| Unit and contract tests | Every package, plus Rust | 273 TS + 6 Rust |
 
-In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
+All suites also run inside the app (offline suites nightly, live suite on demand or weekly) and appear in the Command center with scores, trends, per-case details and alerts when a score drops. In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
 
 <a id="development"></a>
 
@@ -369,8 +371,8 @@ Everything is also inside the app under **Help and course** (⌘/Ctrl + 9). Star
 - [x] Playbooks, failure lessons, tuning, arena, idle-time notes
 - [x] CISO, plan lock, input scanner, tripwire, safety evals
 - [x] Labs: Ollama, MCP plugins, Gmail and Calendar, GitHub, federation
-- [ ] Live-model eval mode and score trends in the Command center
-- [ ] Eval cases for plan lock, CISO reviews, helpers and playbooks
+- [x] Live-model eval mode and score trends in the Command center
+- [x] Eval cases for plan lock, CISO reviews, helpers and playbooks
 - [x] Jev (TypeSafe AI) for routing, checks, approval risk and injection scanning, with fallbacks
 - [ ] Signed and notarized installers
 - [ ] Automations that run while deck is closed

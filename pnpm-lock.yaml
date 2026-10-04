@@ -96,6 +96,9 @@ importers:
       '@deck/embed-local':
         specifier: workspace:*
         version: link:../../packages/embed-local
+      '@deck/evals':
+        specifier: workspace:*
+        version: link:../../evals
       '@deck/gate':
         specifier: workspace:*
         version: link:../../packages/gate

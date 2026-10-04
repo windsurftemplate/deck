@@ -94,6 +94,8 @@ export interface Settings {
   notifications: { enabled: boolean };
   /** How agents think: a plan step for complex work, built-in model reasoning for hard work. */
   thinking: { mode: "auto" | "always" | "off"; reasoning: "low" | "medium" | "high"; idlePrep: boolean };
+  /** Evals: offline suites daily (no tokens); the live suite weekly only if turned on (uses tokens). */
+  evals: { daily: boolean; live: boolean };
   /** The CISO gives a security opinion on every approval card (advice only). */
   ciso: { reviews: boolean };
   /** Helper agents: the Chief of Staff and crew can create temporary helpers for a task. */
@@ -124,6 +126,7 @@ export const DEFAULTS: Settings = {
   thinking: { mode: "auto", reasoning: "medium", idlePrep: true },
   helpers: { enabled: true, max: 10, tokenBudget: 300_000 },
   ciso: { reviews: true },
+  evals: { daily: true, live: false },
   labs: {
     routing: false,
     ollama: { enabled: false, baseUrl: "http://localhost:11434" },
@@ -309,6 +312,8 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
   if (patch.notifications?.enabled !== undefined) next.notifications.enabled = !!patch.notifications.enabled;
   if (patch.labs) next.labs = applyLabs(next.labs, patch.labs as DeepPartial<Labs>);
   if (patch.ciso?.reviews !== undefined) next.ciso.reviews = !!patch.ciso.reviews;
+  if (patch.evals?.daily !== undefined) next.evals.daily = !!patch.evals.daily;
+  if (patch.evals?.live !== undefined) next.evals.live = !!patch.evals.live;
   if (patch.helpers) {
     const h = patch.helpers;
     if (h.enabled !== undefined) next.helpers.enabled = !!h.enabled;
@@ -369,7 +374,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "helpers", "ciso", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "helpers", "ciso", "evals", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

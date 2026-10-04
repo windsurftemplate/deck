@@ -76,3 +76,6 @@ const agentsDir = join(out, "node_modules/@deck/agents");
 for (const role of ["chief-of-staff", "gtm", "ops", "code", "research", "ciso"])
   for (const f of ["prompt.md", "tools.json"]) if (!existsSync(join(agentsDir, role, f))) throw new Error(`missing ${role}/${f} in the engine bundle; add "${role}" to packages/agents/package.json files`);
 if (!existsSync(join(agentsDir, "core-rules.md"))) throw new Error("missing core-rules.md in the engine bundle");
+// The in-app evals read their fixtures at run time.
+const evalsDir = join(out, "node_modules/@deck/evals");
+for (const f of ["dist/index.js", "fixtures/memory.json", "memory/questions.json", "baseline.json"]) if (!existsSync(join(evalsDir, f))) throw new Error(`missing @deck/evals/${f} in the engine bundle`);

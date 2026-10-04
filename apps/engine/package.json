@@ -23,7 +23,8 @@
     "@deck/tracker": "workspace:*",
     "@napi-rs/keyring": "^1.1.6",
     "@deck/packs": "workspace:*",
-    "@deck/ingest": "workspace:*"
+    "@deck/ingest": "workspace:*",
+    "@deck/evals": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

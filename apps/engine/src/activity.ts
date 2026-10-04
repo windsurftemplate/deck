@@ -17,6 +17,7 @@ export interface CrewMessage {
 export class Activity {
   constructor(private db: DB, private clock: () => Date = () => new Date()) {
     db.exec(`
+      CREATE TABLE IF NOT EXISTS eval_runs (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, suite TEXT NOT NULL, title TEXT NOT NULL, score REAL NOT NULL, passed INTEGER NOT NULL, total INTEGER NOT NULL, ms INTEGER NOT NULL, tokens INTEGER NOT NULL, cases TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS usage_log (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, agent TEXT NOT NULL, model TEXT NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, tokens INTEGER NOT NULL, cost REAL);
       CREATE TABLE IF NOT EXISTS task_log (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, task_id TEXT NOT NULL, agent TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL, checked INTEGER NOT NULL DEFAULT 0, note TEXT);
       CREATE TABLE IF NOT EXISTS crew_messages (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, channel TEXT NOT NULL, sender TEXT NOT NULL, recipient TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, task_id TEXT);
@@ -34,6 +35,15 @@ export class Activity {
   }
   private now() {
     return this.clock().toISOString();
+  }
+
+  /** Saves one eval suite run. */
+  saveEvalRun(r: { suite: string; title: string; score: number; passed: number; total: number; ms: number; tokens: number; cases: unknown[] }, ts: string) {
+    this.db.prepare("INSERT INTO eval_runs (ts, suite, title, score, passed, total, ms, tokens, cases) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(ts, r.suite, r.title, r.score, r.passed, r.total, r.ms, r.tokens, JSON.stringify(r.cases));
+  }
+  /** Recent eval runs, newest first. */
+  evalRuns(limit = 400): { id: number; ts: string; suite: string; title: string; score: number; passed: number; total: number; ms: number; tokens: number; cases: { id: string; title: string; passed: boolean; detail: string }[] }[] {
+    return (this.db.prepare("SELECT * FROM eval_runs ORDER BY id DESC LIMIT ?").all(limit) as { id: number; ts: string; suite: string; title: string; score: number; passed: number; total: number; ms: number; tokens: number; cases: string }[]).map((r) => ({ ...r, cases: JSON.parse(r.cases) }));
   }
 
   logUsage(u: { agent: string; model: string; inputTokens: number; outputTokens: number; tokens: number; costUsd: number | null }) {

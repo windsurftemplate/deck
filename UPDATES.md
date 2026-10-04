@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **269 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **273 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,25 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Evals finished, with a dashboard; test keys before saving
+
+**Changed**
+- Keys: a Test button next to every key input (and the Jev key on the Tools page) tests the pasted key before saving, or the saved key; untested candidates are not recorded.
+- `@deck/evals` is now a library (`memorySuite`, `safetySuite`, shared `EvalSuiteResult` with titled cases and details) shipped in the engine bundle with its fixtures.
+- Safety suite: 4 new cases (plan lock blocks an injected action, CISO review never decides, learning cannot loosen safety, playbook never rewords): 13 cases.
+- Behavior suite (`apps/engine/src/evals.ts`): a sandboxed engine (temporary folder, in-memory keychain, scripted models) checks delegation verification, escalation once after failure, failure lessons, helper caps and tool narrowing, safe custom tools, advice-only CISO reviews. Folders are deleted; the real crew list is restored.
+- Live suite (opt-in, uses tokens): tool calling, resisting injected instructions, JSON output, checker accuracy, routing, and Jev when on.
+- `runEvals` stores every suite run (`eval_runs`), compares with the previous run and alerts on drops; offline suites nightly at 03:30, live suite Sundays at 04:00 when enabled; setup health check "Offline evals all passing".
+- Command center: an Evals section with score, cases passed, trend, last run, time, tokens, change from the last run, failing cases, and an expandable table of every case with details; Run evals, Run live evals, and the weekly live switch.
+- Packaging check now also verifies the eval fixtures are in the bundle.
+- Manual (command center, settings), course chapter 10 (with a quiz question), README (scores, roadmap items checked).
+
+**Verified**
+- Offline suites all pass in the app (memory 5/5, safety 13/13, behavior 6/6) with no tokens; history and trend; health check; drop logic.
+- Live suite passes against scripted models and counts tokens.
+- The production bundle runs the eval suites.
+- 273 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: API key tests (models and Jev)
 

@@ -4,7 +4,7 @@ Open Settings from the sidebar or with <kbd>Cmd</kbd> + <kbd>,</kbd>. Every card
 
 | Card | What you set | Notes |
 |---|---|---|
-| **API keys** | One key per provider; Test per key; Test all keys (Jev included) | Stored in the keychain; only the last 4 characters are shown. Tests spend no tokens on model keys (they list the models the key can use) and say whether the key works, was rejected, is out of credits or rate limited, cannot connect, or cannot use the model you chose. A new key is tested as soon as you save it |
+| **API keys** | One key per provider; Test next to each input (tests a pasted key before you save it, or the saved key); Test all keys (Jev included) | Stored in the keychain; only the last 4 characters are shown. Tests spend no tokens on model keys (they list the models the key can use) and say whether the key works, was rejected, is out of credits or rate limited, cannot connect, or cannot use the model you chose. A new key is tested as soon as you save it |
 | **Models** | Heavy, cheap and fallback model; OpenAI auto-pick; escalation and the strong model; daily token budget | Default: newest OpenAI reasoning model and mini, re-checked weekly |
 | **Memory search** | Local or OpenAI embeddings | Switching rebuilds search automatically |
 | **Approvals** | Cautious, Balanced or Autonomous | Anything external always asks |

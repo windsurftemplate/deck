@@ -3,6 +3,7 @@ import { engineCall } from "../bridge";
 import { Bars, LineChart, fmt } from "./charts";
 import { Skeleton, Sparkline } from "../ui/states";
 import { HealthCard } from "./Health";
+import { EvalsCard } from "./Evals";
 
 type A = {
   dates: string[];
@@ -41,7 +42,8 @@ export function CommandCenter({ go = () => {} }: { go?: (target: string) => void
         {err ? <p className="muted">{err}</p> : (
           <>
             <div className="kpis">{[0, 1, 2, 3].map((i) => <div key={i} className="kpi"><Skeleton w={70} h={26} /><Skeleton w="80%" h={12} /><Skeleton h={28} /></div>)}</div>
-            <div className="panels"><div className="card span2"><Skeleton w={140} h={14} /><div style={{ height: 12 }} /><Skeleton h={180} r={8} /></div></div>
+            <div className="panels">
+<div className="card span2"><Skeleton w={140} h={14} /><div style={{ height: 12 }} /><Skeleton h={180} r={8} /></div></div>
           </>
         )}
       </section>
@@ -75,6 +77,7 @@ export function CommandCenter({ go = () => {} }: { go?: (target: string) => void
         <div className="kpi"><b>{a.today.waiting}</b><span>waiting for you; {decided ? Math.round((a.approvals.approved / decided) * 100) : 0}% of {decided} approved</span></div>
       </div>
       <div className="panels">
+        <EvalsCard />
         <section className="card span2">
           <h3>Tokens per day{spend > 0 ? ` · $${spend.toFixed(2)} in this period` : ""}</h3>
           <LineChart label="Tokens per day" dates={a.dates} series={[{ name: "Tokens", color: "#6fd6ff", values: a.tokens }]} />

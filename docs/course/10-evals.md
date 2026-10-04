@@ -39,6 +39,12 @@ An eval is most useful as a **gate**: record a baseline score, and fail the buil
 
 Compare runs fairly: same cases, same judge, and several runs when outputs vary.
 
+## Evals inside the product
+
+deck runs its evals inside the app as well as in CI, and shows them on the Command center. Three offline suites (memory, safety, and a behavior suite that drives a sandboxed copy of deck with scripted models) run nightly at no token cost. A live suite runs a few real tasks against the user's own models, opt-in, because it costs tokens and its results vary run to run. Every run is stored, so the dashboard shows trends and flags a drop against the previous run. See `apps/engine/src/evals.ts` and `evals/src/index.ts`.
+
+Two design points worth copying. First, keep deterministic suites (harness behavior, safety) separate from probabilistic ones (live model quality): the first should always be 100%, the second is a trend to watch. Second, make the sandbox real: the behavior suite builds a full engine in a temporary folder rather than mocking its internals, so it catches wiring mistakes that unit tests miss.
+
 ## Measuring in production
 
 Offline evals predict; production confirms. Track:
@@ -81,6 +87,15 @@ Q: How can you make a model-graded check more reliable?
 - [ ] Use the longest possible answer
 - [ ] Never compare it with human judgement
 > Specific criteria and evidence reduce judge bias; spot-checking against people keeps it honest.
+```
+
+```quiz
+Q: Why does deck keep its live-model suite separate from the offline suites?
+- [ ] Live suites are always more accurate
+- [x] Offline harness and safety suites should always pass, while live model results vary and are watched as a trend
+- [ ] Live suites cannot be stored
+- [ ] Offline suites need a network connection
+> Deterministic checks are gates; probabilistic model quality is a trend. Mixing them hides real regressions in noise.
 ```
 
 ```quiz

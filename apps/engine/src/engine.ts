@@ -20,6 +20,8 @@ import { getPack, listPacks } from "@deck/packs";
 import type { Keychain } from "./keychain.js";
 import { Threads } from "./threads.js";
 import { Goals } from "./goals.js";
+import { behaviorSuite, liveSuite } from "./evals.js";
+import { memorySuite, safetySuite, type EvalSuiteResult } from "@deck/evals";
 import { PeerStore, listen as fedListen, loadIdentity, makeInvite, newIdentity, open as fedOpen, readInvite, seal, type Identity, type Envelope } from "./federation.js";
 import type { Server } from "node:http";
 import { WORKFLOW_TEMPLATES, Workflows, checkWorkflow, type WorkflowStep } from "./workflows.js";
@@ -233,6 +235,8 @@ export class Engine {
     // Best effort: planting needs the embedding model, which may still be downloading on a first, offline start.
     await this.plantHoneytoken().catch(() => (this.canary = null));
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
+    this.scheduler.add({ name: "daily-evals", at: "03:30", run: async () => void (this.d.settings.evals?.daily !== false && (await this.runEvals().catch(() => null))) });
+    this.scheduler.add({ name: "weekly-live-evals", at: "04:00", days: [0], run: async () => void (this.d.settings.evals?.live && (await this.runEvals({ live: true }).catch(() => null))) });
     this.scheduler.add({ name: "weekly-security-review", at: "09:30", days: [1], run: async () => void (await this.securityReview().catch(() => "")) });
     this.scheduler.add({
       name: "weekly-goal-check",
@@ -776,6 +780,76 @@ export class Engine {
         run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
       });
     return [...this.tools(), ...extra];
+  }
+
+  /* ---------- evals ---------- */
+  private evalRunning = false;
+  /**
+   * Runs the eval suites and keeps the results. Offline suites (memory, safety, behavior) use no tokens; the live
+   * suite runs real tasks against your models and Jev, and only when asked. A suite that scores lower than its
+   * previous run is reported as a drop.
+   */
+  async runEvals(o: { live?: boolean } = {}): Promise<{ suites: EvalSuiteResult[]; drops: string[] }> {
+    if (this.evalRunning) throw new Error("Evals are already running.");
+    this.evalRunning = true;
+    this.emit("evals", { running: true });
+    try {
+      const suites: EvalSuiteResult[] = [await memorySuite(), await safetySuite()];
+      try {
+        suites.push(await behaviorSuite((d) => new Engine(d), this.d.settings));
+      } finally {
+        // The sandbox shares the crew list; put this engine's own crew back.
+        Engine.CREW = { ...Engine.BASE_CREW, ...Object.fromEntries(this.custom.map((c) => [c.id, c.name])) };
+      }
+      if (o.live) {
+        const jevOn = this.d.settings.tools.jev.enabled && !!(await this.d.keychain.get("tool.jev").catch(() => null));
+        suites.push(
+          await liveSuite({
+            chat: (role, req) => this.router.chat(role, "evals", req),
+            assess: (t) => this.assess(t),
+            tokensUsed: () => this.router.usedToday(),
+            ...(jevOn
+              ? {
+                  jev: async () => {
+                    const c = await this.jev("checks");
+                    if (!c) return null;
+                    const r = await c.ask("The meeting with Acme is confirmed for Tuesday at 10am.", { yes: { type: "noul", instructions: "Is a meeting with Acme scheduled?" }, no: { type: "noul", instructions: "Was the meeting with Acme cancelled?" } });
+                    return { yes: noulOf(r, "yes") ?? 0, no: noulOf(r, "no") ?? 1 };
+                  },
+                }
+              : {}),
+          }),
+        );
+      }
+      const prev = new Map<string, number>();
+      for (const r of this.activity!.evalRuns()) if (!prev.has(r.suite)) prev.set(r.suite, r.score);
+      const ts = this.clock().toISOString();
+      const drops: string[] = [];
+      for (const r of suites) {
+        this.activity!.saveEvalRun(r, ts);
+        const before = prev.get(r.suite);
+        if (before !== undefined && r.score < before) drops.push(`${r.title}: ${Math.round(before * 100)}% to ${Math.round(r.score * 100)}% (failing: ${r.cases.filter((c) => !c.passed).map((c) => c.title).join("; ")})`);
+      }
+      const line = suites.map((r) => `${r.title} ${r.passed}/${r.total}`).join(", ");
+      this.say({ sender: "evals", recipient: "owner", kind: drops.length ? "check" : "note", text: `Evals: ${line}.${drops.length ? ` Drops: ${drops.join(" | ")}` : ""}` });
+      if (drops.length) this.emit("notify", { title: "Eval scores dropped", body: drops.join("\n").slice(0, 220) });
+      return { suites, drops };
+    } finally {
+      this.evalRunning = false;
+      this.emit("evals", { running: false });
+    }
+  }
+  /** Latest result per suite, its history for trends, and when the next runs are. */
+  evalsOverview() {
+    const runs = this.activity?.evalRuns(400) ?? [];
+    const latest = new Map<string, (typeof runs)[number]>();
+    for (const r of runs) if (!latest.has(r.suite)) latest.set(r.suite, r);
+    const order = ["memory", "safety", "behavior", "live"];
+    return {
+      running: this.evalRunning,
+      suites: [...latest.values()].sort((a, b) => order.indexOf(a.suite) - order.indexOf(b.suite)).map((r) => ({ ...r, history: runs.filter((x) => x.suite === r.suite).slice(0, 30).reverse().map((x) => ({ ts: x.ts, score: x.score })) })),
+      settings: this.d.settings.evals ?? { daily: true, live: false },
+    };
   }
 
   /* ---------- Jev (TypeSafe AI): fast structured decisions ---------- */
@@ -2525,6 +2599,11 @@ export class Engine {
     const failing = (this.automations?.list() ?? []).filter((x) => x.enabled && x.lastResult?.startsWith("Failed"));
     const c: { id: string; label: string; ok: boolean | null; weight: number; fix?: string; go?: string }[] = [
       { id: "key", label: `Key for your main model (${PROVIDER_LABEL[s.models.heavy.provider]})`, ok: await has(`provider.${s.models.heavy.provider}`), weight: 15, fix: "Add the key in Settings, Models.", go: "settings" },
+      (() => {
+        const ov = this.evalsOverview().suites.filter((x) => x.suite !== "live");
+        const bad = ov.filter((x) => x.score < 1);
+        return { id: "evals", label: "Offline evals all passing", ok: ov.length === 0 ? null : bad.length === 0, weight: 8, fix: `Failing: ${bad.map((x) => `${x.title} ${x.passed}/${x.total}`).join("; ")}. See Command center, Evals.`, go: "center" };
+      })(),
       await (async () => {
         const tests = Object.values(JSON.parse((await this.store.getMeta("keys.tests")) ?? "{}") as Record<string, KeyTest>).filter((t) => t.status !== "missing");
         const bad = tests.filter((t) => !t.ok);
