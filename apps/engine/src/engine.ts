@@ -625,7 +625,110 @@ export class Engine {
         describe: (i) => `Ask ${Engine.CREW[str(i.agent)] ?? str(i.agent)}: ${str(i.goal)}`,
         run: async (i) => this.delegate(str(i.agent), str(i.goal), str(i.why) || "Asked by the Chief of Staff", (Array.isArray(i.done_when) ? i.done_when : [i.done_when]).map(str).filter(Boolean)),
       });
+    if (agent === AGENT && this.d.settings.labs.fanout)
+      extra.push({
+        spec: {
+          name: "delegate_parallel",
+          description: "Labs: hand 2 to 4 independent tasks to crew members at once (they run in parallel) and get all checked reports back. Use only when the tasks do not depend on each other.",
+          parameters: {
+            type: "object",
+            properties: {
+              tasks: {
+                type: "array",
+                minItems: 2,
+                maxItems: 4,
+                items: { type: "object", properties: { agent: { type: "string", enum: Object.keys(Engine.CREW) }, goal: { type: "string" }, why: { type: "string" }, done_when: { type: "array", items: { type: "string" } } }, required: ["agent", "goal", "done_when"] },
+              },
+            },
+            required: ["tasks"],
+          },
+        },
+        scope: "crew.delegate",
+        kind: "read",
+        describe: (i) => `Hand out ${Array.isArray(i.tasks) ? i.tasks.length : 0} tasks at once`,
+        run: async (i) => this.fanOut(((Array.isArray(i.tasks) ? i.tasks : []) as Record<string, unknown>[]).map((t) => ({ agent: str(t.agent), goal: str(t.goal), why: str(t.why) || "Asked by the Chief of Staff", doneWhen: (Array.isArray(t.done_when) ? t.done_when : [t.done_when]).map(str).filter(Boolean) }))),
+      });
+    if (agent === AGENT && this.d.settings.labs.consensus)
+      extra.push({
+        spec: { name: "crew_vote", description: "Labs: ask crew members to each answer a question on their own, then rank each other's answers; returns the winning answer and any dissent. Use for judgement calls.", parameters: { type: "object", properties: { question: { type: "string" }, agents: { type: "array", items: { type: "string", enum: Object.keys(Engine.CREW) } } }, required: ["question"] } },
+        scope: "crew.delegate",
+        kind: "read",
+        describe: (i) => `Crew vote: ${str(i.question)}`,
+        run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
+      });
     return [...this.tools(), ...extra];
+  }
+
+  /** Labs: several delegated tasks at once (2 to 4), each checked as usual. */
+  async fanOut(tasks: { agent: string; goal: string; why: string; doneWhen: string[] }[]): Promise<string> {
+    if (!this.d.settings.labs.fanout) return "Parallel work is off. Turn it on in Settings, Labs.";
+    const list = tasks.filter((t) => Engine.CREW[t.agent] && t.goal.trim()).slice(0, 4);
+    if (list.length < 2) return "Give at least two independent tasks.";
+    this.say({ sender: AGENT, recipient: "crew", kind: "handoff", text: `Running ${list.length} tasks in parallel: ${list.map((t) => `${Engine.CREW[t.agent]}: ${t.goal}`).join("; ")}` });
+    const out = await Promise.all(list.map((t) => this.delegate(t.agent, t.goal, t.why, t.doneWhen).catch((e) => `${Engine.CREW[t.agent]} could not finish: ${(e as Error).message}`)));
+    return out.map((r, n) => `## ${Engine.CREW[list[n]!.agent]}: ${list[n]!.goal}\n${r}`).join("\n\n");
+  }
+
+  /**
+   * Labs: a crew vote. Each member answers on its own (they cannot see each other), then each ranks the
+   * other answers. Borda count picks the winner; the Chief of Staff reports it with any dissent.
+   * Talk only: no tools run.
+   */
+  async crewVote(question: string, agents?: string[]): Promise<{ id: string; winner: string; scores: Record<string, number>; summary: string }> {
+    if (!this.d.settings.labs.consensus) throw new Error("Crew votes are off. Turn them on in Settings, Labs.");
+    const q = question.trim();
+    if (!q) throw new Error("Give the crew a question.");
+    const members = (agents?.length ? agents : Object.keys(Engine.CREW)).filter((a) => Engine.CREW[a]).slice(0, 5);
+    if (members.length < 2) throw new Error("A vote needs at least two crew members.");
+    const id = `v${Date.now().toString(36)}`;
+    const channel = `discussion:${id}`;
+    this.activity!.createDiscussion(id, `Vote: ${q}`, members);
+    const post = (sender: string, text: string, kind: string) => this.emit("crew.message", this.activity!.post({ channel, sender, recipient: "crew", kind, text }));
+    post("owner", q, "topic");
+    const memories = formatMemories(await this.reader.retrieve(q, { tokenBudget: 500 }));
+    // 1. Independent answers, in parallel, so no one anchors on another.
+    const answers = await Promise.all(
+      members.map(async (a) => {
+        const r = await this.router.chat("cheap", a, {
+          system: [{ type: "text", text: `${this.roleFor(a)}\n\n# Crew vote\nAnswer the owner's question from your role, on your own. Give a clear recommendation and the main reason, in 2 to 4 sentences. Talk only.` }],
+          messages: [{ role: "user", content: `${memories ? `# Relevant memory\n${memories}\n\n` : ""}# Question\n${q}` }],
+          maxTokens: 300,
+        });
+        post(a, r.text.trim(), "discussion");
+        return { agent: a, text: r.text.trim() };
+      }),
+    );
+    // 2. Each member ranks the others' answers (not its own). Borda: best gets n-1 points.
+    const scores: Record<string, number> = Object.fromEntries(members.map((a) => [a, 0]));
+    await Promise.all(
+      members.map(async (voter) => {
+        const others = answers.filter((x) => x.agent !== voter);
+        const r = await this.router.chat("cheap", voter, {
+          system: [{ type: "text", text: 'Rank the answers below from best to worst for the owner. Reply with JSON only: {"ranking":["A","B",...]} using the letters given.' }],
+          messages: [{ role: "user", content: `Question: ${q}\n\n${others.map((o, n) => `${String.fromCharCode(65 + n)}: ${o.text}`).join("\n\n")}` }],
+          maxTokens: 100,
+          temperature: 0,
+        });
+        let ranking: string[] = [];
+        try {
+          ranking = (JSON.parse(r.text.replace(/^[^{]*/, "").replace(/[^}]*$/, "")) as { ranking: string[] }).ranking ?? [];
+        } catch {
+          /* a spoiled ballot counts for nothing */
+        }
+        ranking.forEach((letter, pos) => {
+          const o = others[letter.charCodeAt(0) - 65];
+          if (o) scores[o.agent]! += Math.max(0, others.length - 1 - pos);
+        });
+      }),
+    );
+    const order = [...members].sort((a, b) => scores[b]! - scores[a]!);
+    const winner = answers.find((x) => x.agent === order[0])!;
+    const dissent = answers.filter((x) => x.agent !== winner.agent && scores[x.agent]! < scores[winner.agent]! - 1);
+    const summary = `The crew voted for ${Engine.CREW[winner.agent]}'s answer (${order.map((a) => `${Engine.CREW[a]} ${scores[a]}`).join(", ")}): ${winner.text}${dissent.length ? `\n\nDissent: ${dissent.map((d) => `${Engine.CREW[d.agent]}: ${d.text.slice(0, 200)}`).join(" | ")}` : ""}`;
+    post(AGENT, summary, "summary");
+    this.activity!.setDiscussionStatus(id, "done");
+    this.emit("crew.discussion", { id });
+    return { id, winner: winner.agent, scores, summary };
   }
 
   /** Runs one crew member on a task, checks the result, and returns a report the Chief of Staff can relay. */

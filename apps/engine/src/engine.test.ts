@@ -534,6 +534,43 @@ describe("labs: complexity routing and local models", () => {
   });
 });
 
+describe("labs: parallel work and crew votes", () => {
+  it("runs tasks at the same time and counts a vote; both stay off until switched on", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    let running = 0, peak = 0;
+    const mk = (labs: object) => new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: { ...DEFAULTS, labs: { ...DEFAULTS.labs, ...labs } }, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const sys = JSON.stringify(req.system ?? "");
+        if (req.tools?.length) {
+          running++, (peak = Math.max(peak, running));
+          await new Promise((r) => setTimeout(r, 30));
+          running--;
+          return { text: "Report.", model: ref.model, stopReason: "end_turn", usage: U };
+        }
+        if (sys.includes("Crew vote")) return { text: sys.includes("Role: GTM") ? "Ship SSO first." : "Wait on SSO.", model: ref.model, stopReason: "end_turn", usage: U };
+        if (sys.includes("Rank the answers")) return { text: JSON.stringify({ ranking: JSON.stringify(req.messages).includes("A: Ship SSO first.") ? ["A", "B"] : ["B", "A"] }), model: ref.model, stopReason: "end_turn", usage: U };
+        return { text: '{"passed": true, "missing": []}', model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    const off = mk({});
+    await off.open();
+    expect(await off.fanOut([{ agent: "gtm", goal: "a", why: "w", doneWhen: ["d"] }, { agent: "ops", goal: "b", why: "w", doneWhen: ["d"] }])).toMatch(/off/);
+    await expect(off.crewVote("x")).rejects.toThrow(/off/);
+    const names = (off as unknown as { toolsFor: (a: string) => { spec: { name: string } }[] }).toolsFor("chief-of-staff").map((t) => t.spec.name);
+    expect(names).not.toContain("delegate_parallel");
+    await off.close();
+    const on = mk({ fanout: true, consensus: true });
+    await on.open();
+    const out = await on.fanOut([{ agent: "gtm", goal: "Draft A", why: "w", doneWhen: ["d"] }, { agent: "ops", goal: "Tidy B", why: "w", doneWhen: ["d"] }, { agent: "research", goal: "Find C", why: "w", doneWhen: ["d"] }]);
+    expect(peak).toBeGreaterThanOrEqual(2);
+    expect(out).toMatch(/## GTM: Draft A[\s\S]*## Operations: Tidy B[\s\S]*## Research: Find C/);
+    const v = await on.crewVote("Should we build SSO before the pilot?", ["gtm", "ops", "code"]);
+    expect(v.winner).toBe("gtm");
+    expect(v.summary).toMatch(/^The crew voted for GTM's answer/);
+    expect(on.crewMessages(`discussion:${v.id}`).map((m) => m.kind)).toEqual(["topic", "discussion", "discussion", "discussion", "summary"]);
+    await on.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");

@@ -74,6 +74,7 @@ async function main() {
       const q = p as { topic?: string; agents?: string[]; rounds?: number };
       return new Promise((resolve, reject) => void engine.crewDiscuss(String(q?.topic ?? ""), q?.agents, q?.rounds, (id) => resolve({ id })).catch(reject));
     },
+    "crew.vote": (p) => { const q = p as { question?: string; agents?: string[] }; return engine.crewVote(String(q?.question ?? ""), q?.agents); },
     "crew.interject": async (p) => { const q = p as { id?: string; text?: string }; return engine.interject(String(q?.id ?? ""), String(q?.text ?? "")); },
     "threads.list": async () => engine.threads.list(),
     "threads.messages": async (p) => engine.threads.messages(String((p as { id?: string })?.id ?? "")),
