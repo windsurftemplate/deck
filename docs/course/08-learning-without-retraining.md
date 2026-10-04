@@ -46,6 +46,22 @@ Before a task, the agent sees its most similar past tasks with outcomes and repo
 
 See `tune` and `practice` in the engine, and `shouldAdopt` in `packages/agents/src/tune.ts`. The principle is the same one used in machine learning: never ship a change you did not evaluate on held examples.
 
+### Evolving playbooks (ACE)
+
+Rewriting an agent's guidance each time it learns tends to lose detail (brevity bias) and, over many rewrites, collapse it. The ACE research (Zhang et al., 2025) keeps guidance as separate entries that are only added, credited, blamed or retired. deck does the same: after each checked task a reflector credits or blames the lessons the agent cited, new lessons are queued, and tuning adds them only after practice tests and owner approval. See `applyPlaybookDelta` and `reflectPlaybook`.
+
+### Failure lessons and escalation
+
+Weaker models benefit most from remembering their own failures. deck writes a one-sentence lesson for each failed task and shows it on similar tasks. When work still fails on a smaller model, it escalates once to a strong model: a cascade, using the verifier as the escalation signal.
+
+### Learning while idle (sleep-time compute)
+
+Letta's sleep-time compute moves memory work off the critical path: while the user is away, a background pass reorganizes what the agent knows. deck's idle notes condense facts and events into short notes per agent, built only from trusted inputs.
+
+### Optimizing the harness itself
+
+Research is moving from tuning prompts to tuning the whole harness. GEPA (Agrawal et al., ICLR 2026) evolves prompts by reflecting on full execution traces and keeping a Pareto set of candidates. Meta-Harness (Lee, Khattab, Finn and others, 2026) has a coding agent rewrite harness code using traces of earlier candidates. Both point the same way: richer traces and outer-loop search improve agents without touching weights. A practical caution from production use: the optimizing model must be strong, because judging why an agent failed is itself hard reasoning.
+
 ### Model selection (the arena)
 
 Different agents may do best with different models. Replay an agent's tasks with each candidate model, score them, and pick the best per agent, with token cost as the tie-breaker.
@@ -111,6 +127,15 @@ Q: Which work is never used to create skills?
 - [ ] Work done by the Chief of Staff
 - [ ] Work approved by the owner
 > Learning from unverified work would teach the crew its own mistakes.
+```
+
+```quiz
+Q: Why does deck add playbook lessons instead of rewriting guidance?
+- [ ] Rewriting is slower
+- [x] Repeated rewrites lose detail over time; separate entries keep it, and each can be credited, blamed or retired
+- [ ] Models cannot read rewritten text
+- [ ] To use fewer tokens
+> This is the core idea of ACE: incremental, structured updates prevent context collapse.
 ```
 
 ```quiz

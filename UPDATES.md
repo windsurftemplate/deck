@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 55 commits.
-Tests (counted): **245 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 61 commits.
+Tests (counted): **254 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -272,10 +272,38 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 53. `feat(labs): federation with invite-only peers, signed and encrypted messages, owner approval both ways`
 54. `feat(labs): Labs card, crew votes in Crew chat, camera tours, 3D power-up, docs`
 55. `feat: observe, think, act, reflect loop for every agent, with built-in reasoning on hard work`
+56. `feat: escalate failed work to the strong model; failure lessons in experience recall`
+57. `feat: living to-do list each step; plan-locked tools when outside content is in play`
+58. `feat: evolving playbooks (ACE): lessons added and scored, never rewritten; reflector after checked work`
+59. `feat: idle-time memory prep (sleep-time compute) feeding the Observe step`
+60. `feat: skills in the open SKILL.md format (import for approval, export)`
+61. `feat: escalation controls in settings; docs for research-driven upgrades`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Ideas from current research: escalation, lessons, playbooks, plan lock, idle notes, SKILL.md
+
+**Why.** Research on weaker models (structured output and tool overload), cascades, ACE, GEPA and Meta-Harness, Manus's context engineering, CaMeL and the prompt-injection design patterns, Letta's sleep-time compute, and the Agent Skills standard.
+
+**Changed**
+- Escalation: delegated work that fails its check on a smaller model (an agent's own model, or a local one) is retried once on the strong model with what was missing. Settings > Models: on by default, choose the strong model.
+- Failure lessons: a one-sentence lesson per failed task, kept with the task; experience recall shows lessons and surfaces failures at a looser match.
+- Evolving playbooks (ACE): guidance becomes separate lessons with helped and misled counts. After each checked task the reflector credits or blames cited lessons automatically and queues new ones; tuning tests queued and drafted lessons and adds them only with approval; lessons that mislead 3 more times than they help are retired; nothing is reworded. Old guidance migrates to lessons. Settings > Crew shows the playbook with remove buttons.
+- Living to-do list: after every step the plan and what is done are restated at the end of the context.
+- Plan lock: once outside content is in the conversation, only planned tools and safe internal reads may run; anything else is refused and logged.
+- Idle-time notes: after 20 idle minutes (at most every 3 hours), notes about the owner, each crew member and likely next requests, built only from facts and the crew's own episodes, scanned and stripped of secrets; shown in the Observe step. Settings > How agents think.
+- SKILL.md: parse and write the open Agent Skills format; import (scanned, approval needed, instructions only) and export to Documents/deck-skills. Settings > Learning.
+- Manual (basics, models, learning) and course chapters 8 and 9 updated with two new quiz questions.
+
+**Verified**
+- Escalation runs the strong model only after the smaller one fails; off means no retry; lessons appear in recall.
+- Playbook: no rewording, duplicates merged, help and harm counted, retirement, unsafe lessons refused, reflector credits only cited ids.
+- Plan lock: an injected write never runs while planned reads do; no lock without outside content; progress block present.
+- Idle notes: built from events, injected-looking notes dropped, shown to agents, no documents read.
+- SKILL.md: folded descriptions, quoting, round trip; injected skills refused; imports wait for approval; export writes folders.
+- 254 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: Observe, think, act, reflect for every agent
 

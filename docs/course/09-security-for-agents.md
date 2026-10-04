@@ -55,6 +55,10 @@ No single control is enough. deck layers them:
 | Learning limits | Learned guidance cannot loosen safety | `checkLearned` |
 | Budgets | Step limit and daily token cap | `runAgent`, router |
 
+## Plan-then-execute
+
+Design patterns from recent research (Beurer-Kellner, Tramèr, Debenedetti and others, 2025) and DeepMind's CaMeL constrain what an agent can do once it has read untrusted content. The simplest: fix the plan before reading untrusted content, then refuse any tool not in the plan. deck applies this whenever a plan exists and outside content enters the conversation; only planned tools and safe internal reads may run. CaMeL goes further, tracking where every value came from with a custom interpreter.
+
 ## Secrets
 
 - Never put keys in prompts, files, logs or the repository. deck keeps them in the OS keychain and shows only the last 4 characters.
@@ -110,6 +114,15 @@ Q: How do deck's safety evals simulate an attack?
 - [ ] They ask the model whether it would be safe
 - [ ] They only check the system prompt text
 > Testing with a fully compromised model checks what really matters: whether code-level controls hold.
+```
+
+```quiz
+Q: In deck's plan lock, what can still run after an email is read?
+- [ ] Any tool the agent wants
+- [x] Tools named in the plan made before reading it, plus safe internal lookups
+- [ ] Only web research
+- [ ] Nothing at all
+> Fixing the plan first means hidden instructions in the email cannot add new actions.
 ```
 
 ```quiz

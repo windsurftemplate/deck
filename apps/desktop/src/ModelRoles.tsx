@@ -71,10 +71,12 @@ export function ModelRoles({ s, onSaved }: { s: Settings; onSaved: (s: Settings)
   const [heavy, setHeavy] = useState<ModelChoice | null>(s.models.heavy);
   const [cheap, setCheap] = useState<ModelChoice | null>(s.models.cheap);
   const [fallback, setFallback] = useState<ModelChoice | null>(s.models.fallback);
+  const [escalation, setEscalation] = useState<ModelChoice | null>(s.models.escalation ?? null);
+  const [escalate, setEscalate] = useState<boolean>(s.models.escalate !== false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const save = async () => {
     try {
-      const next = await saveSettings({ models: { heavy: heavy!, cheap: cheap!, fallback } });
+      const next = await saveSettings({ models: { heavy: heavy!, cheap: cheap!, fallback, escalate, escalation } as never });
       onSaved(next);
       setMsg({ ok: true, text: "Saved. The crew switches models right away." });
     } catch (e) {
@@ -88,6 +90,11 @@ export function ModelRoles({ s, onSaved }: { s: Settings; onSaved: (s: Settings)
       <RolePicker label="Heavy work" help="Planning, writing, code" value={heavy} onChange={setHeavy} />
       <RolePicker label="Quick tasks" help="Triage, summaries, checks" value={cheap} onChange={setCheap} />
       <RolePicker label="Backup" help="Used when the main model is down" value={fallback} onChange={setFallback} optional />
+      <label className="check">
+        <input type="checkbox" checked={escalate} onChange={(e) => setEscalate(e.target.checked)} />
+        Escalate: when delegated work fails its check on a smaller model (an agent's own model from the arena, or a local model), try once more on the strong model
+      </label>
+      {escalate && <RolePicker label="Strong model" help="Used for escalation. None means the heavy model" value={escalation} onChange={setEscalation} optional />}
       <div className="row">
         <button className="primary" type="button" onClick={save}>
           Save models

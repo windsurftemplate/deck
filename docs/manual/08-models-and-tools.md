@@ -11,6 +11,8 @@ deck uses models in roles, set in **Settings > Models**.
 | **Fallback** | Tried automatically when the main model fails (down, rate limited) | A model from a different provider |
 | **Per agent** | One crew member's own model, chosen with the model arena | Whatever wins for that agent |
 
+**Escalation** (on by default): when delegated work fails its check on a smaller model (an agent's own model from the arena, or a local model), deck tries once more on the strong model, telling it what was missing. Choose the strong model in Settings > Models; none means the heavy model.
+
 **Load models** lists what your key can use, straight from the provider. Model names change often; pick from the list rather than typing.
 
 ## Providers

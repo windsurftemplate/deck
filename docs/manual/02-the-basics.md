@@ -27,6 +27,11 @@ Every agent works in a loop: **observe, think, act, reflect**.
 3. **Act.** It uses tools through the same safety gate as always.
 4. **Reflect.** If a step fails or is refused, it is told plainly and revises its plan instead of repeating the same call.
 
+Two more things happen when an agent has a plan:
+
+- **A living to-do list.** After every step, the plan and what is done so far are restated at the end of what the agent reads, so long tasks stay on track.
+- **Plan lock.** Once outside content (an email, a web page, a document) is in the conversation, only the tools named in the plan, plus safe internal lookups, may run. Instructions hidden in that content cannot add new actions; the attempt is refused and shown in Crew chat.
+
 Summaries of the plan, the reasoning and any rethinking appear in **Crew chat** as "Thinks". Change when agents think in **Settings > How agents think**: complex work only (default), always, or off, and how much built-in reasoning to use.
 
 ## Approvals and presets
