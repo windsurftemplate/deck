@@ -511,6 +511,28 @@ describe("research agent", () => {
   });
 });
 
+describe("experience recall", () => {
+  it("shows an agent its similar past tasks, including what failed, before it starts", async () => {
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model) });
+    await e.open();
+    e.activity!.logTask({ id: "t1", agent: "gtm", title: "Draft a follow-up email to Dana at Acme", status: "failed", note: "Not finished: did not check memory for the last call" });
+    e.activity!.logTask({ id: "t2", agent: "gtm", title: "Draft a follow-up email to Sam at Globex", status: "done", checked: true });
+    e.activity!.setReport("t2", "Checked memory for the last call first, then drafted a 90-word follow-up with one ask.");
+    e.activity!.logTask({ id: "t3", agent: "gtm", title: "Clean up the tracker labels", status: "done", checked: true });
+    const exp = await e.experienceFor("gtm", "Draft a follow-up email to Priya at Initech");
+    expect(exp).toMatch(/^# Past experience/);
+    expect(exp).toContain('"Draft a follow-up email to Sam at Globex" (finished and checked)');
+    expect(exp).toContain("Reported: Checked memory for the last call first");
+    expect(exp).toContain("not finished: did not check memory for the last call");
+    expect(exp).not.toContain("tracker labels");
+    expect(await e.experienceFor("ops", "anything")).toBe("");
+    sent.length = 0;
+    await e.delegate("gtm", "Draft a follow-up email to Priya at Initech", "pipeline", ["a draft exists"]);
+    expect(JSON.stringify(sent[0]!.messages)).toContain("# Past experience");
+    await e.close();
+  });
+});
+
 describe("encrypted backups", () => {
   it("backs up, refuses a wrong passphrase, and restores everything on a fresh machine", async () => {
     const out = dir();

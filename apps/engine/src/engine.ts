@@ -612,7 +612,7 @@ export class Engine {
     this.board.move(task.id, "running");
     this.say({ sender: "chief-of-staff", recipient: agent, kind: "handoff", text: `${goal}\nWhy: ${why}\nDone when: ${doneWhen.join("; ")}`, taskId: task.id });
     const memories = await this.reader.retrieve(goal, { tokenBudget: 600 });
-    const p = buildPrompt({ coreRules: loadCoreRules(), role: this.roleFor(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(memories), working: "" });
+    const p = buildPrompt({ coreRules: loadCoreRules(), role: this.roleFor(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(memories), working: await this.experienceFor(agent, goal).catch(() => "") });
     try {
       const out = await runAgent({
         agent,
@@ -632,6 +632,7 @@ export class Engine {
       });
       const v = out.verdict;
       this.say({ sender: agent, recipient: "chief-of-staff", kind: "report", text: out.text, taskId: task.id });
+      setTimeout(() => this.activity?.setReport(task.id, out.text), 0); // after the task's log row is written
       if (v) this.say({ sender: "verifier", recipient: agent, kind: "check", text: v.passed ? (v.checked ? "Checked: every done-when item is met." : "Not independently checked.") : `Not finished: ${v.missing.join("; ")}`, taskId: task.id });
       const check = !v ? "" : v.passed ? (v.checked ? "\nChecked: all done-when items met." : "\nNot independently checked.") : `\nNot finished: ${v.missing.join("; ")}`;
       this.board.move(task.id, v && !v.passed ? "failed" : "done", { result: out.text.slice(0, 2000), note: check.trim() });
@@ -741,6 +742,40 @@ export class Engine {
 
   async skillsList() {
     return this.store.skills();
+  }
+
+  /**
+   * Experience recall: the agent's past tasks most like this one, with how they went and what was reported.
+   * Unlike skills (which you approve), this is automatic, and it shows failures too so mistakes are not repeated.
+   */
+  private expVecs = new Map<string, Float32Array>();
+  async experienceFor(agent: string, goal: string, k = 3): Promise<string> {
+    const past = (this.activity?.experiences(agent, 200) ?? []).filter((x) => x.title !== goal);
+    if (!past.length) return "";
+    const emb = this.embedder();
+    const fresh = [...new Set(past.map((x) => x.title))].filter((t) => !this.expVecs.has(t));
+    for (let i = 0; i < fresh.length; i += 32) {
+      const vecs = await emb.embed(fresh.slice(i, i + 32));
+      fresh.slice(i, i + 32).forEach((t, j) => this.expVecs.set(t, vecs[j]!));
+    }
+    const [q] = await emb.embed([goal]);
+    const cos = (a: Float32Array, b: Float32Array) => {
+      let d = 0, na = 0, nb = 0;
+      for (let i = 0; i < a.length; i++) (d += a[i]! * b[i]!), (na += a[i]! * a[i]!), (nb += b[i]! * b[i]!);
+      return d / (Math.sqrt(na * nb) || 1);
+    };
+    const seen = new Set<string>();
+    const best = past
+      .map((x) => ({ x, s: cos(q!, this.expVecs.get(x.title)!) }))
+      .filter((r) => r.s >= 0.55 && !seen.has(r.x.title) && (seen.add(r.x.title), true))
+      .sort((a, b) => b.s - a.s)
+      .slice(0, k);
+    if (!best.length) return "";
+    const line = ({ x }: (typeof best)[number]) => {
+      const how = x.status === "done" ? (x.checked ? "finished and checked" : "finished, not checked") : `not finished${x.note ? `: ${x.note.replace(/^Not finished: /, "")}` : ""}`;
+      return `- ${x.ts.slice(0, 10)} "${x.title}" (${how})${x.report ? `\n  Reported: ${x.report.replace(/\s+/g, " ").slice(0, 280)}` : ""}`;
+    };
+    return `# Past experience (your similar tasks; repeat what worked, avoid what did not)\n${best.map(line).join("\n")}`;
   }
 
   /**

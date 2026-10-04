@@ -24,7 +24,7 @@ export class Activity {
       CREATE INDEX IF NOT EXISTS crew_messages_by_channel ON crew_messages(channel, id);
       CREATE INDEX IF NOT EXISTS usage_by_ts ON usage_log(ts);`);
     // Practice cases for prompt tuning need each task's goal context.
-    for (const col of ["why TEXT", "done_when TEXT"]) {
+    for (const col of ["why TEXT", "done_when TEXT", "report TEXT"]) {
       try {
         db.exec(`ALTER TABLE task_log ADD COLUMN ${col}`);
       } catch {
@@ -42,6 +42,16 @@ export class Activity {
 
   logTask(t: { id: string; agent: string; title: string; status: string; checked?: boolean; note?: string; why?: string; doneWhen?: string[] }) {
     this.db.prepare("INSERT INTO task_log (ts, task_id, agent, title, status, checked, note, why, done_when) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(this.now(), t.id, t.agent, t.title.slice(0, 300), t.status, t.checked ? 1 : 0, t.note?.slice(0, 500) ?? null, t.why?.slice(0, 500) ?? null, t.doneWhen ? JSON.stringify(t.doneWhen.slice(0, 8)) : null);
+  }
+
+  /** Keeps what the agent reported, so later tasks can learn from it. */
+  setReport(taskId: string, report: string) {
+    this.db.prepare("UPDATE task_log SET report = ? WHERE id = (SELECT MAX(id) FROM task_log WHERE task_id = ?)").run(report.slice(0, 1500), taskId);
+  }
+
+  /** An agent's finished tasks with what happened, newest first. */
+  experiences(agent: string, n = 200): { title: string; status: string; checked: boolean; note: string | null; report: string | null; ts: string }[] {
+    return (this.db.prepare("SELECT title, status, checked, note, report, ts FROM task_log WHERE agent = ? AND status IN ('done','failed') ORDER BY id DESC LIMIT ?").all(agent, n) as { title: string; status: string; checked: number; note: string | null; report: string | null; ts: string }[]).map((r) => ({ ...r, checked: r.checked === 1 }));
   }
 
   /** Recent finished tasks for an agent, as practice cases (newest first, one per goal). */
