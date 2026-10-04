@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { engineCall } from "../bridge";
 import { Bars, LineChart, fmt } from "./charts";
 import { Skeleton, Sparkline } from "../ui/states";
+import { HealthCard } from "./Health";
 
 type A = {
   dates: string[];
@@ -24,7 +25,7 @@ const NAME: Record<string, string> = { "chief-of-staff": "Chief of Staff", gtm: 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 /** Analytics: spend, crew performance, the brain's growth and work throughput. */
-export function CommandCenter() {
+export function CommandCenter({ go = () => {} }: { go?: (target: string) => void }) {
   const [days, setDays] = useState(30);
   const [a, setA] = useState<A | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -66,6 +67,7 @@ export function CommandCenter() {
           ))}
         </div>
       </div>
+      <HealthCard go={go} />
       <div className="kpis">
         <div className="kpi"><b>{fmt(a.today.tokens)}</b><span>tokens today of {fmt(a.today.cap)}</span><span className="meter"><i style={{ width: `${Math.min(100, (a.today.tokens / Math.max(1, a.today.cap)) * 100)}%` }} /></span><Sparkline values={a.tokens.slice(-14)} /></div>
         <div className="kpi"><b>{done}</b><span>tasks finished, {failed} not finished</span><Delta v={half(a.tasksDone)} /><Sparkline values={a.tasksDone.slice(-14)} color="var(--ok)" /></div>

@@ -761,6 +761,7 @@ export class Engine {
       }
     }
     const report = lines.length ? lines.join("\n") : "Nothing new to learn.";
+    await this.store.setMeta("learn.lastRun", this.clock().toISOString());
     await this.writer.logEpisode({ agent: "learning", kind: "learning", summary: report.slice(0, 500) });
     this.emit("learning", { report });
     for (const id of this.d.settings.chat.telegram.ownerChatIds) if (lines.length) void this.bot?.notify(id, `Overnight learning:\n${report}`).catch(() => {});
@@ -1328,6 +1329,49 @@ export class Engine {
     this.emit("notify", { title: `Automation: ${a.name}`, body: result.slice(0, 200) });
     for (const chat of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(chat, note).catch(() => {});
     return result;
+  }
+
+  /* ---------- setup health ---------- */
+  /**
+   * Grades the setup (0 to 100) with a fix for anything missing, and keeps a daily score so a drop is noticed.
+   * Checks that do not apply (Telegram off, say) are left out of the score.
+   */
+  async health(): Promise<{ score: number; checks: { id: string; label: string; ok: boolean; weight: number; fix?: string; go?: string }[]; history: { date: string; score: number }[]; regressed: string[] }> {
+    const s = this.d.settings;
+    const now = this.clock();
+    const days = (iso: string | null | undefined) => (iso ? (now.getTime() - Date.parse(iso)) / 86_400_000 : Infinity);
+    const has = async (n: string) => !!(await this.d.keychain.get(n).catch(() => null));
+    const a = this.activity?.analytics(30, { facts: [], docs: [], issues: [] });
+    const finished = (a?.crew ?? []).reduce((x, c) => x + c.done + c.failed, 0);
+    const done = (a?.crew ?? []).reduce((x, c) => x + c.done, 0);
+    const stale = this.approvals.pending().filter((p) => now.getTime() - p.createdAt > 86_400_000).length;
+    const failing = (this.automations?.list() ?? []).filter((x) => x.enabled && x.lastResult?.startsWith("Failed"));
+    const c: { id: string; label: string; ok: boolean | null; weight: number; fix?: string; go?: string }[] = [
+      { id: "key", label: `Key for your main model (${PROVIDER_LABEL[s.models.heavy.provider]})`, ok: await has(`provider.${s.models.heavy.provider}`), weight: 15, fix: "Add the key in Settings, Models.", go: "settings" },
+      { id: "fallback", label: "A fallback model on another provider", ok: !!s.models.fallback && s.models.fallback.provider !== s.models.heavy.provider, weight: 8, fix: "Pick a fallback from a different provider, so an outage does not stop the crew.", go: "settings" },
+      { id: "backup", label: "A backup in the last 14 days", ok: days(await this.store.getMeta("backup.last")) <= 14, weight: 12, fix: "Make an encrypted backup in Settings, Backups.", go: "settings" },
+      { id: "preset", label: "Approvals on Cautious or Balanced", ok: s.preset !== "autonomous", weight: 8, fix: "Autonomous lets the crew change things without asking. Balanced is safer.", go: "settings" },
+      { id: "tripwire", label: "Tripwire planted (honeytoken)", ok: !!(await this.store.getMeta("honeytoken")), weight: 6, fix: "Restart deck with a model key set; it plants the tripwire on start." },
+      { id: "cap", label: "Daily token budget set to a sensible size", ok: s.models.dailyTokenCap <= 5_000_000, weight: 4, fix: "A budget under 5 million tokens limits runaway costs.", go: "settings" },
+      { id: "learning", label: "Learning ran in the last 3 days", ok: days(await this.store.getMeta("learn.lastRun")) <= 3, weight: 6, fix: "Keep deck open overnight, or Run learning now.", go: "learn" },
+      { id: "approvals", label: "Nothing waiting for you over a day", ok: stale === 0, weight: 6, fix: `${stale} approval${stale === 1 ? "" : "s"} waiting more than a day. Approve or reject on the deck.`, go: "3d" },
+      { id: "success", label: "Crew finishes at least 70% of tasks (30 days)", ok: finished < 5 ? null : done / finished >= 0.7, weight: 10, fix: "Check Crew chat for what failed, then Tune prompts or run the model arena.", go: "channel" },
+      { id: "automations", label: "Automations running without errors", ok: (this.automations?.list().length ?? 0) === 0 ? null : failing.length === 0, weight: 5, fix: `Failing: ${failing.map((x) => x.name).join(", ")}.`, go: "automations" },
+      { id: "telegram", label: "Telegram limited to your chat", ok: !s.chat.telegram.enabled ? null : s.chat.telegram.ownerChatIds.length > 0 && (await has("chat.telegram")), weight: 6, fix: "Add your chat id and bot token, or turn Telegram off.", go: "settings" },
+      { id: "research", label: "Web research available", ok: ["anthropic", "openai", "gemini"].includes(s.models.heavy.provider), weight: 4, fix: "Use Claude, OpenAI or Gemini as the main model.", go: "settings" },
+    ];
+    const counted = c.filter((x) => x.ok !== null) as { id: string; label: string; ok: boolean; weight: number; fix?: string; go?: string }[];
+    const total = counted.reduce((x, y) => x + y.weight, 0);
+    const score = Math.round((counted.filter((x) => x.ok).reduce((x, y) => x + y.weight, 0) / Math.max(1, total)) * 100);
+    // Daily snapshot, and which checks went from passing to failing since the last one.
+    const hist = JSON.parse((await this.store.getMeta("health.history")) ?? "[]") as { date: string; score: number; failing: string[] }[];
+    const today = now.toISOString().slice(0, 10);
+    const failingNow = counted.filter((x) => !x.ok).map((x) => x.id);
+    const prev = hist.filter((h) => h.date < today).at(-1);
+    const next = [...hist.filter((h) => h.date !== today), { date: today, score, failing: failingNow }].slice(-60);
+    await this.store.setMeta("health.history", JSON.stringify(next));
+    const regressed = prev ? failingNow.filter((id) => !prev.failing.includes(id)).map((id) => counted.find((x) => x.id === id)!.label) : [];
+    return { score, checks: counted.map(({ fix, ...x }) => (x.ok ? x : { ...x, ...(fix ? { fix } : {}) })), history: next.map(({ date, score: sc }) => ({ date, score: sc })), regressed };
   }
 
   /* ---------- workflows ---------- */

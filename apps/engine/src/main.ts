@@ -45,6 +45,7 @@ async function main() {
     "brain.graph": () => engine.brain.graph(),
     "deck.stats": () => engine.deckStats(),
     "tools.list": () => engine.toolsList(),
+    "health.get": () => engine.health(),
     "workflows.list": async () => engine.workflowsList(),
     "workflows.save": async (p) => engine.workflowSave(p as never),
     "workflows.delete": async (p) => engine.workflowDelete(String((p as { id?: string })?.id ?? "")),

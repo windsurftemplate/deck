@@ -211,7 +211,7 @@ export function App() {
         {view === "brain" ? (
           <BrainView />
         ) : view === "center" ? (
-          <CommandCenter />
+          <CommandCenter go={(t) => (t === "settings" ? setShowSettings(true) : t === "learn" ? void engineCall<string>("learn.now").then((r) => toast("Learning finished", r ?? undefined)) : (setShowSettings(false), void switchView(t as View)))} />
         ) : view === "channel" ? (
           <CrewChannel />
         ) : view === "goals" ? (

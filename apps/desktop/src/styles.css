@@ -397,3 +397,19 @@ input, textarea, select { font-family: var(--font); }
 .wf { display: grid; gap: 10px; padding: 14px; }
 .wf .row button { display: inline-flex; align-items: center; gap: 6px; }
 .stack .row { flex-wrap: wrap; }
+.health { display: grid; gap: 10px; padding: 14px 16px; }
+.health-score { display: grid; grid-template-columns: auto auto 1fr; gap: 12px; align-items: center; }
+.health-score > svg { color: var(--accent); }
+.health-score b { font-size: 28px; font-weight: 600; letter-spacing: -.02em; }
+.health-score span { color: var(--muted); font-size: 13px; margin-left: 4px; }
+.health.good .health-score b { color: var(--ok); } .health.warn .health-score b { color: var(--warn); } .health.bad .health-score b { color: var(--fail); }
+.health-score .spark { max-width: 220px; justify-self: end; }
+.health-drop { margin: 0; display: flex; gap: 6px; align-items: center; color: var(--warn); font-size: 13px; }
+.health-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.health-list li { display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: start; padding: 8px 10px; border-radius: var(--r); background: var(--hull-2); }
+.health-list li > svg { margin-top: 2px; color: var(--warn); }
+.health-list.ok li { background: transparent; padding: 3px 10px; }
+.health-list.ok li > svg { color: var(--ok); }
+.health-list b { font-weight: 500; }
+.health-list p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.health-list b { color: var(--text); }

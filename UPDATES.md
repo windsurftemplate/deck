@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 39 commits.
-Tests (counted): **212 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 46 commits.
+Tests (counted): **221 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -256,10 +256,36 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 37. `feat: documents become facts nightly; prompt tuning tested on practice tasks and adopted only with approval`
 38. `feat: hands-free voice with a wake word, and desktop notifications`
 39. `feat: professional UI pass (sidebar, command menu, status bar, toasts, states, tokens)`
+40. `feat: encrypted backup and restore with a passphrase`
+41. `feat: input scanner flags injection attempts, strips hidden characters, keeps personal data out of web searches`
+42. `feat: experience recall shows each agent its similar past tasks and what worked`
+43. `feat: model arena picks the best model per agent from practice runs`
+44. `feat: goals planned into milestone issues with progress and weekly checks; tracker lists every status (fixes closed-issue counts)`
+45. `feat: multi-step workflows with templates, schedulable as automations`
+46. `feat: setup health score with fixes and history`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Ideas from Ruflo: backups, scanner, recall, arena, goals, workflows, health
+
+**Source.** Ruflo (github.com/ruvnet/ruflo), an agent harness for Claude Code and Codex. Taken where it fits a personal crew; skipped federation, swarm consensus and unsandboxed plugins (they conflict with the locked safety rules).
+
+**Changed**
+- Encrypted backup and restore (Settings, Backups): the workspace (copied with VACUUM INTO, still encrypted), the memory key and settings, sealed with your passphrase (scrypt, AES-256-GCM, 12 characters or more). Restore needs only the file and passphrase; the old workspace is kept as workspace.before-restore.db.
+- Input scanner (`@deck/gate`): scores untrusted text for signs of orders (ignore previous instructions, fake system messages, persona changes, asks for keys, hide from the owner, data-carrying image links, long encoded blocks), removes invisible characters, and marks flagged content with a warning the agent sees every time. Second brain imports report flagged files. Emails, phone numbers, card numbers (Luhn checked), ID numbers and IBANs are removed from web search questions.
+- Experience recall: before each delegated task, the agent sees up to three of its most similar past tasks with how they went and what it reported, failures included. Reports are now kept with each task.
+- Model arena (Tools): replays an agent's recent tasks as practice with each of your models, scores them with the same checker, and suggests the best (ties to fewer tokens). Applying gives that agent its own model (settings models.agents); others keep the main model.
+- Goals (sidebar): the Chief of Staff plans a goal into 3 to 7 dated milestones as issues labelled to the goal; progress bar, checkboxes, overdue marks, progress notes on demand and every Monday at 08:30 (notification and Telegram).
+- Workflows (Automations, Workflows tab): 2 to 6 steps across agents, each step seeing the results so far; a Chief of Staff step can combine them. Templates: account research to outreach, weekly review, breach to content. Workflows can be scheduled.
+- Setup health (Command center): a score out of 100 from twelve checks (main model key, fallback on another provider, backup in 14 days, safe preset, tripwire, token budget, learning in 3 days, stale approvals, crew success rate, failing automations, Telegram limits, web research), a fix for each, a daily history, and a warning when a passing check starts failing.
+- Fixed: the tracker could not list closed issues, so the command center undercounted closed issues. It now can list every status.
+
+**Verified**
+- Engine tests for each: backup sealed and restored on a fresh keychain, wrong passphrase refused; scanner flags and strips, web search question redacted; recall finds similar tasks and skips unrelated ones; arena picks the stronger model and applies it to one agent only; goals planned, progressed and checked; workflows hand results forward and can be scheduled; health scores, fixes, history and regressions.
+- Desktop with a stand-in engine: command center with health, goals page.
+- 221 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-03: Professional UI pass
 

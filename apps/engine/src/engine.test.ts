@@ -511,6 +511,31 @@ describe("research agent", () => {
   });
 });
 
+describe("setup health", () => {
+  it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
+    let now = new Date("2026-10-01T10:00:00Z");
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, clock: () => now, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model) });
+    await e.open();
+    const h1 = await e.health();
+    const fail = h1.checks.filter((c) => !c.ok).map((c) => c.id);
+    expect(fail).toEqual(expect.arrayContaining(["fallback", "backup", "learning"]));
+    expect(h1.checks.find((c) => c.id === "key")!.ok).toBe(true);
+    expect(h1.checks.find((c) => c.id === "backup")!.fix).toMatch(/encrypted backup/);
+    expect(h1.score).toBeGreaterThan(0);
+    expect(h1.score).toBeLessThan(100);
+    await e.backupNow("correct horse battery", dir());
+    await e.learnNow();
+    now = new Date("2026-10-02T10:00:00Z");
+    const h2 = await e.health();
+    expect(h2.score).toBeGreaterThan(h1.score);
+    expect(h2.history.map((x) => x.date)).toEqual(["2026-10-01", "2026-10-02"]);
+    now = new Date("2026-10-20T10:00:00Z");
+    const h3 = await e.health();
+    expect(h3.regressed).toEqual(expect.arrayContaining(["A backup in the last 14 days", "Learning ran in the last 3 days"]));
+    await e.close();
+  });
+});
+
 describe("workflows", () => {
   it("runs steps in order, hands each result to the next, and can be scheduled", async () => {
     const seen: string[] = [];
