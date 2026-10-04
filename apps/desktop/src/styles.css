@@ -464,3 +464,38 @@ input, textarea, select { font-family: var(--font); }
 .help-nav { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 .help-nav .btn { display: inline-flex; align-items: center; gap: 4px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .help { grid-template-columns: 1fr; } .help-side { max-height: 40vh; } }
+
+/* Labs */
+.labs { display: grid; gap: 10px; }
+.labs h3 { display: flex; align-items: center; gap: 8px; }
+.lab { border: 1px solid var(--seam); border-radius: var(--r); padding: 12px 14px; background: var(--void); }
+.lab.on { border-color: rgba(127, 227, 255, .35); }
+.lab-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.lab-head b { font-weight: 600; }
+.lab-head p { margin: 3px 0 0; font-size: 13px; line-height: 1.45; }
+.lab-body { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--seam); display: grid; gap: 10px; }
+.lab-body .row { flex-wrap: wrap; align-items: flex-end; }
+.lab-body input, .lab-body textarea { font: inherit; font-size: 13.5px; color: var(--text); background: var(--hull); border: 1px solid var(--seam); border-radius: var(--r); padding: 7px 10px; }
+.lab-body textarea { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: 12px; }
+.switch { position: relative; flex: none; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch-track { display: block; width: 38px; height: 22px; border-radius: 11px; background: var(--surface-3); border: 1px solid var(--seam-strong); transition: background .15s; }
+.switch-thumb { display: block; width: 16px; height: 16px; margin: 2px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+.switch input:checked + .switch-track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); background: var(--accent-ink); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plugin-row { display: grid; grid-template-columns: 1fr 2fr 1fr auto auto auto; gap: 8px; align-items: center; }
+.plugin-status { grid-column: 1 / -1; margin: 0; font-size: 12.5px; }
+.peers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.peers li { display: flex; gap: 8px; align-items: center; }
+@media (max-width: 900px) { .plugin-row { grid-template-columns: 1fr 1fr; } }
+.reactor3d { width: 360px; height: 360px; }
+.reactor3d canvas { display: block; }
+.chip.tour { border-color: rgba(127, 227, 255, .45); }
+.chip.tour.on { background: var(--accent); color: var(--accent-ink); }
+.labs, .lab, .lab-body, .lab-head > div { min-width: 0; }
+.lab-head > div { flex: 1; }
+.plugin-row > * { min-width: 0; }
+.plugin-row input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; }
+.lab-body .field input { width: 100%; box-sizing: border-box; }
+.lab-body .row > .field { flex: 1; min-width: 140px; }

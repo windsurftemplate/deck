@@ -9,7 +9,9 @@
     "repo.read",
     "repo.propose"
   ],
-  "requiresApproval": [],
+  "requiresApproval": [
+    "repo.propose"
+  ],
   "deny": [
     "github.merge",
     "*.delete",

@@ -17,9 +17,11 @@
     "plugins.use",
     "google.read",
     "google.draft",
-    "federation.send"
+    "federation.message"
   ],
-  "requiresApproval": [],
+  "requiresApproval": [
+    "google.draft"
+  ],
   "deny": [
     "gmail.send",
     "github.merge",

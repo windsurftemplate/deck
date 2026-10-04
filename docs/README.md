@@ -16,6 +16,7 @@ Everything here is also inside the app: open **Help and course** in the sidebar 
 10. [Safety, privacy and your data](manual/10-safety-and-privacy.md)
 11. [Settings reference](manual/11-settings-reference.md)
 12. [Shortcuts, troubleshooting, FAQ and glossary](manual/12-shortcuts-troubleshooting-faq.md)
+13. [Labs: features you turn on](manual/13-labs.md)
 
 ## Course: how AI agents work, from high level to low level
 

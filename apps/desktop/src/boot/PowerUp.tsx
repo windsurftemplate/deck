@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { Reactor3D } from "./Reactor3D";
 import { arcPath, coreLit, LABELS, SEGMENTS, statusText, type CheckResult } from "./checks";
 import { runChecks } from "../bridge";
 import { RestoreKey } from "../Recovery";
 
-export function PowerUp({ onDone }: { onDone: () => void }) {
+export function PowerUp({ onDone, threeD = false }: { onDone: () => void; threeD?: boolean }) {
   const [run, setRun] = useState(0);
   const [results, setResults] = useState<CheckResult[]>([]);
   const [finished, setFinished] = useState(false);
@@ -28,7 +29,7 @@ export function PowerUp({ onDone }: { onDone: () => void }) {
 
   return (
     <main className="boot" aria-live="polite">
-      <svg className="ring" viewBox="0 0 360 360" role="img" aria-label="Power core with subsystem ring">
+      {threeD ? <Reactor3D segments={SEGMENTS} status={Object.fromEntries(SEGMENTS.map((id) => [id, byId.get(id)?.status]))} lit={lit} /> : <svg className="ring" viewBox="0 0 360 360" role="img" aria-label="Power core with subsystem ring">
         {SEGMENTS.map((id, i) => (
           <path key={id} className={`seg ${byId.get(id)?.status ?? ""}`} d={arcPath(i, SEGMENTS.length)}>
             <title>{LABELS[id]}</title>
@@ -39,7 +40,7 @@ export function PowerUp({ onDone }: { onDone: () => void }) {
         <text x="180" y="185" textAnchor="middle" fontSize="13" fill={lit ? "#0b2733" : "#8190a6"}>
           {lit ? "Core online" : "Models offline"}
         </text>
-      </svg>
+      </svg>}
       <section>
         <h1>{finished ? (blocking ? "Power-up stopped" : "Systems charged") : "Powering up"}</h1>
         <p className="sub">{preview ? "Preview mode: checks are simulated outside the app." : "Running diagnostics."}</p>

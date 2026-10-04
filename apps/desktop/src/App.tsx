@@ -28,6 +28,9 @@ type Line = { from: "you" | "agent" | "system"; text: string; typing?: boolean; 
 
 export function App() {
   const [phase, setPhase] = useState<"boot" | "onboarding" | "shell">("boot");
+  const [labs3d, setLabs3d] = useState(false);
+  const [tours, setTours] = useState(false);
+  useEffect(() => void loadSettings().then((s) => (setLabs3d(!!s.labs?.powerUp3d), setTours(!!s.labs?.tours))).catch(() => {}), [phase]);
   const [stopped, setStopped] = useState(false);
   const [log, setLog] = useState<Line[]>([{ from: "system", text: "Chief of Staff is ready. Ask anything, or open Settings to add keys." }]);
   const [draft, setDraft] = useState("");
@@ -172,7 +175,7 @@ export function App() {
   const switchViewRef = useRef<(v: View) => Promise<void>>(async () => {});
   const openThreadRef = useRef<(id: string | undefined) => Promise<void>>(async () => {});
 
-  if (phase === "boot") return <PowerUp onDone={() => loadSettings().then((s) => setPhase(s.onboarding.done ? "shell" : "onboarding"))} />;
+  if (phase === "boot") return <PowerUp threeD={labs3d} onDone={() => loadSettings().then((s) => setPhase(s.onboarding.done ? "shell" : "onboarding"))} />;
   if (phase === "onboarding") return <Onboarding onDone={() => setPhase("shell")} />;
 
   const stopAll = async () => {
@@ -225,6 +228,7 @@ export function App() {
           <Tools openSettings={() => setShowSettings(true)} openBrain={() => switchView("brain")} />
         ) : view === "3d" ? (
           <Deck3D
+            tours={tours}
             onOpenBrain={() => switchView("brain")}
             stats={stats}
             state={{ crew, pending, stopped }}

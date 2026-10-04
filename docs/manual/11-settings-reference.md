@@ -17,6 +17,7 @@ Open Settings from the sidebar or with <kbd>Cmd</kbd> + <kbd>,</kbd>. Every card
 | **Camera and pictures** | Allow snapshots and attachments | Off by default |
 | **Backups** | Back up now; restore | Passphrase of 12 characters or more |
 | **Recovery key** | Reveal; restore | Store it in a password manager |
+| **Labs** | Complexity routing, local models, parallel work, crew votes, plugins, agent pull requests, Gmail and Calendar, federation, camera tours, 3D power-up | All start off. See chapter 13 |
 
 ## Settings you can change from chat
 

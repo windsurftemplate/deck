@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { engineCall, onEngineEvent } from "../bridge";
+import { engineCall, loadSettings, onEngineEvent } from "../bridge";
 import { MessagesSquare } from "lucide-react";
 import { Empty } from "../ui/states";
 
@@ -29,6 +29,9 @@ export function CrewChannel() {
   const [rounds, setRounds] = useState(2);
   const [say, setSay] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [voteOn, setVoteOn] = useState(false);
+  const [mode, setMode] = useState<"discussion" | "vote">("discussion");
+  useEffect(() => void loadSettings().then((s) => setVoteOn(!!s.labs?.consensus)), []);
   const end = useRef<HTMLDivElement>(null);
   const chRef = useRef(channel);
   chRef.current = channel;
@@ -55,7 +58,7 @@ export function CrewChannel() {
   const start = async () => {
     setErr(null);
     try {
-      const r = await engineCall<{ id: string }>("crew.discuss", { topic, agents: picked, rounds });
+      const r = mode === "vote" ? await engineCall<{ id: string }>("crew.vote", { question: topic, agents: picked }) : await engineCall<{ id: string }>("crew.discuss", { topic, agents: picked, rounds });
       if (r) (setChannel(`discussion:${r.id}`), setTopic(""), loadDiscussions());
       else setErr("Discussions run inside the desktop app.");
     } catch (e) {
@@ -72,6 +75,10 @@ export function CrewChannel() {
           Live activity
           <span className="muted">handoffs, tools, reports</span>
         </button>
+        <button type="button" className={`thread ${channel === "federation" ? "on" : ""}`} onClick={() => setChannel("federation")}>
+          Federation
+          <span className="muted">messages with trusted crews</span>
+        </button>
         <h3>Discussions</h3>
         {discussions.length === 0 && <p className="muted">None yet. Start one below.</p>}
         {discussions.map((d) => (
@@ -81,7 +88,13 @@ export function CrewChannel() {
           </button>
         ))}
         <div className="card new-disc">
-          <h3>Start a discussion</h3>
+          <h3>Start a {mode === "vote" ? "vote" : "discussion"}</h3>
+          {voteOn && (
+            <div className="seg" role="group" aria-label="Kind">
+              <button type="button" className={mode === "discussion" ? "on" : ""} aria-pressed={mode === "discussion"} onClick={() => setMode("discussion")}>Discussion</button>
+              <button type="button" className={mode === "vote" ? "on" : ""} aria-pressed={mode === "vote"} onClick={() => setMode("vote")}>Vote</button>
+            </div>
+          )}
           <textarea rows={3} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Should we build SSO before the Acme pilot?" aria-label="Discussion topic" />
           <fieldset>
             <legend className="muted">Who joins</legend>
@@ -92,19 +105,19 @@ export function CrewChannel() {
               </label>
             ))}
           </fieldset>
-          <label className="field">
+          {mode === "discussion" && <label className="field">
             Rounds
             <select value={rounds} onChange={(e) => setRounds(Number(e.target.value))}>
               <option value={1}>1</option>
               <option value={2}>2</option>
               <option value={3}>3</option>
             </select>
-          </label>
+          </label>}
           <button className="primary" type="button" disabled={!topic.trim() || !picked.length} onClick={start}>
-            Start discussion
+            {mode === "vote" ? "Start vote" : "Start discussion"}
           </button>
           {err && <p className="error">{err}</p>}
-          <p className="muted">Talk only: no tools, nothing is sent anywhere. The Chief of Staff sums up at the end.</p>
+          <p className="muted">{mode === "vote" ? "Each member answers on its own, then ranks the others; the Chief of Staff reports the winner and any dissent." : "Talk only: no tools, nothing is sent anywhere. The Chief of Staff sums up at the end."}</p>
         </div>
       </aside>
 

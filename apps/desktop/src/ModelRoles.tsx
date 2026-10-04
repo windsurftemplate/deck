@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PROVIDERS, SettingsError, type ModelChoice, type Provider, type Settings } from "@deck/settings";
 import { engineCall, inTauri, saveSettings } from "./bridge";
 
-export const PROVIDER_LABEL: Record<Provider, string> = { anthropic: "Anthropic (Claude)", openai: "OpenAI", gemini: "Google Gemini", openrouter: "OpenRouter" };
+export const PROVIDER_LABEL: Record<Provider, string> = { anthropic: "Anthropic (Claude)", openai: "OpenAI", gemini: "Google Gemini", openrouter: "OpenRouter", ollama: "Ollama (local, Labs)" };
 
 /** Loads model ids from the provider with the saved key. Returns an error message instead of throwing. */
 export async function loadModelList(provider: Provider): Promise<{ models: string[]; error?: string }> {

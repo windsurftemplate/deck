@@ -58,7 +58,7 @@ const SCOPE_LABEL: Record<string, string> = {
   "repo.propose": "Open pull requests (Labs)",
   "google.read": "Read Gmail and Calendar (Labs)",
   "google.draft": "Write Gmail drafts (Labs)",
-  "federation.send": "Message trusted crews (Labs)",
+  "federation.message": "Message trusted crews (Labs)",
   "telemetry.read": "Review the crew's track record",
 };
 
@@ -644,7 +644,7 @@ export class Engine {
     if (agent === AGENT && this.d.settings.labs.federation.enabled && this.fed)
       extra.push({
         spec: { name: "message_crew", description: `Labs: ask a trusted crew on another computer a question. Trusted crews: ${this.federationPeers().map((p) => `${p.name} (${p.id})`).join(", ") || "none yet"}. The owner approves every message.`, parameters: { type: "object", properties: { crew_id: { type: "string" }, text: { type: "string" } }, required: ["crew_id", "text"] } },
-        scope: "federation.send",
+        scope: "federation.message",
         kind: "read", // federationSend itself waits for the owner's approval
         describe: (i) => `Message crew ${String(i.crew_id)}`,
         run: async (i) => (this.federationSend(String(i.crew_id), String(i.text)), "Waiting for the owner to approve sending it."),
@@ -731,7 +731,7 @@ export class Engine {
     const peer = this.fed.peers.list().find((p) => p.id === peerId);
     if (!peer) throw new Error("That crew is not on your trusted list.");
     const clean = redactPII(redactSecrets(text).clean).text.slice(0, 8000);
-    const { approval, decision } = this.approvals.request({ agent: AGENT, summary: `Send to ${peer.name}: ${clean.slice(0, 160)}`, detail: clean, scope: "federation.send" });
+    const { approval, decision } = this.approvals.request({ agent: AGENT, summary: `Send to ${peer.name}: ${clean.slice(0, 160)}`, detail: clean, scope: "federation.message" });
     void decision.then(async (a) => {
       if (a.status !== "approved") return;
       const env = seal(this.fed!.me, peer, { kind, text: clean, id: randomBytes(6).toString("hex"), ...(replyTo ? { replyTo } : {}) });
@@ -751,7 +751,7 @@ export class Engine {
     this.say({ channel: "federation", sender: peer.id, recipient: "owner", kind: msg.kind === "answer" ? "report" : "discussion", text: `${peer.name}: ${msg.text}` });
     this.emit("notify", { title: `Message from ${peer.name}`, body: msg.text.slice(0, 200) });
     if (msg.kind !== "ask") return;
-    const { decision } = this.approvals.request({ agent: AGENT, summary: `${peer.name} asks: ${msg.text.slice(0, 160)}. Let the Chief of Staff draft an answer?`, detail: msg.text, scope: "federation.send" });
+    const { decision } = this.approvals.request({ agent: AGENT, summary: `${peer.name} asks: ${msg.text.slice(0, 160)}. Let the Chief of Staff draft an answer?`, detail: msg.text, scope: "federation.message" });
     void decision.then(async (a) => {
       if (a.status !== "approved") return;
       const memories = formatMemories(await this.reader.retrieve(msg.text, { tokenBudget: 500 }));

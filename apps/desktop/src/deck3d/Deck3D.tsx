@@ -10,9 +10,30 @@ export interface DeckState {
 }
 
 /** The 3D command deck with a side panel for the selected station. */
-export function Deck3D({ state, signal, onDecide, onOpenBrain, stats }: { state: DeckState; signal: { beam?: string; archive?: number; visit?: string }; onDecide: (id: string, approve: boolean) => void; onOpenBrain?: () => void; stats?: DeckStats | null }) {
+export function Deck3D({ state, signal, onDecide, onOpenBrain, stats, tours = false }: { state: DeckState; signal: { beam?: string; archive?: number; visit?: string }; onDecide: (id: string, approve: boolean) => void; onOpenBrain?: () => void; stats?: DeckStats | null; tours?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
+  /* Labs: camera tour through every station. Any manual choice stops it. */
+  const [touring, setTouring] = useState(false);
+  const tourTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopTour = () => {
+    if (tourTimer.current) clearTimeout(tourTimer.current);
+    setTouring(false);
+  };
+  const startTour = () => {
+    setTouring(true);
+    const step = (i: number) => {
+      if (i >= STATIONS.length) {
+        setSelected(null);
+        setTouring(false);
+        return;
+      }
+      setSelected(STATIONS[i]!.id);
+      tourTimer.current = setTimeout(() => step(i + 1), 4200);
+    };
+    step(0);
+  };
+  useEffect(() => () => void (tourTimer.current && clearTimeout(tourTimer.current)), []);
   const deck = useRef<DeckScene | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -85,6 +106,11 @@ export function Deck3D({ state, signal, onDecide, onOpenBrain, stats }: { state:
       {loading && !failed && <p className="deck-note">Loading the station…</p>}
       {failed && <p className="deck-note error">{failed}</p>}
       <nav className="deck-chips" aria-label="Stations">
+        {tours && (
+          <button type="button" className={`chip tour ${touring ? "on" : ""}`} aria-pressed={touring} onClick={() => (touring ? stopTour() : startTour())}>
+            {touring ? "Stop tour" : "Tour"}
+          </button>
+        )}
         {STATIONS.map((x) => (
           <button key={x.id} type="button" className={`chip ${x.id === selected ? "on" : ""}`} onClick={() => setSelected(x.id === selected ? null : x.id)}>
             {x.name}

@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 47 commits.
-Tests (counted): **224 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 54 commits.
+Tests (counted): **239 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -264,10 +264,38 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 45. `feat: multi-step workflows with templates, schedulable as automations`
 46. `feat: setup health score with fixes and history`
 47. `docs: user manual and agent course, with an in-app Help page`
+48. `feat(labs): settings switches, complexity routing, local models via Ollama (all off by default)`
+49. `feat(labs): parallel fan-out and crew votes`
+50. `feat(labs): plugins as MCP tools, approval on each call unless trusted read-only`
+51. `feat(labs): Engineering can open pull requests (never merge) with approval`
+52. `feat(labs): Gmail and Calendar (read, drafts with approval, never send) with local Google sign-in`
+53. `feat(labs): federation with invite-only peers, signed and encrypted messages, owner approval both ways`
+54. `feat(labs): Labs card, crew votes in Crew chat, camera tours, 3D power-up, docs`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Labs: the left-out features, behind switches that start off
+
+**Changed**
+- Settings > Labs: a switch per feature, all off by default, each with its own setup once on. Settings validated (`labs` in `@deck/settings`).
+- Complexity routing (`packages/agents/src/route.ts`): simple chat to the cheap model, thinking and writing to the heavy one, heavy when unsure. No extra model call.
+- Local models: Ollama as a provider (OpenAI format under /v1, no key, model list from /api/tags). Refused unless the Labs switch is on.
+- Parallel fan-out: `delegate_parallel` tool for the Chief of Staff (2 to 4 tasks at once, each checked).
+- Crew votes: independent answers in parallel, then each member ranks the others; Borda count; summary with dissent. In Crew chat (Vote) and as a Chief of Staff tool.
+- Plugins: MCP Streamable HTTP client (`packages/connectors/src/mcp.ts`); plugin tools for the Chief of Staff; every call asks unless the owner trusts a plugin's read-only tools; results wrapped and scanned.
+- Agent pull requests: `GitHubRepo` reads files and opens a pull request on a new branch labelled agent-proposal; asks first; never merges, never pushes to the default branch; path traversal refused.
+- Gmail and Calendar: desktop OAuth with PKCE on a one-time 127.0.0.1 page; read-only mail and calendar plus drafts; no send permission requested; drafts ask first; content untrusted.
+- Federation (`apps/engine/src/federation.ts`): ed25519 identity and X25519 encryption in the keychain, invite-only peers, AES-256-GCM messages with signatures, 5-minute freshness and replay checks; every outgoing message approved and scrubbed of secrets and personal data; incoming questions need two approvals (draft, then send). Federation channel in Crew chat.
+- Camera tours (Tour button on the deck) and a 3D reactor power-up screen.
+- Manual chapter 13 (Labs); settings reference and models chapter updated.
+- Scope renamed from federation.send to federation.message after the guard test (no allowed scope may contain send, delete or merge) caught it.
+
+**Verified**
+- Tests for each feature off and on: routing picks the right model; Ollama refused when off; fan-out runs tasks concurrently; votes count correctly; plugin tools offered only when on, writes need approval, results flagged; repository tools only for Engineering with pull requests as external; Google tools only when on and connected; two engines exchange signed, encrypted messages with approvals, personal data and secrets stripped, forged messages refused.
+- Desktop: Labs card, 3D power-up rendering.
+- 239 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: User manual and agent course
 

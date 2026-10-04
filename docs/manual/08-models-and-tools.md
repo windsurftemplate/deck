@@ -21,6 +21,7 @@ deck uses models in roles, set in **Settings > Models**.
 | OpenAI | `sk-...` | Web research and pictures supported |
 | Google (Gemini) | `AIza...` | Web research (Google Search grounding) and pictures supported |
 | OpenRouter | `sk-or-...` | Many models through one key; no web research |
+| Ollama (Labs) | no key | Models on your own computer; turn on in Settings > Labs |
 
 deck checks a key's shape before saving, so a key pasted in the wrong field is caught.
 
