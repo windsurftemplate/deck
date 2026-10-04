@@ -5,7 +5,9 @@
     "issues.write",
     "memory.read",
     "memory.write",
-    "skills.read"
+    "skills.read",
+    "repo.read",
+    "repo.propose"
   ],
   "requiresApproval": [],
   "deny": [

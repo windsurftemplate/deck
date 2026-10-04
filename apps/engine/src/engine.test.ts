@@ -601,6 +601,22 @@ describe("labs: plugins", () => {
   });
 });
 
+describe("labs: GitHub pull requests", () => {
+  it("gives Engineering repository tools only when on, and opening a pull request needs approval", async () => {
+    const mk = (enabled: boolean) => new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC, "tool.github": "ghp_test" }), settings: { ...DEFAULTS, labs: { ...DEFAULTS.labs, github: { enabled, repo: "vp/deck" } } }, fetch: offline, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model) });
+    const tools = (e: Engine) => (e as unknown as { toolsFor: (a: string) => { spec: { name: string }; kind: string }[] }).toolsFor("code");
+    const off = mk(false);
+    await off.open();
+    expect(tools(off).some((t) => t.spec.name.startsWith("repo_"))).toBe(false);
+    await off.close();
+    const on = mk(true);
+    await on.open();
+    expect(tools(on).filter((t) => t.spec.name.startsWith("repo_")).map((t) => `${t.spec.name}:${t.kind}`)).toEqual(["repo_list:read", "repo_read:read", "repo_propose:external"]);
+    expect((on as unknown as { toolsFor: (a: string) => { spec: { name: string } }[] }).toolsFor("gtm").some((t) => t.spec.name.startsWith("repo_"))).toBe(false);
+    await on.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");
