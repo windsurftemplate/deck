@@ -65,7 +65,7 @@ export interface RunAgentInput {
   /** Summaries of the agent's thinking: its plan, its reasoning, and its reflections after a step fails. */
   onThought?: (kind: "plan" | "thinking" | "reflect", text: string) => void;
   /** Check the result against the task's done-when list before reporting done. One retry if something is missing. */
-  verify?: { goal: string; doneWhen: string[]; chat: (req: ChatRequest) => Promise<ChatResponse> };
+  verify?: { goal: string; doneWhen: string[]; chat: (req: ChatRequest) => Promise<ChatResponse>; judge?: Judge };
 }
 
 export interface Verdict {
@@ -79,8 +79,19 @@ export interface Verdict {
  * Independent check of finished work. A separate, cheap model call reads the goal, the done-when list,
  * the final report and what was actually done, and lists anything not met. Failed actions always fail the check.
  */
-export async function verifyWork(v: { goal: string; doneWhen: string[]; report: string; actions: ActionRecord[]; chat: (req: ChatRequest) => Promise<ChatResponse> }): Promise<Verdict> {
+/**
+ * A fast structured judge (Jev) tried before the language-model checker. It returns a verdict only when it is
+ * confident; otherwise null, and the language-model checker decides as before.
+ */
+export type Judge = (v: { goal: string; doneWhen: string[]; report: string; actions: ActionRecord[] }) => Promise<(Verdict & { by?: string }) | null>;
+
+export async function verifyWork(v: { goal: string; doneWhen: string[]; report: string; actions: ActionRecord[]; chat: (req: ChatRequest) => Promise<ChatResponse>; judge?: Judge }): Promise<Verdict> {
   const failed = v.actions.filter((a) => a.status === "failed").map((a) => `Failed: ${a.summary}`);
+  if (v.judge) {
+    const quick = await v.judge({ goal: v.goal, doneWhen: v.doneWhen, report: v.report, actions: v.actions }).catch(() => null);
+    // Failed actions always fail, whatever any judge says.
+    if (quick) return failed.length ? { passed: false, missing: [...failed, ...quick.missing.filter((m) => !failed.includes(m))], checked: true } : { passed: quick.passed, missing: quick.missing, checked: true };
+  }
   const log = v.actions.map((a) => `- ${a.status}: ${a.summary}${a.result ? ` -> ${a.result.slice(0, 200)}` : ""}`).join("\n") || "- (no actions)";
   try {
     const res = await v.chat({

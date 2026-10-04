@@ -556,3 +556,4 @@ input, textarea, select { font-family: var(--font); }
 .review.high { border-color: rgba(240, 106, 99, .55); background: rgba(240, 106, 99, .08); } .review.high svg { color: var(--fail); }
 .review.pending { color: var(--muted); }
 .security-out { white-space: pre-wrap; font-family: var(--mono); font-size: 12px; background: var(--void); border: 1px solid var(--seam); border-radius: var(--r); padding: 10px 12px; max-height: 360px; overflow: auto; }
+.jev-uses { border: 1px solid var(--seam); border-radius: var(--r); padding: 8px 12px; display: grid; gap: 6px; } .jev-uses:disabled { opacity: .5; }

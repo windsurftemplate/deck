@@ -10,6 +10,8 @@ export interface BrainDeps {
   log: (summary: string) => Promise<void>;
   fetch?: typeof fetch;
   osascript?: (script: string) => Promise<string>;
+  /** Optional second opinion on injection (Jev): probability the text tries to instruct an AI, or null if unavailable. */
+  checkInjection?: (text: string) => Promise<number | null>;
 }
 
 export interface GraphNode {
@@ -42,6 +44,13 @@ export class Brain {
     if (!x.text.trim()) throw new Error(`${x.title || source}: no text to add.`);
     const scan = scanInjection(x.text);
     x = { ...x, text: scan.clean };
+    if (scan.score < 0.5 && this.d.checkInjection) {
+      const p = await this.d.checkInjection(x.text.slice(0, 6000)).catch(() => null);
+      if (p !== null && p >= 0.75) {
+        scan.score = 0.75;
+        scan.signals.push(`Jev: likely tries to instruct an AI (${Math.round(p * 100)}%)`);
+      }
+    }
     const chunks = await embedChunks(this.d.embedder, x.title, x.text);
     const id = await this.d.store.addDocument({ title: x.title.slice(0, 200), kind, source: source.slice(0, 500), text: x.text }, chunks, this.now());
     for (const to of x.links.slice(0, 50)) await this.d.store.addEdge(x.title, "links to", to, this.now());

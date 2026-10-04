@@ -46,6 +46,7 @@ async function main() {
     "deck.stats": () => engine.deckStats(),
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
+    "jev.test": () => engine.jevTest(),
     "security.status": () => engine.securityStatus(),
     "security.review": () => engine.securityReview(),
     "helpers.recent": () => engine.recentHelpersList(),

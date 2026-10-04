@@ -14,12 +14,16 @@ export function Tools({ openSettings, openBrain }: { openSettings: () => void; o
   const [jevUrl, setJevUrl] = useState("");
   const [hint, setHint] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [jevOn, setJevOn] = useState(false);
+  const [uses, setUses] = useState({ routing: true, checks: true, security: true, scanner: true });
 
   const load = async () => {
     setTools((await engineCall<Tool[]>("tools.list").catch(() => null)) ?? []);
     setCrew((await engineCall<Member[]>("crew.info").catch(() => null)) ?? []);
     const s = await loadSettings();
     setJevUrl(s.tools?.jev?.baseUrl ?? "");
+    setJevOn(!!s.tools?.jev?.enabled);
+    if (s.tools?.jev?.uses) setUses(s.tools.jev.uses);
     if (inTauri) setHint(await invoke<string | null>("secret_hint", { name: "tool.jev" }).catch(() => null));
   };
   useEffect(() => void load(), []);
@@ -32,9 +36,10 @@ export function Tools({ openSettings, openBrain }: { openSettings: () => void; o
         if (k.length < 8 || /\s/.test(k)) throw new Error("That does not look like an API key.");
         if (inTauri) await invoke("secret_set", { name: "tool.jev", value: k });
       }
-      await saveSettings({ tools: { jev: { baseUrl: jevUrl } } });
+      // Saving a new key turns Jev on; the switch below turns it off again.
+      await saveSettings({ tools: { jev: { baseUrl: jevUrl, ...(k ? { enabled: true } : {}) } } });
       setJevKey("");
-      setMsg({ ok: true, text: "Saved. The key is in your system keychain. Jev connects once its API is added." });
+      setMsg({ ok: true, text: k ? "Saved to your system keychain, and Jev is on. Press Test to check the connection." : "Saved." });
       await load();
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message ?? String(e) });
@@ -63,13 +68,35 @@ export function Tools({ openSettings, openBrain }: { openSettings: () => void; o
                   <input type="password" value={jevKey} onChange={(e) => setJevKey(e.target.value)} placeholder={hint ? "Paste a new key to replace it" : "Paste your Jev API key"} autoComplete="off" spellCheck={false} />
                 </label>
                 <label className="field">
-                  API address
-                  <input value={jevUrl} onChange={(e) => setJevUrl(e.target.value)} placeholder="https://" spellCheck={false} />
+                  API address <span className="muted">(leave empty for https://api.typesafe.ai)</span>
+                  <input value={jevUrl} onChange={(e) => setJevUrl(e.target.value)} placeholder="https://api.typesafe.ai" spellCheck={false} />
                 </label>
                 <div className="row">
                   <button className="primary" type="button" onClick={saveJev}>Save</button>
+                  {hint && <button className="btn" type="button" onClick={async () => { setMsg(null); try { setMsg({ ok: true, text: (await engineCall<string>("jev.test")) ?? "" }); } catch (e) { setMsg({ ok: false, text: String(e).replace(/^Error: /, "") }); } }}>Test</button>}
                   {hint && <button className="btn" type="button" onClick={removeJev}>Remove key</button>}
                 </div>
+                <label className="check">
+                  <input type="checkbox" checked={jevOn} onChange={async (e) => { setJevOn(e.target.checked); await saveSettings({ tools: { jev: { enabled: e.target.checked } } }); await load(); }} />
+                  <b>Use Jev</b>
+                </label>
+                <fieldset className="jev-uses" disabled={!jevOn}>
+                  <legend className="muted">Use it for (each falls back to the usual method when Jev is unsure)</legend>
+                  {(
+                    [
+                      ["routing", "How much thinking a request needs"],
+                      ["checks", "First check of finished work"],
+                      ["security", "First risk opinion on approvals"],
+                      ["scanner", "Second opinion on hidden instructions in documents"],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <label key={k} className="check">
+                      <input type="checkbox" checked={uses[k]} onChange={async (e) => { const next = { ...uses, [k]: e.target.checked }; setUses(next); await saveSettings({ tools: { jev: { uses: next } } }); await load(); }} />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+                <p className="muted">Jev receives the text it judges (requests, finished-work reports, approval details, documents you add), with keys and secrets removed first.</p>
                 {msg && <p className={msg.ok ? "ok" : "error"} role="status">{msg.text}</p>}
               </div>
             )}

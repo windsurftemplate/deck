@@ -59,5 +59,6 @@ Without the passphrase, a backup cannot be opened, by anyone. Keep the passphras
 | Search questions (personal data removed) | Your model provider's search | Research tasks |
 | Web pages you add | The site you linked | When you add them |
 | Telegram messages | Telegram | Only if you turn it on |
+| Text for quick decisions (requests, finished-work reports, approval details, documents you add), secrets removed | TypeSafe AI (Jev) | Only if you turn Jev on |
 
 Speech never leaves your machine. Memory search runs locally unless you choose OpenAI embeddings.

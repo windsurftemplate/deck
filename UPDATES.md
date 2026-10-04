@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **264 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **268 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,26 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Jev (TypeSafe AI) wired in
+
+**Changed**
+- `JevClient` (`packages/models/src/jev.ts`): POST `/v1/systemone` with a bearer key, typed Noul, Choice and Score questions, model `jev-latest`, retries with backoff on 429 and 529, plain errors for 401 and 422, configurable address (default https://api.typesafe.ai).
+- Engine uses Jev for four decisions, each confidence-gated with a fallback, secrets stripped from the state, usage logged as `jev:<use>`:
+  - Routing (`assess`): simple, complex or hard; used at 60% confidence or more for thinking (plan, built-in reasoning) and complexity routing.
+  - Checks (`Judge` in `verifyWork`): one Noul per done-when item; decides only when every answer is under 20% or over 80%; otherwise the language-model checker runs. Failed actions always fail.
+  - Security: the CISO's first risk opinion (Choice low, medium, high plus Nouls for private data and hidden instructions), used at 70% confidence or more.
+  - Scanner: a Noul on documents added to the second brain; 75% or more adds a warning the pattern scanner missed.
+- If Jev is down or rejects the key, deck notes it in Crew chat and uses the usual method.
+- Settings `tools.jev.uses` (all on). Tools card: key, address (empty for the default), Save, Test, Use Jev switch, a checkbox per use, and what Jev receives.
+- Tests no longer leave scratch folders behind (engine and memory tests delete them); about 3,900 leftover folders had filled the build machine's disk.
+- Manual (models and tools, safety) and README updated.
+
+**Verified**
+- Client: request shape, key header, answer readers, retry on 429, error messages, custom address.
+- Checker: a confident judge decides alone, an unsure one falls back, failed actions always fail.
+- Engine: Jev routing triggers planning and reasoning; clear checks skip the model checker; approval reviews come from Jev; Jev flags an injection the pattern scanner misses; unsure answers fall back; an outage falls back with a note.
+- 268 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: Fix: CISO role missing from the installed app
 

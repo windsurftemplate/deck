@@ -11,7 +11,7 @@ with encrypted memory on your machine and your approval on anything that leaves 
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-12151c?style=flat-square)](#install)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](#development)
-[![Tests](https://img.shields.io/badge/tests-264%20passing-5fd39a?style=flat-square)](#evals)
+[![Tests](https://img.shields.io/badge/tests-268%20passing-5fd39a?style=flat-square)](#evals)
 [![Safety evals](https://img.shields.io/badge/safety%20evals-9%2F9-5fd39a?style=flat-square)](#evals)
 [![Models](https://img.shields.io/badge/models-OpenAI%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Ollama-79a8ff?style=flat-square)](#models)
 [![MCP](https://img.shields.io/badge/MCP-ready-c59bff?style=flat-square)](https://modelcontextprotocol.io)
@@ -41,7 +41,7 @@ with encrypted memory on your machine and your approval on anything that leaves 
 <tr>
 <td valign="top"><b>📚 A second brain</b><br>Files, web pages, Obsidian, Notion, Apple Notes, notes with links, and camera capture of cards, whiteboards and documents. Explore it in 3D or on a corkboard.</td>
 <td valign="top"><b>🎯 Goals and automations</b><br>Goals become milestones with weekly check-ins. Jobs run on a schedule. Workflows chain agents step by step.</td>
-<td valign="top"><b>🧪 Labs</b><br>Local models with Ollama, MCP plugins, Gmail and Calendar, GitHub pull requests, crew votes, federation with trusted crews. All off until you turn them on.</td>
+<td valign="top"><b>⚡ Jev decisions</b><br>Optional TypeSafe AI integration: fast, calibrated yes/no and pick-one answers for routing, first-pass checks, approval risk and injection scanning, each falling back when unsure.<br><br><b>🧪 Labs</b><br>Local models with Ollama, MCP plugins, Gmail and Calendar, GitHub pull requests, crew votes, federation with trusted crews. All off until you turn them on.</td>
 </tr>
 </table>
 
@@ -260,7 +260,7 @@ flowchart TB
 
 **No keys in this repository.** Every API key (OpenAI, Jev, GitHub, Google and the rest) is entered in the app and kept in your OS keychain; a pre-commit hook and CI scan every commit for secrets.
 
-**Your data stays local.** Memory, chats, issues, goals and the second brain live in one encrypted `workspace.db`; keys in the OS keychain; backups in Documents/deck-backups. Only requests to your model provider, search questions (personal data removed), pages you add and Telegram (if on) leave your machine. Speech never does.
+**Your data stays local.** Memory, chats, issues, goals and the second brain live in one encrypted `workspace.db`; keys in the OS keychain; backups in Documents/deck-backups. Only requests to your model provider, search questions (personal data removed), pages you add, Telegram (if on) and Jev decisions (if on, secrets removed) leave your machine. Speech never does.
 
 <a id="models"></a>
 
@@ -298,7 +298,7 @@ Built-in reasoning is used on hard work with OpenAI reasoning models, Claude and
 | Memory evals | Recall finds the right facts, follows relationships, prefers current facts over outdated ones (also with the real local embedding model) | 5/5 |
 | Safety evals | With a model that obeys an injected email: sends wait for approval on every preset, rejected and denied actions never run, secrets never reach the model, the wrapper holds, the tripwire stops the run | 9/9 |
 | Baseline gate | Any score drop fails the build (`evals/baseline.json`) | 100% |
-| Unit and contract tests | Every package, plus Rust | 264 TS + 6 Rust |
+| Unit and contract tests | Every package, plus Rust | 268 TS + 6 Rust |
 
 In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
 
@@ -345,7 +345,7 @@ docs/                 User manual and course (also inside the app)
 | Engine | Node 22, JSON lines over stdio |
 | Storage | SQLCipher, sqlite-vec, FTS5 |
 | Models | OpenAI, Anthropic, Gemini, OpenRouter, Ollama |
-| Integrations | MCP, GitHub REST, Google APIs, Telegram, whisper.cpp |
+| Integrations | MCP, GitHub REST, Google APIs, Telegram, whisper.cpp, Jev (TypeSafe AI) |
 | Tooling | pnpm, Turborepo, Vitest, gitleaks, mise |
 
 Read [`AGENTS.md`](AGENTS.md) for contributor and coding-agent rules, [`BUILD_PLAN.md`](BUILD_PLAN.md) for what was built and why, and [`UPDATES.md`](UPDATES.md) for the detailed change log.
@@ -371,7 +371,7 @@ Everything is also inside the app under **Help and course** (⌘/Ctrl + 9). Star
 - [x] Labs: Ollama, MCP plugins, Gmail and Calendar, GitHub, federation
 - [ ] Live-model eval mode and score trends in the Command center
 - [ ] Eval cases for plan lock, CISO reviews, helpers and playbooks
-- [ ] Jev model routing (you add your own key in the app; no key ships with deck)
+- [x] Jev (TypeSafe AI) for routing, checks, approval risk and injection scanning, with fallbacks
 - [ ] Signed and notarized installers
 - [ ] Automations that run while deck is closed
 

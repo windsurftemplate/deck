@@ -83,7 +83,7 @@ it("voice is off by default and needs whisper.cpp paths to turn on", () => {
 });
 
 it("Jev settings: https address only, off by default", () => {
-  expect(DEFAULTS.tools.jev).toEqual({ enabled: false, baseUrl: "" });
+  expect(DEFAULTS.tools.jev).toEqual({ enabled: false, baseUrl: "", uses: { routing: true, checks: true, security: true, scanner: true } });
   expect(() => applyUpdate(DEFAULTS, { tools: { jev: { baseUrl: "http://jev.example" } } })).toThrow(/https/);
   expect(applyUpdate(DEFAULTS, { tools: { jev: { baseUrl: "https://api.jev.example/v1" } } }).tools.jev.baseUrl).toBe("https://api.jev.example/v1");
 });

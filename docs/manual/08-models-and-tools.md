@@ -43,7 +43,7 @@ Every integration in one place, each with its status and a shortcut to set it up
 
 | Tool | What it does | Setup |
 |---|---|---|
-| **Jev** | Model routing | Paste your Jev key and API address on the Tools page (the key goes to your system keychain, never a file); routing connects once Jev's API is added |
+| **Jev (TypeSafe AI)** | Fast structured decisions | Paste your Jev key on the Tools page (it goes to your system keychain) and press Test. See below |
 | **Web research** | Research searches the web (25 searches a day) | Needs Claude, OpenAI or Gemini as the main model |
 | **Telegram** | Chat and approve from your phone | Settings > Telegram |
 | **VaultProof** | Keys and actions checked over MCP | Settings > VaultProof |
@@ -53,6 +53,21 @@ Every integration in one place, each with its status and a shortcut to set it up
 | **Second brain imports** | Files, pages and note apps | Brain page |
 
 **Who can use what** lists each agent's tools: allowed, asks you first, or off.
+
+## Jev (TypeSafe AI)
+
+Jev is a "System One" model: instead of writing text, it answers typed questions (yes/no, pick one, rate) with a probability and a confidence. deck uses it for four quick decisions, each with a fallback:
+
+| Use | What Jev decides | Used when | Otherwise |
+|---|---|---|---|
+| Routing | Whether a request is simple, complex or hard (which decides planning and built-in reasoning, and the cheap or heavy model when complexity routing is on) | Confidence of 60% or more | The built-in rules |
+| Checks | For each "done when" item, whether the report and actions show it was done | Every answer is clear (under 20% or over 80%) | The language-model checker |
+| Security | The CISO's first risk opinion on an approval, plus flags for private data and hidden instructions | Confidence of 70% or more | The CISO's language-model review |
+| Scanner | Whether a document you add tries to instruct an AI | Probability of 75% or more adds a warning | The pattern scanner alone |
+
+Failed actions always fail a check, whatever Jev says. If Jev is down or rejects the key, deck notes it in Crew chat and carries on with the usual method.
+
+Set it up on the **Tools** page: paste your key, leave the address empty for https://api.typesafe.ai, press **Save**, then **Test**. **Use Jev** turns it on or off; each use has its own checkbox. Jev's usage shows in the Command center under agents named jev.
 
 ## Web research
 

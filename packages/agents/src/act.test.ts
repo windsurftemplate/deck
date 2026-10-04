@@ -202,3 +202,17 @@ describe("plan lock and living to-do list", () => {
     expect(created).toEqual(["Prep"]);
   });
 });
+
+describe("structured judge before the checker", () => {
+  it("uses a confident judge, falls back to the model checker when unsure, and failed actions always fail", async () => {
+    const llm = { n: 0 };
+    const chat = async () => (llm.n++, { text: '{"missing": []}', model: "m", stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } });
+    const base = { goal: "g", doneWhen: ["a draft exists"], report: "Drafted.", chat };
+    expect(await verifyWork({ ...base, actions: [], judge: async () => ({ passed: false, missing: ["a draft exists"], checked: true }) })).toEqual({ passed: false, missing: ["a draft exists"], checked: true });
+    expect(llm.n).toBe(0);
+    await verifyWork({ ...base, actions: [], judge: async () => null });
+    expect(llm.n).toBe(1);
+    const v = await verifyWork({ ...base, actions: [{ tool: "x", summary: "Send", status: "failed" }], judge: async () => ({ passed: true, missing: [], checked: true }) });
+    expect(v.passed).toBe(false);
+  });
+});

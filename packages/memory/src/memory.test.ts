@@ -1,12 +1,20 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { memoryStoreContract } from "./contract.js";
 import { ingestDocument, HashEmbedder, InMemoryStore, MemoryReader, MemoryWriter, SqliteMemoryStore, ftsQuery, migrateMemory, openMemory } from "./index.js";
 
 const KEY = "test-key-0123456789abcdef"; // gitleaks:allow (fake test key)
-const tmp = () => join(mkdtempSync(join(tmpdir(), "mem-")), "m.db");
+const made: string[] = [];
+const tmp = () => {
+  const d = mkdtempSync(join(tmpdir(), "mem-"));
+  made.push(d);
+  return join(d, "m.db");
+};
+afterAll(() => {
+  for (const d of made) rmSync(d, { recursive: true, force: true });
+});
 
 memoryStoreContract("sqlite", async (dim) => new SqliteMemoryStore({ path: ":memory:", key: KEY, dim }));
 memoryStoreContract("in-memory", async (dim) => new InMemoryStore(dim));

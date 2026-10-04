@@ -103,7 +103,7 @@ export interface Settings {
   /** Camera snapshots in chat. The camera is on only while you take a picture; pictures go to your chosen model and are not stored. */
   camera: { enabled: boolean };
   /** Outside tools the crew can use. Keys live in the OS keychain, never here. */
-  tools: { jev: { enabled: boolean; baseUrl: string } };
+  tools: { jev: { enabled: boolean; baseUrl: string; uses: { routing: boolean; checks: boolean; security: boolean; scanner: boolean } } };
   /** Telegram front door. The bot token lives in the keychain as "chat.telegram". */
   chat: { telegram: { enabled: boolean; ownerChatIds: number[] } };
   general: { startAtLogin: boolean; runInBackground: boolean };
@@ -137,7 +137,7 @@ export const DEFAULTS: Settings = {
     powerUp3d: false,
   },
   camera: { enabled: false },
-  tools: { jev: { enabled: false, baseUrl: "" } },
+  tools: { jev: { enabled: false, baseUrl: "", uses: { routing: true, checks: true, security: true, scanner: true } } },
   chat: { telegram: { enabled: false, ownerChatIds: [] } },
   general: { startAtLogin: true, runInBackground: true },
   vaultproof: { enabled: false, mcpUrl: "", sessionSecret: "vaultproof.session" },
@@ -341,6 +341,7 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
       next.tools.jev.baseUrl = u;
     }
     if (j.enabled !== undefined) next.tools.jev.enabled = !!j.enabled;
+    if (j.uses) for (const k of ["routing", "checks", "security", "scanner"] as const) if (j.uses[k] !== undefined) next.tools.jev.uses = { ...(next.tools.jev.uses ?? { routing: true, checks: true, security: true, scanner: true }), [k]: !!j.uses[k] };
   }
   if (patch.world?.view !== undefined) {
     if (!["3d", "brain", "list"].includes(patch.world.view)) throw new SettingsError("world.view", "Choose 3d, brain or list.");
