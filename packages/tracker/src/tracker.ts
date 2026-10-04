@@ -71,8 +71,8 @@ export class Tracker {
   }
 
   /** Open issues first by priority (urgent first, none last), then most recently updated. */
-  async list(f: { status?: IssueStatus | "open"; assignee?: string; label?: string } = { status: "open" }): Promise<Issue[]> {
-    const statuses = f.status === "open" || !f.status ? OPEN : [f.status];
+  async list(f: { status?: IssueStatus | "open" | "all"; assignee?: string; label?: string } = { status: "open" }): Promise<Issue[]> {
+    const statuses: IssueStatus[] = f.status === "all" ? [...OPEN, "done", "cancelled"] : f.status === "open" || !f.status ? OPEN : [f.status];
     const rows = await this.store.list(statuses, f.assignee);
     return rows.filter((i) => !f.label || i.labels.includes(f.label.toLowerCase()));
   }

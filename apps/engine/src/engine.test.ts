@@ -511,6 +511,35 @@ describe("research agent", () => {
   });
 });
 
+describe("goals", () => {
+  it("plans a goal into milestone issues, tracks progress, and writes progress notes", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const sys = JSON.stringify(req.system);
+        if (sys.includes("Break the owner's goal")) return { text: 'Here: {"milestones":[{"title":"Shortlist 10 design partners","due":"2026-10-15"},{"title":"Run 5 discovery calls","due":"2026-10-31"},{"title":"Sign 3 pilots","due":"2026-12-01"}]}', model: ref.model, stopReason: "end_turn", usage: U };
+        if (sys.includes("progress note")) return { text: "On track: 1 of 3 milestones done. Next, book discovery calls.", model: ref.model, stopReason: "end_turn", usage: U };
+        return { text: "ok", model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    expect(() => e.goalCreate({ title: "x", target: "next week" })).toThrow(/2026-12-31/);
+    const g = e.goalCreate({ title: "Sign 3 design partners", why: "Proof for the seed round", target: "2026-12-15" });
+    expect(await e.goalPlan(g.id)).toBe('Planned 3 milestones for "Sign 3 design partners".');
+    let [view] = await e.goalsList();
+    expect(view!.milestones.map((m) => m.title)).toEqual(["Shortlist 10 design partners", "Run 5 discovery calls", "Sign 3 pilots"]);
+    expect(view!.progress).toEqual({ done: 0, total: 3 });
+    await e.issues().update({ key: view!.milestones[0]!.key, status: "done" });
+    [view] = await e.goalsList();
+    expect(view!.progress).toEqual({ done: 1, total: 3 });
+    expect(await e.goalCheck(g.id)).toMatch(/^On track/);
+    [view] = await e.goalsList();
+    expect(view!.updates.map((u) => u.text)).toEqual(["Planned 3 milestones.", "On track: 1 of 3 milestones done. Next, book discovery calls."]);
+    e.goalUpdate(g.id, { status: "done" });
+    expect((await e.goalsList())[0]!.status).toBe("done");
+    await e.close();
+  });
+});
+
 describe("model arena", () => {
   it("compares models on an agent's past tasks and applies the winner only for that agent", async () => {
     const U = { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 };

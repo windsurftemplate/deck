@@ -16,6 +16,7 @@ import { SqliteTrackerStore, Tracker } from "@deck/tracker";
 import { getPack, listPacks } from "@deck/packs";
 import type { Keychain } from "./keychain.js";
 import { Threads } from "./threads.js";
+import { Goals } from "./goals.js";
 import { checkPassphrase, openBackup, sealBackup } from "./backup.js";
 import { Brain } from "./brain.js";
 import { Activity, type CrewMessage } from "./activity.js";
@@ -94,6 +95,7 @@ export class Engine {
   brain!: Brain;
   activity?: Activity;
   automations?: Automations;
+  goals?: Goals;
   private stopped = false;
   private proposals = new Map<string, Proposal>();
   private clock: () => Date;
@@ -165,6 +167,7 @@ export class Engine {
     this.threads = new Threads(this.store.connection, this.clock);
     this.activity = new Activity(this.store.connection, this.clock);
     this.automations = new Automations(this.store.connection, this.clock);
+    this.goals = new Goals(this.store.connection, this.clock);
     for (const a of this.automations.list()) if (a.enabled) this.scheduleAutomation(a.id);
     this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
     this.buildRouter();
@@ -172,6 +175,17 @@ export class Engine {
     // Best effort: planting needs the embedding model, which may still be downloading on a first, offline start.
     await this.plantHoneytoken().catch(() => (this.canary = null));
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
+    this.scheduler.add({
+      name: "weekly-goal-check",
+      at: "08:30",
+      days: [1],
+      run: async () => {
+        const notes: string[] = [];
+        for (const g of this.goals?.list().filter((x) => x.status === "active") ?? []) notes.push(`${g.title}: ${await this.goalCheck(g.id).catch((e) => (e as Error).message)}`);
+        if (notes.length) this.emit("notify", { title: "Weekly goal check", body: notes.join("\n").slice(0, 240) });
+        for (const chat of this.d.settings.chat.telegram.ownerChatIds) if (notes.length) void this.bot?.notify(chat, `Weekly goal check:\n${notes.join("\n\n")}`).catch(() => {});
+      },
+    });
     this.scheduler.add({
       name: "weekly-tuning",
       at: "03:00",
@@ -1309,6 +1323,75 @@ export class Engine {
     return result;
   }
 
+  /* ---------- goals ---------- */
+  async goalsList() {
+    const all = await this.tracker.list({ status: "all" });
+    return this.goals!.list().map((g) => {
+      const ms = all.filter((i) => i.labels.includes(`goal-${g.id}`)).sort((a, b) => (a.due ?? "9").localeCompare(b.due ?? "9"));
+      const done = ms.filter((i) => i.status === "done").length;
+      return { ...g, milestones: ms.map((i) => ({ key: i.key, title: i.title, status: i.status, due: i.due })), progress: { done, total: ms.length } };
+    });
+  }
+  goalCreate(g: { title: string; why?: string; target?: string }) {
+    const out = this.goals!.create(g);
+    this.emit("goals", {});
+    return out;
+  }
+  goalUpdate(id: string, p: { title?: string; why?: string; target?: string; status?: "active" | "done" | "dropped" }) {
+    const out = this.goals!.update(id, p);
+    this.emit("goals", {});
+    return out;
+  }
+  goalDelete(id: string) {
+    this.goals!.remove(id);
+    this.emit("goals", {});
+  }
+
+  /** The Chief of Staff breaks a goal into milestones and adds them as issues (labelled to the goal). */
+  async goalPlan(id: string): Promise<string> {
+    const g = this.goals!.get(id);
+    if (!g) throw new Error("That goal no longer exists.");
+    const memories = formatMemories(await this.reader.retrieve(`${g.title} ${g.why}`, { tokenBudget: 600 }));
+    const today = this.clock().toISOString().slice(0, 10);
+    const res = await this.router.chat(this.mainRole(AGENT), "goals", {
+      system: [{ type: "text", text: `You are the Chief of Staff. Break the owner's goal into 3 to 7 concrete milestones, in order, each something you can tell is finished. Give each a due date between ${today} and ${g.target || "a sensible date"}. Reply with JSON only: {"milestones":[{"title":"...","why":"...","due":"YYYY-MM-DD"}]}` }],
+      messages: [{ role: "user", content: `# Goal\n${g.title}\nWhy: ${g.why || "(not given)"}\nTarget: ${g.target || "(none)"}\n\n# Relevant memory\n${memories || "(none)"}` }],
+      maxTokens: 900,
+      temperature: 0.2,
+    });
+    let ms: { title: string; why?: string; due?: string }[] = [];
+    try {
+      ms = (JSON.parse(res.text.replace(/^[^{]*/, "").replace(/[^}]*$/, "")) as { milestones: typeof ms }).milestones ?? [];
+    } catch {
+      throw new Error("The plan came back in the wrong shape. Try again.");
+    }
+    ms = ms.filter((m) => m.title?.trim()).slice(0, 7);
+    if (!ms.length) throw new Error("No milestones came back. Add more detail to the goal and try again.");
+    for (const m of ms) await this.tracker.create({ title: m.title.trim().slice(0, 200), body: `${m.why ?? ""}\n\nMilestone for goal: ${g.title}`.trim(), labels: [`goal-${g.id}`, "goal"], priority: 2, ...(m.due && /^\d{4}-\d{2}-\d{2}$/.test(m.due) ? { due: m.due } : {}), by: AGENT });
+    this.goals!.addUpdate(id, `Planned ${ms.length} milestones.`);
+    this.say({ sender: AGENT, recipient: "owner", kind: "note", text: `Planned "${g.title}": ${ms.map((m) => m.title).join("; ")}` });
+    this.emit("goals", {});
+    return `Planned ${ms.length} milestones for "${g.title}".`;
+  }
+
+  /** A short progress note: on track or not, what moved, what is stuck, the next step. */
+  async goalCheck(id: string): Promise<string> {
+    const g = (await this.goalsList()).find((x) => x.id === id);
+    if (!g) throw new Error("That goal no longer exists.");
+    const today = this.clock().toISOString().slice(0, 10);
+    const lines = g.milestones.map((m) => `- [${m.status}] ${m.title}${m.due ? ` (due ${m.due}${m.status !== "done" && m.due < today ? ", overdue" : ""})` : ""}`).join("\n");
+    const res = await this.router.chat("cheap", "goals", {
+      system: [{ type: "text", text: "You are the Chief of Staff. Write a progress note for the owner's goal in 3 or 4 sentences: is it on track, what moved, what is stuck or overdue, and the single most useful next step. Plain words, no headings." }],
+      messages: [{ role: "user", content: `Today: ${today}\nGoal: ${g.title}\nTarget: ${g.target || "none"}\nProgress: ${g.progress.done} of ${g.progress.total} milestones done\n${lines || "(no milestones yet)"}\nEarlier notes: ${g.updates.slice(-3).map((u) => u.text).join(" | ") || "none"}` }],
+      maxTokens: 300,
+    });
+    const note = res.text.trim();
+    this.goals!.addUpdate(id, note);
+    this.say({ sender: AGENT, recipient: "owner", kind: "note", text: `Goal check, "${g.title}": ${note}` });
+    this.emit("goals", {});
+    return note;
+  }
+
   /* ---------- backups ---------- */
   /**
    * Writes an encrypted backup (workspace, memory key and settings, sealed with your passphrase).
@@ -1372,7 +1455,7 @@ export class Engine {
   async analytics(days = 30) {
     const dump = await this.store.exportAll(false);
     const docs = await this.store.documents();
-    const issues = await this.tracker.list({});
+    const issues = await this.tracker.list({ status: "all" });
     return {
       ...this.activity!.analytics(Math.min(90, Math.max(7, days)), {
         facts: dump.facts.map((f) => ({ ts: f.validFrom })),
@@ -1387,7 +1470,7 @@ export class Engine {
   async deckStats() {
     const tasks = this.board.list();
     const { facts } = await this.store.graph();
-    const [docs, skills, issues] = await Promise.all([this.store.documents(), this.store.skills(), this.tracker.list({})]);
+    const [docs, skills, issues] = await Promise.all([this.store.documents(), this.store.skills(), this.tracker.list({ status: "all" })]);
     return {
       running: tasks.filter((t) => t.status === "running").length,
       waiting: this.approvals.pending().length,

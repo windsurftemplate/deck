@@ -1,15 +1,16 @@
-import { Bot, Boxes, BrainCircuit, CalendarClock, ChevronsLeft, ChevronsRight, LayoutDashboard, ListTree, MessagesSquare, OctagonX, Play, Settings, Wrench } from "lucide-react";
+import { Flag, Bot, Boxes, BrainCircuit, CalendarClock, ChevronsLeft, ChevronsRight, LayoutDashboard, ListTree, MessagesSquare, OctagonX, Play, Settings, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type View = "3d" | "brain" | "center" | "channel" | "automations" | "tools" | "list";
+export type View = "3d" | "brain" | "goals" | "center" | "channel" | "automations" | "tools" | "list";
 export const PAGES: { id: View; label: string; icon: LucideIcon; key: string }[] = [
   { id: "3d", label: "Deck", icon: Boxes, key: "1" },
   { id: "brain", label: "Brain", icon: BrainCircuit, key: "2" },
-  { id: "center", label: "Command center", icon: LayoutDashboard, key: "3" },
-  { id: "channel", label: "Crew chat", icon: MessagesSquare, key: "4" },
-  { id: "automations", label: "Automations", icon: CalendarClock, key: "5" },
-  { id: "tools", label: "Tools", icon: Wrench, key: "6" },
-  { id: "list", label: "List view", icon: ListTree, key: "7" },
+  { id: "goals", label: "Goals", icon: Flag, key: "3" },
+  { id: "center", label: "Command center", icon: LayoutDashboard, key: "4" },
+  { id: "channel", label: "Crew chat", icon: MessagesSquare, key: "5" },
+  { id: "automations", label: "Automations", icon: CalendarClock, key: "6" },
+  { id: "tools", label: "Tools", icon: Wrench, key: "7" },
+  { id: "list", label: "List view", icon: ListTree, key: "8" },
 ];
 const mod = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl+";
 

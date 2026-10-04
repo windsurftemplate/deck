@@ -12,6 +12,7 @@ import { CommandCenter } from "./pages/CommandCenter";
 import { CrewChannel } from "./pages/CrewChannel";
 import { Tools } from "./pages/Tools";
 import { Automations } from "./pages/Automations";
+import { Goals } from "./pages/Goals";
 import { MicButton } from "./Voice";
 import { HandsFree } from "./HandsFree";
 import { notify, setNotifications } from "./notify";
@@ -213,6 +214,8 @@ export function App() {
           <CommandCenter />
         ) : view === "channel" ? (
           <CrewChannel />
+        ) : view === "goals" ? (
+          <Goals />
         ) : view === "automations" ? (
           <Automations />
         ) : view === "tools" ? (
