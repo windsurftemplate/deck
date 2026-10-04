@@ -63,6 +63,10 @@ export interface ModelSettings {
   dailyTokenCap: number;
   /** A crew member's own main model, chosen with the model arena. Others use heavy. */
   agents: Partial<Record<"chief-of-staff" | "gtm" | "ops" | "code" | "research", ModelChoice>>;
+  /** When delegated work fails its check on a smaller model, try once more on the strong model. */
+  escalate: boolean;
+  /** The strong model to escalate to. Empty means the heavy model. */
+  escalation: ModelChoice | null;
 }
 
 export interface Settings {
@@ -106,7 +110,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   version: 1,
   storage: { engine: "sqlite" },
-  models: { heavy: { provider: "anthropic", model: "claude-sonnet-5" }, cheap: { provider: "anthropic", model: "claude-haiku-4-5-20251001" }, fallback: null, dailyTokenCap: 2_000_000, agents: {} },
+  models: { heavy: { provider: "anthropic", model: "claude-sonnet-5" }, cheap: { provider: "anthropic", model: "claude-haiku-4-5-20251001" }, fallback: null, dailyTokenCap: 2_000_000, agents: {}, escalate: true, escalation: null },
   embeddings: { provider: "local" },
   preset: "balanced",
   onboarding: { done: false },
@@ -247,6 +251,8 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
       }
       next.models[k] = toChoice(m[k], `models.${k}`);
     }
+    if ((m as { escalate?: unknown }).escalate !== undefined) next.models.escalate = !!(m as { escalate?: unknown }).escalate;
+    if ((m as { escalation?: unknown }).escalation !== undefined) next.models.escalation = (m as { escalation?: unknown }).escalation === null ? null : toChoice((m as { escalation?: unknown }).escalation, "models.escalation");
     if (m.agents !== undefined) {
       const out: ModelSettings["agents"] = { ...next.models.agents };
       for (const [agent, choice] of Object.entries(m.agents ?? {})) {
@@ -330,7 +336,7 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
     if (patch.vaultproof.enabled !== undefined) next.vaultproof.enabled = !!patch.vaultproof.enabled;
     if (next.vaultproof.enabled && !next.vaultproof.mcpUrl) throw new SettingsError("vaultproof.mcpUrl", "Add the VaultProof MCP server URL before turning it on.");
   }
-  const usesOllama = [next.models.heavy, next.models.cheap, next.models.fallback, ...Object.values(next.models.agents ?? {})].some((m) => m?.provider === "ollama");
+  const usesOllama = [next.models.heavy, next.models.cheap, next.models.fallback, next.models.escalation, ...Object.values(next.models.agents ?? {})].some((m) => m?.provider === "ollama");
   if (usesOllama && !next.labs.ollama.enabled) throw new SettingsError("models", "Turn on local models (Ollama) in Settings, Labs first.");
   return next;
 }

@@ -24,7 +24,7 @@ export class Activity {
       CREATE INDEX IF NOT EXISTS crew_messages_by_channel ON crew_messages(channel, id);
       CREATE INDEX IF NOT EXISTS usage_by_ts ON usage_log(ts);`);
     // Practice cases for prompt tuning need each task's goal context.
-    for (const col of ["why TEXT", "done_when TEXT", "report TEXT"]) {
+    for (const col of ["why TEXT", "done_when TEXT", "report TEXT", "lesson TEXT"]) {
       try {
         db.exec(`ALTER TABLE task_log ADD COLUMN ${col}`);
       } catch {
@@ -49,9 +49,14 @@ export class Activity {
     this.db.prepare("UPDATE task_log SET report = ? WHERE id = (SELECT MAX(id) FROM task_log WHERE task_id = ?)").run(report.slice(0, 1500), taskId);
   }
 
+  /** Keeps a failure lesson with the task. Returns how many rows were updated (0 if the row is not written yet). */
+  setLesson(taskId: string, lesson: string): number {
+    return Number(this.db.prepare("UPDATE task_log SET lesson = ? WHERE id = (SELECT MAX(id) FROM task_log WHERE task_id = ?)").run(lesson, taskId).changes);
+  }
+
   /** An agent's finished tasks with what happened, newest first. */
-  experiences(agent: string, n = 200): { title: string; status: string; checked: boolean; note: string | null; report: string | null; ts: string }[] {
-    return (this.db.prepare("SELECT title, status, checked, note, report, ts FROM task_log WHERE agent = ? AND status IN ('done','failed') ORDER BY id DESC LIMIT ?").all(agent, n) as { title: string; status: string; checked: number; note: string | null; report: string | null; ts: string }[]).map((r) => ({ ...r, checked: r.checked === 1 }));
+  experiences(agent: string, n = 200): { title: string; status: string; checked: boolean; note: string | null; report: string | null; lesson: string | null; ts: string }[] {
+    return (this.db.prepare("SELECT title, status, checked, note, report, lesson, ts FROM task_log WHERE agent = ? AND status IN ('done','failed') ORDER BY id DESC LIMIT ?").all(agent, n) as { title: string; status: string; checked: number; note: string | null; report: string | null; lesson: string | null; ts: string }[]).map((r) => ({ ...r, checked: r.checked === 1 }));
   }
 
   /** Recent finished tasks for an agent, as practice cases (newest first, one per goal). */

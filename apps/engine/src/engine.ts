@@ -133,6 +133,10 @@ export class Engine {
         this.activity?.setReport(ev.task.id, this.pendingReports.get(ev.task.id)!);
         this.pendingReports.delete(ev.task.id);
       }
+      if (ev.type === "task.updated" && ev.task && this.pendingLessons?.has(ev.task.id)) {
+        this.activity?.setLesson(ev.task.id, this.pendingLessons.get(ev.task.id)!);
+        this.pendingLessons.delete(ev.task.id);
+      }
     });
   }
 
@@ -337,11 +341,11 @@ export class Engine {
     const m = this.d.settings.models;
     const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch, { ollamaUrl: this.d.settings.labs.ollama.baseUrl }));
     const own = Object.entries(m.agents ?? {}) as [string, ModelRef][];
-    const chosen = [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : []), ...own.map(([, r]) => r)];
+    const chosen = [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : []), ...(m.escalation ? [m.escalation] : []), ...own.map(([, r]) => r)];
     const models: Record<string, ChatModel> = {};
     for (const ref of chosen) models[refId(ref)] ??= make(ref, () => (ref.provider === "ollama" ? Promise.resolve("") : this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider])));
     const chain = (ref: ModelRef) => [refId(ref), ...(m.fallback && refId(m.fallback) !== refId(ref) ? [refId(m.fallback)] : [])];
-    this.router = new ModelRouter({ roles: { heavy: chain(m.heavy), cheap: chain(m.cheap), ...Object.fromEntries(own.map(([a, r]) => [`heavy:${a}`, [refId(r), ...chain(m.heavy).filter((x) => x !== refId(r))]])) }, models, prices: {}, caps: { tokens: m.dailyTokenCap }, clock: this.clock, onUsage: (u) => this.activity?.logUsage(u) });
+    this.router = new ModelRouter({ roles: { heavy: chain(m.heavy), cheap: chain(m.cheap), escalate: chain(m.escalation ?? m.heavy), ...Object.fromEntries(own.map(([a, r]) => [`heavy:${a}`, [refId(r), ...chain(m.heavy).filter((x) => x !== refId(r))]])) }, models, prices: {}, caps: { tokens: m.dailyTokenCap }, clock: this.clock, onUsage: (u) => this.activity?.logUsage(u) });
   }
 
   private async reembed(path: string, key: string, oldDim: number, embedder: Embedder) {
@@ -998,11 +1002,12 @@ export class Engine {
     // Delegated tasks are multi-step by nature: always plan (unless thinking is off); hard ones also reason.
     const think = this.thinkFor(`${goal} ${doneWhen.join(" ")}`, true);
     try {
-      const out = await runAgent({
+      const attempt = (role: Parameters<ModelRouter["chat"]>[0], extra = "") =>
+        runAgent({
         agent,
-        chat: (req) => this.router.chat(this.mainRole(agent), agent, req),
+        chat: (req) => this.router.chat(role, agent, req),
         system: p.system,
-        messages: [{ role: "user", content: p.user }],
+        messages: [{ role: "user", content: `${p.user}${extra}` }],
         tools: this.toolsFor(agent),
         policy,
         taskScopes: task.scopes,
@@ -1016,6 +1021,15 @@ export class Engine {
         ...(think ? { think } : {}),
         onThought: (kind, text) => this.say({ sender: agent, recipient: "owner", kind: "thinking", text: `${THOUGHT_LABEL[kind]}: ${text}`, taskId: task.id }),
       });
+      let out = await attempt(this.mainRole(agent));
+      // Escalation: if the check fails on a smaller model, try once more on the strong one, with what was missing.
+      const m = this.d.settings.models;
+      const used = m.agents?.[agent as keyof typeof m.agents] ?? m.heavy;
+      const strong = m.escalation ?? m.heavy;
+      if (out.verdict && !out.verdict.passed && m.escalate !== false && refId(used) !== refId(strong) && !this.stopped) {
+        this.say({ sender: "verifier", recipient: agent, kind: "check", text: `Not finished on ${used.model}: ${out.verdict.missing.join("; ")}. Trying again on ${strong.model}.`, taskId: task.id });
+        out = await attempt("escalate", `\n\n# Earlier attempt (by a smaller model) did not finish\nMissing: ${out.verdict.missing.join("; ")}\nIts report: ${out.text.slice(0, 1200)}\nDo not repeat actions it already completed.`);
+      }
       const v = out.verdict;
       this.say({ sender: agent, recipient: "chief-of-staff", kind: "report", text: out.text, taskId: task.id });
       this.pendingReports.set(task.id, out.text); // saved with the task's log row when it finishes
@@ -1026,12 +1040,31 @@ export class Engine {
       // Learning: skills that were used get credit or blame; passing work may teach a new skill.
       for (const a of out.actions) if (a.tool === "load_skill" && a.status === "done" && v?.checked) await this.store.recordSkillOutcome(a.summary.replace(/^Use skill /, ""), v.passed);
       void this.learnFromTask(agent, goal, out.text, out.actions, v);
+      if (v && !v.passed && v.checked) void this.lessonFrom(task.id, goal, out.text, v.missing, out.actions);
       await this.writer.logEpisode({ agent, kind: "task", taskId: task.id, summary: `${goal}: ${v?.passed === false ? "not finished" : "done"}`, outcome: out.text.slice(0, 300) });
       return `${name} report:\n${out.text}${did ? `\n\nActions:\n${did}` : ""}${check}`;
     } catch (err) {
       this.board.move(task.id, "failed", { note: (err as Error).message });
       this.say({ sender: agent, recipient: "chief-of-staff", kind: "report", text: `Could not finish: ${(err as Error).message}`, taskId: task.id });
       return `${name} could not finish: ${(err as Error).message}`;
+    }
+  }
+
+  /** Failure lessons: one sentence on what went wrong and what to do differently, kept with the task for recall. */
+  private pendingLessons = new Map<string, string>();
+  private async lessonFrom(taskId: string, goal: string, report: string, missing: string[], actions: ActionRecord[]) {
+    try {
+      const r = await this.router.chat("cheap", "reflection", {
+        system: [{ type: "text", text: "A task was not finished. In one sentence (under 35 words), say what to do differently next time on a similar task. Be specific and practical. Reply with the sentence only." }],
+        messages: [{ role: "user", content: `Task: ${goal}\nMissing: ${missing.join("; ")}\nActions: ${actions.map((a) => `${a.status}: ${a.summary}`).join("; ") || "none"}\nReport: ${report.slice(0, 800)}` }],
+        maxTokens: 120,
+        temperature: 0,
+      });
+      const lesson = r.text.trim().replace(/\s+/g, " ").slice(0, 300);
+      if (!lesson) return;
+      if (this.activity?.setLesson(taskId, lesson) === 0) this.pendingLessons.set(taskId, lesson);
+    } catch {
+      /* best effort */
     }
   }
 
@@ -1213,13 +1246,14 @@ export class Engine {
     const seen = new Set<string>();
     const best = past
       .map((x) => ({ x, s: cos(q!, this.expVecs.get(x.title)!) }))
-      .filter((r) => r.s >= 0.55 && !seen.has(r.x.title) && (seen.add(r.x.title), true))
+      // Failure-aware: unfinished tasks with a lesson are worth showing at a lower similarity.
+      .filter((r) => r.s >= (r.x.status === "failed" && r.x.lesson ? 0.45 : 0.55) && !seen.has(r.x.title) && (seen.add(r.x.title), true))
       .sort((a, b) => b.s - a.s)
       .slice(0, k);
     if (!best.length) return "";
     const line = ({ x }: (typeof best)[number]) => {
       const how = x.status === "done" ? (x.checked ? "finished and checked" : "finished, not checked") : `not finished${x.note ? `: ${x.note.replace(/^Not finished: /, "")}` : ""}`;
-      return `- ${x.ts.slice(0, 10)} "${x.title}" (${how})${x.report ? `\n  Reported: ${x.report.replace(/\s+/g, " ").slice(0, 280)}` : ""}`;
+      return `- ${x.ts.slice(0, 10)} "${x.title}" (${how})${x.lesson ? `\n  Lesson: ${x.lesson}` : ""}${x.report ? `\n  Reported: ${x.report.replace(/\s+/g, " ").slice(0, 280)}` : ""}`;
     };
     return `# Past experience (your similar tasks; repeat what worked, avoid what did not)\n${best.map(line).join("\n")}`;
   }

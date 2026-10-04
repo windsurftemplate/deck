@@ -719,6 +719,36 @@ describe("observe, think, act", () => {
   });
 });
 
+describe("escalation and failure lessons", () => {
+  it("retries failed work on the strong model, and keeps a lesson when work still fails", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const used: string[] = [];
+    const mk = (escalate: boolean) => new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), clock: () => new Date(),
+      settings: { ...DEFAULTS, models: { ...DEFAULTS.models, heavy: { provider: "anthropic", model: "strong-model" }, cheap: { provider: "anthropic", model: "judge" }, agents: { gtm: { provider: "anthropic", model: "small-model" } }, escalate } }, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const sys = JSON.stringify(req.system ?? "");
+        if (req.tools?.length) return (used.push(ref.model), { text: `Report from ${ref.model}`, model: ref.model, stopReason: "end_turn", usage: U });
+        if (sys.includes("say what to do differently")) return { text: "Check memory for the last call before drafting.", model: ref.model, stopReason: "end_turn", usage: U };
+        return { text: JSON.stringify(req.messages).includes("Report from strong-model") ? '{"missing": []}' : '{"missing": ["mentions the pilot price"]}', model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    const e = mk(true);
+    await e.open();
+    const r = await e.delegate("gtm", "Draft a follow-up to Dana at Acme", "pipeline", ["mentions the pilot price"]);
+    expect(used).toEqual(["small-model", "small-model", "strong-model"]); // small: try + one retry; then escalated
+    expect(r).toMatch(/Checked: all done-when items met/);
+    expect(e.crewMessages("activity").some((m) => /Trying again on strong-model/.test(m.text))).toBe(true);
+    await e.close();
+    used.length = 0;
+    const n = mk(false);
+    await n.open();
+    await n.delegate("gtm", "Draft a follow-up to Dana at Acme", "pipeline", ["mentions the pilot price"]);
+    expect(used).toEqual(["small-model", "small-model"]);
+    await new Promise((res) => setTimeout(res, 50));
+    expect(await n.experienceFor("gtm", "Draft a follow-up to Sam at Globex")).toContain("Lesson: Check memory for the last call before drafting.");
+    await n.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");

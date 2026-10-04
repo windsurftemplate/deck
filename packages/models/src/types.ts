@@ -1,5 +1,5 @@
 /** heavy, cheap, vision, decide, or "heavy:<agent>" for an agent with its own model. */
-export type Role = "heavy" | "cheap" | "vision" | "decide" | `heavy:${string}`;
+export type Role = "heavy" | "cheap" | "vision" | "decide" | "escalate" | `heavy:${string}`;
 
 export interface TextBlock {
   type: "text";
