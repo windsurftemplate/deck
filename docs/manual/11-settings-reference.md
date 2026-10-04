@@ -15,6 +15,7 @@ Open Settings from the sidebar or with <kbd>Cmd</kbd> + <kbd>,</kbd>. Every card
 | **Voice** | whisper.cpp program and model paths; push-to-talk; read replies aloud; hands-free and wake word | All speech stays on your machine |
 | **Notifications** | Desktop notifications on or off | Only when deck is in the background |
 | **Camera and pictures** | Allow snapshots and attachments | Off by default |
+| **How agents think** | Complex work only (default), always, or off; built-in reasoning effort | Plans and reasoning cost tokens; simple requests skip them |
 | **Backups** | Back up now; restore | Passphrase of 12 characters or more |
 | **Recovery key** | Reveal; restore | Store it in a password manager |
 | **Labs** | Complexity routing, local models, parallel work, crew votes, plugins, agent pull requests, Gmail and Calendar, federation, camera tours, 3D power-up | All start off. See chapter 13 |

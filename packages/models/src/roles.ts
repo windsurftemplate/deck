@@ -42,6 +42,12 @@ export class ModelRouter {
     }
   }
 
+  /** Tokens used today across all agents. */
+  usedToday(): number {
+    this.today();
+    return this.spent.tokens;
+  }
+
   private today(): string {
     const d = (this.cfg.clock ?? (() => new Date()))().toISOString().slice(0, 10);
     if (d !== this.spent.day) this.spent = { day: d, total: 0, tokens: 0, byAgent: new Map() };

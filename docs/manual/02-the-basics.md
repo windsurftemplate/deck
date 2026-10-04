@@ -18,6 +18,17 @@ Crew members cannot hand work further down. Only the Chief of Staff delegates.
 
 When the Chief of Staff hands work to a crew member, it writes a task brief: the goal, why it matters, and a **done when** list (what must be true for the task to count as finished). The crew member works on it, then a separate, cheaper model, the **verifier**, checks the report against the done-when list. If something is missing, the crew member gets one retry with the exact gaps. The result is reported as checked, not finished, or not checked.
 
+## How agents think
+
+Every agent works in a loop: **observe, think, act, reflect**.
+
+1. **Observe.** Before acting, it looks at the situation: the time, approvals waiting for you, active goals, and its own recent unfinished tasks. Plus the usual memory recall.
+2. **Think.** On complex work it writes a short plan first (which steps, which tools, the main risk). On hard work, such as analysis, comparisons and decisions, it also uses the model's built-in reasoning. Simple requests skip both and answer right away.
+3. **Act.** It uses tools through the same safety gate as always.
+4. **Reflect.** If a step fails or is refused, it is told plainly and revises its plan instead of repeating the same call.
+
+Summaries of the plan, the reasoning and any rethinking appear in **Crew chat** as "Thinks". Change when agents think in **Settings > How agents think**: complex work only (default), always, or off, and how much built-in reasoning to use.
+
 ## Approvals and presets
 
 Every tool an agent can use has a kind:

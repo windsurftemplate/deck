@@ -1,5 +1,6 @@
 import { sseJson } from "./stream.js";
 import { ModelError, blocksOf, type Block, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type ToolCallBlock } from "./types.js";
+import { REASONING_BUDGET } from "./types.js";
 
 export type ProviderId = "anthropic" | "openai" | "gemini" | "openrouter" | "ollama";
 
@@ -66,21 +67,23 @@ export class AnthropicDirect implements ChatModel {
 
 /** Rebuilds a full Anthropic response from its event stream, passing text deltas on as they arrive. */
 export async function anthropicStream(res: Response, model: string, onText: (d: string) => void): Promise<ChatResponse> {
-  const blocks: { type: string; text?: string; id?: string; name?: string; json?: string }[] = [];
+  const blocks: { type: string; text?: string; id?: string; name?: string; json?: string; thinking?: string; signature?: string; data?: string }[] = [];
   let stop: string | null = null;
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   for await (const e of sseJson(res)) {
     const t = e.type as string;
     if (t === "message_start") Object.assign(usage, ((e.message as { usage?: object })?.usage ?? {}));
     else if (t === "content_block_start") {
-      const b = e.content_block as { type: string; id?: string; name?: string };
-      blocks[e.index as number] = { type: b.type, ...(b.id ? { id: b.id } : {}), ...(b.name ? { name: b.name } : {}), text: "", json: "" };
+      const b = e.content_block as { type: string; id?: string; name?: string; data?: string };
+      blocks[e.index as number] = { type: b.type, ...(b.id ? { id: b.id } : {}), ...(b.name ? { name: b.name } : {}), ...(b.data ? { data: b.data } : {}), text: "", json: "", thinking: "", signature: "" };
     } else if (t === "content_block_delta") {
-      const d = e.delta as { type: string; text?: string; partial_json?: string };
+      const d = e.delta as { type: string; text?: string; partial_json?: string; thinking?: string; signature?: string };
       const b = blocks[e.index as number];
       if (!b) continue;
       if (d.type === "text_delta" && d.text) (b.text += d.text), onText(d.text);
       if (d.type === "input_json_delta" && d.partial_json) b.json += d.partial_json;
+      if (d.type === "thinking_delta" && d.thinking) b.thinking += d.thinking;
+      if (d.type === "signature_delta" && d.signature) b.signature += d.signature;
     } else if (t === "message_delta") {
       stop = ((e.delta as { stop_reason?: string })?.stop_reason ?? stop) as string | null;
       Object.assign(usage, e.usage ?? {});
@@ -93,11 +96,15 @@ export async function anthropicStream(res: Response, model: string, onText: (d: 
     } catch {
       input = { _unparsed: b.json };
     }
-    return { type: "tool_call", id: b.id!, name: b.name!, input };
+    return { type: "tool_call", id: b.id!, name: b.name!, input } as ToolCallBlock;
   });
+  const thinkingRaw = blocks.filter((b) => b?.type === "thinking" || b?.type === "redacted_thinking").map((b) => (b.type === "thinking" ? { type: "thinking", thinking: b.thinking, signature: b.signature } : { type: "redacted_thinking", data: b.data }));
+  if (thinkingRaw.length && toolCalls[0]) toolCalls[0].meta = { anthropicThinking: thinkingRaw };
+  const thinking = blocks.filter((b) => b?.type === "thinking").map((b) => b.thinking).join("\n").trim();
   return {
     text: blocks.filter((b) => b?.type === "text").map((b) => b.text).join(""),
     ...(toolCalls.length ? { toolCalls } : {}),
+    ...(thinking ? { thinking } : {}),
     model,
     stopReason: stop,
     usage: { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, cacheReadTokens: usage.cache_read_input_tokens, cacheWriteTokens: usage.cache_creation_input_tokens },
@@ -112,13 +119,20 @@ export function anthropicBody(model: string, req: ChatRequest) {
     if (b.type === "image") return { type: "image", source: { type: "base64", media_type: b.mediaType, data: b.data } };
     return { type: "tool_result", tool_use_id: b.id, content: b.content, ...(b.isError ? { is_error: true } : {}) };
   };
+  // Thinking blocks must go back exactly as received, before the tool calls they led to.
+  const assistantBlocks = (bs: Block[]) =>
+    bs.flatMap((b) => {
+      const t = b.type === "tool_call" ? (b.meta as { anthropicThinking?: unknown[] } | undefined)?.anthropicThinking : undefined;
+      return [...(t ?? []), block(b)];
+    });
+  const budget = req.reasoning ? REASONING_BUDGET[req.reasoning] : 0;
   return {
     model,
-    max_tokens: req.maxTokens,
-    ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+    max_tokens: req.maxTokens + budget,
+    ...(budget ? { thinking: { type: "enabled", budget_tokens: budget } } : req.temperature !== undefined ? { temperature: req.temperature } : {}),
     ...(req.system?.length ? { system: req.system.map(block) } : {}),
     ...(req.tools?.length ? { tools: req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })) } : {}),
-    messages: req.messages.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : blocksOf(m.content).map(block) })),
+    messages: req.messages.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : m.role === "assistant" ? assistantBlocks(blocksOf(m.content)) : blocksOf(m.content).map(block) })),
   };
 }
 
@@ -126,13 +140,17 @@ export function anthropicResponse(raw: unknown): ChatResponse {
   const j = raw as {
     model: string;
     stop_reason: string | null;
-    content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[];
+    content: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown>; thinking?: string; signature?: string; data?: string }[];
     usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
   };
   const toolCalls: ToolCallBlock[] = j.content.filter((c) => c.type === "tool_use").map((c) => ({ type: "tool_call", id: c.id!, name: c.name!, input: c.input ?? {} }));
+  const thinkingRaw = j.content.filter((c) => c.type === "thinking" || c.type === "redacted_thinking");
+  if (thinkingRaw.length && toolCalls[0]) toolCalls[0].meta = { anthropicThinking: thinkingRaw };
+  const thinking = j.content.filter((c) => c.type === "thinking").map((c) => c.thinking ?? "").join("\n").trim();
   return {
     text: j.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join(""),
     ...(toolCalls.length ? { toolCalls } : {}),
+    ...(thinking ? { thinking } : {}),
     model: j.model,
     stopReason: j.stop_reason,
     usage: { inputTokens: j.usage.input_tokens, outputTokens: j.usage.output_tokens, cacheReadTokens: j.usage.cache_read_input_tokens ?? 0, cacheWriteTokens: j.usage.cache_creation_input_tokens ?? 0 },

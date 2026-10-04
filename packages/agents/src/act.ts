@@ -1,6 +1,6 @@
 import type { ApprovalQueue } from "@deck/gate";
 import { redactSecrets } from "@deck/gate";
-import type { Block, ChatRequest, ChatResponse, TextBlock, ToolCallBlock, ToolSpec } from "@deck/models";
+import type { Block, ChatMessage, ChatRequest, ChatResponse, TextBlock, ToolCallBlock, ToolSpec } from "@deck/models";
 import { decideTool, type ToolPolicy } from "./tools.js";
 
 /** read: looks only. write: changes something on this machine that can be changed back. external: leaves the machine (send, post, pay, merge). */
@@ -57,6 +57,13 @@ export interface RunAgentInput {
    */
   tripwire?: (serializedInput: string) => boolean;
   onTripwire?: (tool: string) => void;
+  /**
+   * Observe, think, act, reflect. plan: write a short plan before the first action. reasoning: the model's
+   * built-in reasoning on every step. Both are for complex work; simple requests skip them.
+   */
+  think?: { plan?: boolean; reasoning?: "low" | "medium" | "high" };
+  /** Summaries of the agent's thinking: its plan, its reasoning, and its reflections after a step fails. */
+  onThought?: (kind: "plan" | "thinking" | "reflect", text: string) => void;
   /** Check the result against the task's done-when list before reporting done. One retry if something is missing. */
   verify?: { goal: string; doneWhen: string[]; chat: (req: ChatRequest) => Promise<ChatResponse> };
 }
@@ -92,6 +99,26 @@ export async function verifyWork(v: { goal: string; doneWhen: string[]; report: 
   }
 }
 
+/** Adds a note to the end of the last user message (keeps roles alternating for every provider). */
+function withNote(messages: ChatMessage[], note: string): ChatMessage[] {
+  const out = [...messages];
+  const last = out[out.length - 1];
+  if (!last || last.role !== "user") return [...out, { role: "user", content: note }];
+  out[out.length - 1] = { role: "user", content: typeof last.content === "string" ? `${last.content}\n\n${note}` : [...last.content, { type: "text", text: note }] };
+  return out;
+}
+
+/** A short, readable summary of reasoning text for Crew chat. */
+export function summarizeThought(t: string, max = 420): string {
+  const one = t.replace(/\s+/g, " ").trim();
+  if (one.length <= max) return one;
+  const cut = one.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "));
+  return `${end > max / 2 ? cut.slice(0, end + 1) : cut.trimEnd()}…`;
+}
+
+const PLAN_PROMPT = "Before acting, think it through. Reply with a short plan only (no tool calls): the goal in one line, 2 to 5 steps naming the tools you will use, and the main risk or unknown. Under 120 words.";
+
 const missing = (spec: ToolSpec, input: Record<string, unknown>) => (spec.parameters.required ?? []).filter((k) => input[k] === undefined || input[k] === "");
 
 /**
@@ -120,9 +147,23 @@ export async function runAgent(i: RunAgentInput): Promise<{ text: string; action
       anyText = true;
       i.onText!(d);
     });
+  // Think: a short plan before the first action (complex work only). It joins the conversation so later steps follow it.
+  if (i.think?.plan) {
+    try {
+      const names = allowed.map((t) => t.spec.name).join(", ") || "none";
+      const plan = (await i.chat({ system: i.system, messages: withNote(messages, `${PLAN_PROMPT}\nTools you can use: ${names}.`), maxTokens: 350 })).text.trim();
+      if (plan) {
+        i.onThought?.("plan", plan);
+        messages.splice(0, messages.length, ...withNote(messages, `# Your plan (follow it, and change it if results show it is wrong)\n${plan}`));
+      }
+    } catch {
+      /* no plan is fine; act without one */
+    }
+  }
   for (let turn = 1; turn <= max; turn++) {
     newTurn = turn > 1;
-    const res = await i.chat({ system: i.system, messages, tools: allowed.map((t) => t.spec), maxTokens: i.maxTokens ?? 900 }, onText);
+    const res = await i.chat({ system: i.system, messages, tools: allowed.map((t) => t.spec), maxTokens: i.maxTokens ?? 900, ...(i.think?.reasoning ? { reasoning: i.think.reasoning } : {}) }, onText);
+    if (res.thinking) i.onThought?.("thinking", summarizeThought(res.thinking));
     const calls = res.toolCalls ?? [];
     if (!calls.length) {
       const text = res.text.trim();
@@ -143,7 +184,15 @@ export async function runAgent(i: RunAgentInput): Promise<{ text: string; action
       return { text: "Stopped: an action tried to use a planted secret, which means something in the input was trying to misuse the crew. All agents are stopped; the owner has been told.", actions, turns: turn };
     }
     const results: Block[] = [];
+    const before = actions.length;
     for (const call of calls) results.push(await handle(call, i, allowed, actions));
+    // Reflect: when a step fails or is refused, say so plainly and ask the agent to revise before the next step.
+    const problems = [...actions.slice(before).filter((a) => a.status === "failed" || a.status === "denied").map((a) => `${a.summary}${a.result ? ` (${a.result.slice(0, 160)})` : ""}`), ...results.filter((r) => r.type === "tool_result" && r.isError && !actions.slice(before).some((a) => a.tool === r.name)).map((r) => (r.type === "tool_result" ? `${r.name}: ${r.content.slice(0, 160)}` : ""))].filter(Boolean);
+    if (problems.length && turn < max) {
+      const note = `Reflect before the next step: ${problems.join("; ")}. Check your plan: try a different way, skip it, or report what is blocked. Do not repeat the same call.`;
+      results.push({ type: "text", text: note });
+      i.onThought?.("reflect", `${problems.join("; ")}. Revising the plan.`);
+    }
     messages.push({ role: "user", content: results });
   }
   return { text: `I stopped after ${max} steps without finishing. Here is what I did so far.`, actions, turns: max };

@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { HashEmbedder } from "@deck/memory";
 import { ModelError, type ChatModel, type ChatRequest } from "@deck/models";
-import { applyUpdate, DEFAULTS, type Settings } from "@deck/settings";
+import { applyUpdate, DEFAULTS as REAL_DEFAULTS, type Settings } from "@deck/settings";
+// Most tests script the model's replies turn by turn, so they run with thinking off; thinking has its own test.
+const DEFAULTS: Settings = { ...REAL_DEFAULTS, thinking: { mode: "off", reasoning: "medium" } };
 import { Engine } from "./engine.js";
 import { memoryKeychain, type Keychain } from "./keychain.js";
 import { handleLine } from "./protocol.js";
@@ -679,6 +681,44 @@ describe("labs: federation", () => {
   });
 });
 
+describe("observe, think, act", () => {
+  it("delegated work plans first and shares its thinking; hard work reasons; simple chat does neither; off turns it all off", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const reqs: { plan: boolean; reasoning?: string; text: string }[] = [];
+    const mk = (mode: "auto" | "off") => new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: { ...REAL_DEFAULTS, thinking: { mode, reasoning: "high" } }, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const m = JSON.stringify(req.messages);
+        const plan = m.includes("Reply with a short plan only");
+        if (req.tools?.length || plan) reqs.push({ plan, ...(req.reasoning ? { reasoning: req.reasoning } : {}), text: m });
+        if (plan) return { text: "Goal: compare. Steps: 1. memory_search 2. report.", model: ref.model, stopReason: "end_turn", usage: U };
+        if (req.tools?.length) return { text: "Done.", thinking: "Okta has better SCIM support.", model: ref.model, stopReason: "end_turn", usage: U };
+        return { text: '{"passed": true, "missing": []}', model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    const e = mk("auto");
+    await e.open();
+    await e.delegate("research", "Compare Okta and Auth0 for the pilot", "SSO choice", ["a recommendation with reasons"]);
+    expect(reqs[0]!.plan).toBe(true);
+    expect(reqs[1]!.reasoning).toBe("high"); // hard: built-in reasoning
+    expect(reqs[1]!.text).toContain("# Situation now");
+    expect(reqs[1]!.text).toContain("# Your plan");
+    const thoughts = e.crewMessages("activity").filter((x) => x.kind === "thinking").map((x) => x.text);
+    expect(thoughts).toEqual(["Plan: Goal: compare. Steps: 1. memory_search 2. report.", "Thinking: Okta has better SCIM support."]);
+    reqs.length = 0;
+    await e.delegate("gtm", "Draft a follow-up to Dana", "pipeline", ["a draft exists"]);
+    expect(reqs.map((r) => `${r.plan}:${r.reasoning ?? "-"}`)).toEqual(["true:-", "false:-"]); // plans, no reasoning
+    reqs.length = 0;
+    await e.chat("thanks");
+    expect(reqs.every((r) => !r.plan && !r.reasoning)).toBe(true);
+    await e.close();
+    const off = mk("off");
+    await off.open();
+    reqs.length = 0;
+    await off.delegate("research", "Compare Okta and Auth0 for the pilot", "SSO choice", ["a recommendation"]);
+    expect(reqs.every((r) => !r.plan && !r.reasoning)).toBe(true);
+    await off.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");
@@ -1035,7 +1075,7 @@ describe("saved chats and streaming", () => {
     expect(seen.at(-1)).toContain("Owner: Plan the Acme pilot kickoff for next week");
     const b = await e.chat("Separate topic");
     expect(b.threadId).not.toBe(a.threadId);
-    expect(seen.at(-1)).toContain("# Working state\\n(starting)"); // a new chat starts with no history (memory can still recall)
+    expect(seen.at(-1)).not.toContain("Recent conversation"); // a new chat starts with no history (memory can still recall)
     const list = e.threads.list();
     expect(list.map((t) => t.title)).toEqual(["Separate topic", "Plan the Acme pilot kickoff for next"]);
     expect(e.threads.messages(a.threadId!).map((m) => m.role)).toEqual(["owner", "agent", "owner", "agent"]);

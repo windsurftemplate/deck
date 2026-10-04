@@ -21,6 +21,18 @@ return "stopped after max steps"
 
 deck's `runAgent` in `packages/agents/src/act.ts` is this loop with real details: a step limit of 6, per-call gating, approvals that run later via `onLater`, secret scrubbing, the tripwire, streaming text, and a record of every action.
 
+## Observe, think, act, reflect in deck
+
+deck's loop adds three things around the basic cycle, all decided per request:
+
+- **Observe**: `Engine.observe` adds a "Situation now" section (time, approvals waiting, goals, recent misses, budget) so the agent acts on the present, not only on memory.
+- **Think**: for complex work, `runAgent` first makes a planning call with **no tools** (so planning cannot act), then adds the plan to the conversation. For hard work it also sets `reasoning` on each step, which turns on the provider's built-in reasoning (Claude extended thinking, Gemini thinking budgets, OpenAI reasoning effort). Reasoning text comes back separately and is summarized for Crew chat, never sent to tools.
+- **Reflect**: when a tool call fails or is refused, the result is followed by a note asking the agent to revise its plan rather than repeat the call.
+
+Why not the classic "Thought: / Action:" text format? Tool-calling models already separate thinking from actions, and providers' built-in reasoning does the thinking better than prompted text. The plan step is kept because it is cheap, works on every provider, and makes intent visible to the owner.
+
+The cost is extra tokens and latency, so `thinkFor` applies it only where it pays: simple chat skips it, delegated work always plans, hard work also reasons. Claude's API also requires the thinking blocks to be sent back with the tool calls they led to; deck keeps them on the tool call and replays them (see `anthropicBody`).
+
 ## Stopping conditions
 
 A loop must always end. Common stop reasons:
@@ -118,6 +130,15 @@ Q: In deck, what happens if an action failed but the agent's report claims succe
 - [ ] The task is marked done
 - [ ] The owner is never told
 > The verifier sees the action records, not just the report, so a failed action cannot be hidden behind confident text.
+```
+
+```quiz
+Q: Why does deck's planning call send no tools?
+- [ ] Tools are too slow
+- [x] So the planning step can only think, never act
+- [ ] Providers forbid tools with plans
+- [ ] To save memory
+> Planning without tools guarantees the plan step has no side effects; acting happens in the gated loop afterward.
 ```
 
 ```quiz

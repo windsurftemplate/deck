@@ -88,6 +88,8 @@ export interface Settings {
   };
   /** Desktop notifications when deck is in the background. */
   notifications: { enabled: boolean };
+  /** How agents think: a plan step for complex work, built-in model reasoning for hard work. */
+  thinking: { mode: "auto" | "always" | "off"; reasoning: "low" | "medium" | "high" };
   /** Labs: features that are off until you turn them on. Each has its own settings. */
   labs: Labs;
   /** Camera snapshots in chat. The camera is on only while you take a picture; pictures go to your chosen model and are not stored. */
@@ -111,6 +113,7 @@ export const DEFAULTS: Settings = {
   world: { view: "3d" },
   voice: { enabled: false, whisperBin: "", modelPath: "", speakReplies: false, handsFree: false, wakeWord: "deck" },
   notifications: { enabled: true },
+  thinking: { mode: "auto", reasoning: "medium" },
   labs: {
     routing: false,
     ollama: { enabled: false, baseUrl: "http://localhost:11434" },
@@ -293,6 +296,17 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
   if (patch.camera?.enabled !== undefined) next.camera.enabled = !!patch.camera.enabled;
   if (patch.notifications?.enabled !== undefined) next.notifications.enabled = !!patch.notifications.enabled;
   if (patch.labs) next.labs = applyLabs(next.labs, patch.labs as DeepPartial<Labs>);
+  if (patch.thinking) {
+    const t = patch.thinking;
+    if (t.mode !== undefined) {
+      if (!["auto", "always", "off"].includes(t.mode)) throw new SettingsError("thinking.mode", "Choose auto, always or off.");
+      next.thinking.mode = t.mode;
+    }
+    if (t.reasoning !== undefined) {
+      if (!["low", "medium", "high"].includes(t.reasoning)) throw new SettingsError("thinking.reasoning", "Choose low, medium or high.");
+      next.thinking.reasoning = t.reasoning;
+    }
+  }
   if (patch.tools?.jev) {
     const j = patch.tools.jev;
     if (j.baseUrl !== undefined) {
@@ -328,7 +342,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

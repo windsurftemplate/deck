@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 54 commits.
-Tests (counted): **239 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 55 commits.
+Tests (counted): **245 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -271,10 +271,29 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 52. `feat(labs): Gmail and Calendar (read, drafts with approval, never send) with local Google sign-in`
 53. `feat(labs): federation with invite-only peers, signed and encrypted messages, owner approval both ways`
 54. `feat(labs): Labs card, crew votes in Crew chat, camera tours, 3D power-up, docs`
+55. `feat: observe, think, act, reflect loop for every agent, with built-in reasoning on hard work`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Observe, think, act, reflect for every agent
+
+**Why.** The loop already acted and observed tool results, but thinking was implicit: no plan, no built-in reasoning, no situation check, and failures were only caught by the verifier at the end.
+
+**Changed**
+- Models: `reasoning` on requests. Claude: extended thinking with a token budget (temperature dropped as the API requires; max tokens raised); thinking blocks kept on the tool call and replayed before it on the next request. OpenAI: `reasoning_effort` only for reasoning models (o-series, GPT-5). Gemini: thinking budget with thoughts returned separately. Responses carry a `thinking` summary.
+- `runAgent`: optional plan step (a call with no tools, so it cannot act; the plan joins the conversation), reasoning on each step, thinking summaries, and a reflection note after any failed or refused step.
+- Engine: `observe` adds a "Situation now" section (time, approvals waiting, goals, recent misses, budget) to chat and delegation. `thinkFor`: auto (default) plans on complex work and reasons on hard work; simple chat skips both; delegated tasks always plan. Thoughts post to Crew chat as "Thinks".
+- `routeComplexity` gains `hard` (analysis, comparisons, decisions, long requests).
+- Settings > How agents think: complex work only (default), always, or off; reasoning effort low, medium or high.
+- Manual (basics, settings reference) and course chapter 5 updated, with a new quiz question.
+
+**Verified**
+- Provider tests: Claude body, budget, thinking replay; OpenAI effort only for reasoning models; Gemini thinking config and separated thoughts.
+- Loop tests: plan first without tools, plan in context, reasoning on every step, reflection after a failure, simple runs untouched.
+- Engine test: hard delegated work plans and reasons, ordinary delegated work only plans, simple chat neither, off disables all; thoughts in Crew chat.
+- 245 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: Labs: the left-out features, behind switches that start off
 

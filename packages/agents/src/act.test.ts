@@ -148,3 +148,32 @@ describe("streaming through the loop", () => {
     expect(out.join("")).toBe("Checking.\n\nDone.");
   });
 });
+
+describe("observe, think, act, reflect", () => {
+  it("plans first (no tools), follows the plan with reasoning on, shares its thinking, and reflects after a failed step", async () => {
+    const broken: AgentTool = { spec: { name: "issues_close", description: "Close", parameters: { type: "object", properties: { key: { type: "string" } }, required: ["key"] } }, scope: "issues.write", kind: "write", describe: (i) => `Close ${i.key}`, run: async () => { throw new Error("No issue VP-99"); } };
+    const s = script(
+      say("Goal: close the stale issue. Steps: 1. issues_list 2. issues_close. Risk: wrong key."),
+      { ...call("issues_close", { key: "VP-99" }), thinking: "The user said the stale one; I assume VP-99." },
+      call("issues_list", {}),
+      say("VP-99 does not exist; the only open issue is VP-1."),
+    );
+    const thoughts: string[] = [];
+    const out = await runAgent(base(s.chat, { tools: [...tools, broken], think: { plan: true, reasoning: "medium" }, onThought: (k, t) => thoughts.push(`${k}: ${t}`) }));
+    expect(out.text).toMatch(/VP-99 does not exist/);
+    expect(s.seen[0]!.tools).toBeUndefined(); // the plan step cannot act
+    expect(JSON.stringify(s.seen[0]!.messages)).toContain("Reply with a short plan only");
+    expect(JSON.stringify(s.seen[1]!.messages)).toContain("# Your plan");
+    expect(s.seen.slice(1).every((r) => r.reasoning === "medium")).toBe(true);
+    expect(JSON.stringify(s.seen[2]!.messages)).toContain("Reflect before the next step");
+    expect(thoughts.map((t) => t.split(":")[0])).toEqual(["plan", "thinking", "reflect"]);
+  });
+  it("simple runs skip all of it", async () => {
+    const s = script(say("Hi."));
+    const thoughts: string[] = [];
+    await runAgent(base(s.chat, { onThought: (k) => thoughts.push(k) }));
+    expect(s.seen).toHaveLength(1);
+    expect(s.seen[0]!.reasoning).toBeUndefined();
+    expect(thoughts).toEqual([]);
+  });
+});

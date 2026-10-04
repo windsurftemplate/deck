@@ -499,3 +499,5 @@ input, textarea, select { font-family: var(--font); }
 .plugin-row input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; }
 .lab-body .field input { width: 100%; box-sizing: border-box; }
 .lab-body .row > .field { flex: 1; min-width: 140px; }
+.post.thinking > div > p, .post.thinking .text { color: var(--muted); font-style: italic; }
+.post.thinking { border-left: 2px solid rgba(127, 227, 255, .35); }

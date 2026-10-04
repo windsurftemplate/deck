@@ -65,3 +65,40 @@ describe("ollama (local)", () => {
     await expect(listModels("ollama", "", down)).rejects.toThrow(/ollama serve/);
   });
 });
+
+describe("built-in reasoning", () => {
+  it("Anthropic: turns on thinking with a budget, returns a summary, and replays thinking before tool calls", async () => {
+    const { anthropicBody, anthropicResponse } = await import("./index.js");
+    const b = anthropicBody("claude-x", { maxTokens: 1000, temperature: 0.2, reasoning: "medium", messages: [{ role: "user", content: "hi" }] }) as Record<string, unknown>;
+    expect(b.thinking).toEqual({ type: "enabled", budget_tokens: 4096 });
+    expect(b.max_tokens).toBe(5096);
+    expect(b.temperature).toBeUndefined(); // thinking requires the default temperature
+    const r = anthropicResponse({ model: "claude-x", stop_reason: "tool_use", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "thinking", thinking: "Check memory first.", signature: "sig" }, { type: "tool_use", id: "t1", name: "memory_search", input: { q: "acme" } }] });
+    expect(r.thinking).toBe("Check memory first.");
+    const next = anthropicBody("claude-x", { maxTokens: 500, reasoning: "medium", messages: [{ role: "user", content: "hi" }, { role: "assistant", content: r.toolCalls! }, { role: "user", content: [{ type: "tool_result", id: "t1", name: "memory_search", content: "Dana is CISO" }] }] }) as { messages: { content: { type: string }[] }[] };
+    expect(next.messages[1]!.content.map((c) => c.type)).toEqual(["thinking", "tool_use"]);
+    const plain = anthropicBody("claude-x", { maxTokens: 100, temperature: 0, messages: [{ role: "user", content: "hi" }] }) as Record<string, unknown>;
+    expect(plain.thinking).toBeUndefined();
+    expect(plain.temperature).toBe(0);
+  });
+  it("OpenAI only sends reasoning effort to reasoning models; Gemini asks for thoughts and returns them separately", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      if (u.includes("generativelanguage")) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "Plan: look up Acme.", thought: true }, { text: "Done." }] }, finishReason: "STOP" }], usageMetadata: {} }));
+      return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1 } }));
+    }) as unknown as typeof fetch;
+    const { makeChatModel } = await import("./index.js");
+    const key = async () => "k";
+    await makeChatModel({ provider: "openai", model: "o4-mini" }, key, f).chat({ maxTokens: 100, temperature: 0, reasoning: "high", messages: [{ role: "user", content: "x" }] });
+    await makeChatModel({ provider: "openai", model: "gpt-4.1" }, key, f).chat({ maxTokens: 100, temperature: 0, reasoning: "high", messages: [{ role: "user", content: "x" }] });
+    expect(bodies[0]!.reasoning_effort).toBe("high");
+    expect(bodies[0]!.temperature).toBeUndefined();
+    expect(bodies[1]!.reasoning_effort).toBeUndefined();
+    expect(bodies[1]!.temperature).toBe(0);
+    const g = await makeChatModel({ provider: "gemini", model: "gemini-2.5-pro" }, key, f).chat({ maxTokens: 100, reasoning: "low", messages: [{ role: "user", content: "x" }] });
+    expect((bodies[2]!.generationConfig as Record<string, unknown>).thinkingConfig).toEqual({ thinkingBudget: 1024, includeThoughts: true });
+    expect(g.text).toBe("Done.");
+    expect(g.thinking).toBe("Plan: look up Acme.");
+  });
+});

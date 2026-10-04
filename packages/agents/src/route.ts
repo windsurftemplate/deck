@@ -2,7 +2,15 @@
  * Complexity routing: decides whether a request needs the heavy model or the cheap one is enough.
  * No model call: plain signals, so routing itself costs nothing. When unsure, it picks heavy.
  */
-export function routeComplexity(text: string, history = 0): { level: "simple" | "complex"; reason: string } {
+export function routeComplexity(text: string, history = 0): { level: "simple" | "complex"; reason: string; hard: boolean } {
+  const r = route(text, history);
+  const t = text.trim();
+  // Hard: judgement, analysis or design, or long multi-part requests. These get built-in reasoning.
+  const hard = r.level === "complex" && (/\b(plan|strategy|strategi[sz]e|analy[sz]e|compare|design|architect|debug|diagnose|evaluate|trade-?offs?|pros and cons|why|prioriti[sz]e|decide|should we)\b/i.test(t) || t.split(/\s+/).length > 60);
+  return { ...r, hard };
+}
+
+function route(text: string, history: number): { level: "simple" | "complex"; reason: string } {
   const t = text.trim();
   const words = t.split(/\s+/).filter(Boolean).length;
   const hard = /\b(research|plan|strategy|analy[sz]e|compare|draft|write|design|why|explain|review|debug|propose|evaluate|summari[sz]e .{20,}|delegate|have (gtm|ops|operations|engineering|research)|every (day|week|monday|tuesday|wednesday|thursday|friday)|from now on|pros and cons|trade-?offs?)\b/i;

@@ -15,7 +15,7 @@ const WHO: Record<string, { name: string; color: string }> = {
   owner: { name: "You", color: "#ff9a3d" },
 };
 const who = (id: string) => WHO[id] ?? { name: id.replace(/_/g, " "), color: "#8f8ab8" };
-const KIND: Record<string, string> = { handoff: "Hands off", report: "Reports", tool: "Uses a tool", check: "Checks", approval: "Asks you", decision: "Decides", summary: "Sums up", topic: "Topic", note: "Note" };
+const KIND: Record<string, string> = { handoff: "Hands off", report: "Reports", tool: "Uses a tool", check: "Checks", approval: "Asks you", decision: "Decides", summary: "Sums up", topic: "Topic", note: "Note", thinking: "Thinks" };
 const CREW = ["gtm", "ops", "code", "research"];
 
 /** Where the crew talks: the live feed of handoffs, tool use, reports, checks and approvals, plus discussions you start. */

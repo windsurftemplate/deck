@@ -53,7 +53,12 @@ export interface ChatRequest {
   maxTokens: number;
   temperature?: number;
   tools?: ToolSpec[];
+  /** Built-in model reasoning before answering. Used for hard steps only; ignored by models that lack it. */
+  reasoning?: "low" | "medium" | "high";
 }
+
+/** Thinking-token budgets per level, for providers that take a number. */
+export const REASONING_BUDGET = { low: 1024, medium: 4096, high: 12000 } as const;
 
 export interface Usage {
   inputTokens: number;
@@ -69,6 +74,8 @@ export interface ChatResponse {
   model: string;
   usage: Usage;
   stopReason: string | null;
+  /** The model's reasoning, when the provider shares it (shown as a summary, never sent to tools). */
+  thinking?: string;
 }
 
 /** One provider model behind the Gateway. */

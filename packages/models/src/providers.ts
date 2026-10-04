@@ -1,3 +1,4 @@
+import { REASONING_BUDGET } from "./types.js";
 import { sseJson } from "./stream.js";
 import { ModelError, blocksOf, type ChatMessage, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type ToolCallBlock } from "./types.js";
 import { AnthropicDirect, type ProviderId } from "./direct.js";
@@ -77,10 +78,12 @@ export class OpenAICompatible implements ChatModel {
     const tools = req.tools?.length ? { tools: req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) } : {};
     const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${await this.o.getKey()}` };
     if (this.o.provider === "openrouter") headers["x-title"] = "deck";
+    // Reasoning models (o-series, GPT-5) take reasoning_effort and refuse temperature; others ignore reasoning.
+    const reasons = this.o.provider === "openai" && /^(o\d|gpt-5)/i.test(this.id);
     const res = await send(
       this.o.fetch ?? fetch,
       `${this.o.baseUrl.replace(/\/$/, "")}/chat/completions`,
-      { method: "POST", headers, body: JSON.stringify({ model: this.id, messages, ...tools, max_completion_tokens: req.maxTokens, ...(req.temperature !== undefined ? { temperature: req.temperature } : {}), ...(onText ? { stream: true, stream_options: { include_usage: true } } : {}) }) },
+      { method: "POST", headers, body: JSON.stringify({ model: this.id, messages, ...tools, max_completion_tokens: req.maxTokens + (req.reasoning && reasons ? REASONING_BUDGET[req.reasoning] : 0), ...(req.reasoning && reasons ? { reasoning_effort: req.reasoning } : req.temperature !== undefined && !reasons ? { temperature: req.temperature } : {}), ...(onText ? { stream: true, stream_options: { include_usage: true } } : {}) }) },
       this.o.provider,
       this.id,
       this.o.timeoutMs ?? 120_000,
@@ -153,7 +156,11 @@ export class GeminiDirect implements ChatModel {
       ...(req.system?.length ? { systemInstruction: { parts: [{ text: req.system.map((b) => b.text).join("\n\n") }] } } : {}),
       contents: geminiContents(req),
       ...(req.tools?.length ? { tools: [{ functionDeclarations: req.tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })) }] } : {}),
-      generationConfig: { maxOutputTokens: req.maxTokens, ...(req.temperature !== undefined ? { temperature: req.temperature } : {}) },
+      generationConfig: {
+        maxOutputTokens: req.maxTokens + (req.reasoning ? REASONING_BUDGET[req.reasoning] : 0),
+        ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+        ...(req.reasoning ? { thinkingConfig: { thinkingBudget: REASONING_BUDGET[req.reasoning], includeThoughts: true } } : {}),
+      },
     };
     const res = await send(
       this.o.fetch ?? fetch,
@@ -179,7 +186,8 @@ export class GeminiDirect implements ChatModel {
       }
       const cachedS = um.cachedContentTokenCount ?? 0;
       const tc: ToolCallBlock[] = parts.filter((p) => p.functionCall).map((p) => ({ type: "tool_call", id: `call_${globalThis.crypto.randomUUID().slice(0, 8)}`, name: p.functionCall!.name, input: p.functionCall!.args ?? {}, meta: p }));
-      return { text: parts.filter((p) => !p.thought && !p.functionCall).map((p) => p.text ?? "").join(""), ...(tc.length ? { toolCalls: tc } : {}), model: this.id, stopReason: finish ?? null, usage: { inputTokens: (um.promptTokenCount ?? 0) - cachedS, outputTokens: um.candidatesTokenCount ?? 0, cacheReadTokens: cachedS, cacheWriteTokens: 0 } };
+      const thoughtS = parts.filter((p) => p.thought && p.text).map((p) => p.text).join("\n").trim();
+      return { text: parts.filter((p) => !p.thought && !p.functionCall).map((p) => p.text ?? "").join(""), ...(tc.length ? { toolCalls: tc } : {}), ...(thoughtS ? { thinking: thoughtS } : {}), model: this.id, stopReason: finish ?? null, usage: { inputTokens: (um.promptTokenCount ?? 0) - cachedS, outputTokens: um.candidatesTokenCount ?? 0, cacheReadTokens: cachedS, cacheWriteTokens: 0 } };
     }
     const j = (await res.json()) as {
       candidates?: { content?: { parts?: { text?: string; thought?: boolean; functionCall?: { name: string; args?: Record<string, unknown> } }[] }; finishReason?: string }[];
@@ -190,9 +198,11 @@ export class GeminiDirect implements ChatModel {
     const cached = j.usageMetadata?.cachedContentTokenCount ?? 0;
     const parts = c?.content?.parts ?? [];
     const toolCalls: ToolCallBlock[] = parts.filter((p) => p.functionCall).map((p) => ({ type: "tool_call", id: `call_${globalThis.crypto.randomUUID().slice(0, 8)}`, name: p.functionCall!.name, input: p.functionCall!.args ?? {}, meta: p }));
+    const thought = parts.filter((p) => p.thought && p.text).map((p) => p.text).join("\n").trim();
     return {
       text: parts.filter((p) => !p.thought && !p.functionCall).map((p) => p.text ?? "").join(""),
       ...(toolCalls.length ? { toolCalls } : {}),
+      ...(thought ? { thinking: thought } : {}),
       model: j.modelVersion ?? this.id,
       stopReason: c?.finishReason ?? null,
       usage: { inputTokens: (j.usageMetadata?.promptTokenCount ?? 0) - cached, outputTokens: j.usageMetadata?.candidatesTokenCount ?? 0, cacheReadTokens: cached, cacheWriteTokens: 0 },
