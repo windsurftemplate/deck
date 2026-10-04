@@ -511,6 +511,38 @@ describe("research agent", () => {
   });
 });
 
+describe("workflows", () => {
+  it("runs steps in order, hands each result to the next, and can be scheduled", async () => {
+    const seen: string[] = [];
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const m = JSON.stringify(req.messages);
+        if (req.tools?.length) {
+          seen.push(m);
+          return { text: m.includes("Research Acme") ? "Acme: security lead is Dana; they leaked a key in May." : "Draft: Hi Dana, saw the May key leak...", model: ref.model, stopReason: "end_turn", usage: U };
+        }
+        if (JSON.stringify(req.system).includes("finishing a workflow")) return { text: "Summary ready.", model: ref.model, stopReason: "end_turn", usage: U };
+        return { text: '{"passed": true, "missing": []}', model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    expect(() => e.workflowSave({ name: "x", steps: [{ agent: "gtm", instruction: "a" }] })).toThrow(/2 to 6 steps/);
+    const tpl = e.workflowsList().templates[0]!;
+    const w = e.workflowSave({ name: tpl.name, steps: [...tpl.steps, { agent: "chief-of-staff", instruction: "Sum it up." }] });
+    const out = await e.runWorkflow(w.id, "Acme");
+    expect(seen[0]).toContain("Research Acme: what they do");
+    expect(seen[1]).toContain("draft a first outreach email to Acme");
+    expect(seen[1]).toContain("Acme: security lead is Dana"); // step 2 sees step 1's result
+    expect(out).toMatch(/Step 3 \(Chief of Staff\): Summary ready\.$/);
+    expect(e.workflowsList().workflows[0]!.lastResult).toBe(out);
+    const a = e.automationCreate({ name: "Monday outreach", agent: `workflow:${w.id}`, instruction: "run", at: "09:00", days: [1] });
+    expect(a.agent).toBe(`workflow:${w.id}`);
+    e.workflowDelete(w.id);
+    expect(e.automationsList()).toHaveLength(0);
+    await e.close();
+  });
+});
+
 describe("goals", () => {
   it("plans a goal into milestone issues, tracks progress, and writes progress notes", async () => {
     const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };

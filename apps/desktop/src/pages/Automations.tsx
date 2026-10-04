@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { engineCall, onEngineEvent } from "../bridge";
 import { CalendarClock } from "lucide-react";
 import { Empty } from "../ui/states";
+import { WorkflowsPanel } from "./Workflows";
 
 type Auto = { id: string; name: string; agent: string; instruction: string; at: string; days: number[]; enabled: boolean; schedule: string; lastRun?: string; lastResult?: string };
 const WHO: [string, string][] = [["chief-of-staff", "Chief of Staff"], ["gtm", "GTM"], ["ops", "Operations"], ["code", "Engineering"], ["research", "Research"]];
@@ -14,6 +15,9 @@ export function Automations() {
   const [form, setForm] = useState<typeof blank & { id?: string }>(blank);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [running, setRunning] = useState<string | null>(null);
+  const [tab, setTab] = useState<"jobs" | "workflows">("jobs");
+  const [flows, setFlows] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => void engineCall<{ workflows: { id: string; name: string }[] }>("workflows.list").then((r) => setFlows(r?.workflows ?? [])).catch(() => {}), [tab]);
   const load = () => void engineCall<Auto[]>("automations.list").then((l) => setList(l ?? [])).catch(() => {});
   useEffect(() => {
     load();
@@ -50,6 +54,11 @@ export function Automations() {
 
   return (
     <section className="page" aria-label="Automations">
+      <nav className="tabs" aria-label="Automations">
+        <button type="button" className={tab === "jobs" ? "on" : ""} aria-pressed={tab === "jobs"} onClick={() => setTab("jobs")}>Scheduled jobs</button>
+        <button type="button" className={tab === "workflows" ? "on" : ""} aria-pressed={tab === "workflows"} onClick={() => setTab("workflows")}>Workflows</button>
+      </nav>
+      {tab === "workflows" ? <WorkflowsPanel /> : <>
       <p className="muted">Jobs the crew does on a schedule while the app is open. You can also ask in chat: "every Monday at 9, have GTM review the pipeline." Results land in chat, Crew chat, a notification and Telegram if it is on.</p>
       <div className="panels">
         <section className="card">
@@ -64,6 +73,9 @@ export function Automations() {
               <select value={form.agent} onChange={(e) => setForm({ ...form, agent: e.target.value })}>
                 {WHO.map(([id, n]) => (
                   <option key={id} value={id}>{n}</option>
+                ))}
+                {flows.map((f) => (
+                  <option key={f.id} value={`workflow:${f.id}`}>Workflow: {f.name}</option>
                 ))}
               </select>
             </label>
@@ -101,7 +113,7 @@ export function Automations() {
               <li key={a.id} className={a.enabled ? "" : "off"}>
                 <div className="auto-head">
                   <b>{a.name}</b>
-                  <span className="muted">{WHO.find(([id]) => id === a.agent)?.[1]}, {a.schedule}</span>
+                  <span className="muted">{WHO.find(([id]) => id === a.agent)?.[1] ?? `Workflow: ${flows.find((f) => `workflow:${f.id}` === a.agent)?.name ?? "removed"}`}, {a.schedule}</span>
                 </div>
                 <p>{a.instruction}</p>
                 {a.lastRun && (
@@ -121,6 +133,7 @@ export function Automations() {
           </ul>
         </section>
       </div>
+      </>}
     </section>
   );
 }

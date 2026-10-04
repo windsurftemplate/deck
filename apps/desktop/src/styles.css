@@ -389,3 +389,11 @@ input, textarea, select { font-family: var(--font); }
 .goal-note { margin: 0; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--hull-2); border-radius: 0 var(--r-sm) var(--r-sm) 0; font-size: 13.5px; }
 .goal .row button { display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 900px) { .goal-form { grid-template-columns: 1fr; } }
+.wf-edit { display: grid; gap: 10px; padding: 16px; }
+.wf-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.wf-steps li { display: grid; gap: 6px; }
+.wf-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; }
+.wf-arrow { justify-self: center; color: var(--faint); }
+.wf { display: grid; gap: 10px; padding: 14px; }
+.wf .row button { display: inline-flex; align-items: center; gap: 6px; }
+.stack .row { flex-wrap: wrap; }

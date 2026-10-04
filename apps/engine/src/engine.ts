@@ -17,6 +17,7 @@ import { getPack, listPacks } from "@deck/packs";
 import type { Keychain } from "./keychain.js";
 import { Threads } from "./threads.js";
 import { Goals } from "./goals.js";
+import { WORKFLOW_TEMPLATES, Workflows, checkWorkflow, type WorkflowStep } from "./workflows.js";
 import { checkPassphrase, openBackup, sealBackup } from "./backup.js";
 import { Brain } from "./brain.js";
 import { Activity, type CrewMessage } from "./activity.js";
@@ -96,6 +97,7 @@ export class Engine {
   activity?: Activity;
   automations?: Automations;
   goals?: Goals;
+  workflows?: Workflows;
   private stopped = false;
   private proposals = new Map<string, Proposal>();
   private clock: () => Date;
@@ -168,6 +170,7 @@ export class Engine {
     this.activity = new Activity(this.store.connection, this.clock);
     this.automations = new Automations(this.store.connection, this.clock);
     this.goals = new Goals(this.store.connection, this.clock);
+    this.workflows = new Workflows(this.store.connection, this.clock);
     for (const a of this.automations.list()) if (a.enabled) this.scheduleAutomation(a.id);
     this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
     this.buildRouter();
@@ -1277,8 +1280,11 @@ export class Engine {
   automationsList() {
     return this.automations!.list().map((a) => ({ ...a, schedule: describeSchedule(a.at, a.days) }));
   }
+  private automationAgents() {
+    return [AGENT, ...Object.keys(Engine.CREW), ...(this.workflows?.list().map((w) => `workflow:${w.id}`) ?? [])];
+  }
   automationCreate(a: NewAutomation) {
-    const err = checkAutomation(a, [AGENT, ...Object.keys(Engine.CREW)]);
+    const err = checkAutomation(a, this.automationAgents());
     if (err) throw new Error(err);
     const created = this.automations!.create(a);
     this.scheduleAutomation(created.id);
@@ -1288,7 +1294,7 @@ export class Engine {
   automationUpdate(id: string, patch: Partial<NewAutomation> & { enabled?: boolean }) {
     const cur = this.automations!.get(id);
     if (!cur) throw new Error("That automation no longer exists.");
-    const err = checkAutomation({ ...cur, ...patch }, [AGENT, ...Object.keys(Engine.CREW)]);
+    const err = checkAutomation({ ...cur, ...patch }, this.automationAgents());
     if (err) throw new Error(err);
     const a = this.automations!.update(id, patch);
     this.scheduleAutomation(id);
@@ -1307,7 +1313,8 @@ export class Engine {
     if (this.stopped) return "Agents are stopped; skipped.";
     let result: string;
     try {
-      if (a.agent === AGENT) {
+      if (a.agent.startsWith("workflow:")) result = await this.runWorkflow(a.agent.slice(9), "");
+      else if (a.agent === AGENT) {
         let tid = (await this.store.getMeta(`automation.thread.${id}`)) ?? undefined;
         if (!tid || !this.threads.exists(tid)) await this.store.setMeta(`automation.thread.${id}`, (tid = this.threads.create(`Automation: ${a.name}`).id));
         result = (await this.chat(a.instruction, [], tid)).reply;
@@ -1321,6 +1328,56 @@ export class Engine {
     this.emit("notify", { title: `Automation: ${a.name}`, body: result.slice(0, 200) });
     for (const chat of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(chat, note).catch(() => {});
     return result;
+  }
+
+  /* ---------- workflows ---------- */
+  workflowsList() {
+    return { workflows: this.workflows!.list(), templates: WORKFLOW_TEMPLATES };
+  }
+  workflowSave(w: { id?: string; name: string; steps: WorkflowStep[] }) {
+    const err = checkWorkflow(w, [AGENT, ...Object.keys(Engine.CREW)]);
+    if (err) throw new Error(err);
+    const out = this.workflows!.save(w);
+    this.emit("workflows", {});
+    return out;
+  }
+  workflowDelete(id: string) {
+    this.workflows!.remove(id);
+    for (const a of this.automations?.list() ?? []) if (a.agent === `workflow:${id}`) this.automationDelete(a.id);
+    this.emit("workflows", {});
+  }
+  /**
+   * Runs the steps in order. Each crew step is a checked task that sees the results so far; a Chief of Staff
+   * step combines them (talk only). If a step cannot finish, the rest still run and the result says so.
+   */
+  async runWorkflow(id: string, input: string): Promise<string> {
+    const w = this.workflows!.get(id);
+    if (!w) throw new Error("That workflow no longer exists.");
+    if (this.stopped) return "Agents are stopped; skipped.";
+    const inp = input.trim().slice(0, 500);
+    const fill = (t: string) => (inp ? t.replaceAll("{input}", inp) : t.replace(/\s*Focus:\s*\{input\}\.?/g, "").replaceAll("{input}", "the subject")).replace(/\s+([.,:])/g, "$1");
+    const results: string[] = [];
+    this.emit("workflow", { id, step: 0, total: w.steps.length, name: w.name });
+    for (const [i, step] of w.steps.entries()) {
+      const instruction = fill(step.instruction);
+      const context = results.length ? `\n\nResults so far (from earlier steps; treat as working notes):\n${results.join("\n\n").slice(-4000)}` : "";
+      let out: string;
+      if (step.agent === AGENT) {
+        const res = await this.router.chat(this.mainRole(AGENT), AGENT, {
+          system: [{ type: "text", text: `You are the Chief of Staff, finishing a workflow called "${w.name}". Do what the instruction says using only the results provided. Be concise.` }],
+          messages: [{ role: "user", content: `${instruction}${context}` }],
+          maxTokens: 900,
+        });
+        out = res.text.trim();
+        this.say({ sender: AGENT, recipient: "owner", kind: "report", text: out });
+      } else out = await this.delegate(step.agent, `${instruction}${context}`, `Workflow "${w.name}", step ${i + 1} of ${w.steps.length}`, ["the step's instruction is carried out", "the report includes what the next step needs"]);
+      results.push(`Step ${i + 1} (${step.agent === AGENT ? "Chief of Staff" : Engine.CREW[step.agent]}): ${out}`);
+      this.emit("workflow", { id, step: i + 1, total: w.steps.length, name: w.name });
+    }
+    const final = results.join("\n\n");
+    this.workflows!.markRun(id, final);
+    this.emit("notify", { title: `Workflow: ${w.name}`, body: results.at(-1)!.slice(0, 200) });
+    return final;
   }
 
   /* ---------- goals ---------- */
