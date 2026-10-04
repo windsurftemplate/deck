@@ -29,6 +29,8 @@ export interface ModelSettings {
   fallback: ModelChoice | null;
   /** Daily token budget across all agents (always on). */
   dailyTokenCap: number;
+  /** A crew member's own main model, chosen with the model arena. Others use heavy. */
+  agents: Partial<Record<"chief-of-staff" | "gtm" | "ops" | "code" | "research", ModelChoice>>;
 }
 
 export interface Settings {
@@ -68,7 +70,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   version: 1,
   storage: { engine: "sqlite" },
-  models: { heavy: { provider: "anthropic", model: "claude-sonnet-5" }, cheap: { provider: "anthropic", model: "claude-haiku-4-5-20251001" }, fallback: null, dailyTokenCap: 2_000_000 },
+  models: { heavy: { provider: "anthropic", model: "claude-sonnet-5" }, cheap: { provider: "anthropic", model: "claude-haiku-4-5-20251001" }, fallback: null, dailyTokenCap: 2_000_000, agents: {} },
   embeddings: { provider: "local" },
   preset: "balanced",
   onboarding: { done: false },
@@ -140,6 +142,15 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
         continue;
       }
       next.models[k] = toChoice(m[k], `models.${k}`);
+    }
+    if (m.agents !== undefined) {
+      const out: ModelSettings["agents"] = { ...next.models.agents };
+      for (const [agent, choice] of Object.entries(m.agents ?? {})) {
+        if (!["chief-of-staff", "gtm", "ops", "code", "research"].includes(agent)) throw new SettingsError("models.agents", `Unknown agent ${agent}.`);
+        if (choice === null) delete out[agent as keyof typeof out];
+        else out[agent as keyof typeof out] = toChoice(choice, `models.agents.${agent}`);
+      }
+      next.models.agents = out;
     }
     if (m.dailyTokenCap !== undefined) {
       if (!Number.isInteger(m.dailyTokenCap) || m.dailyTokenCap < 10_000 || m.dailyTokenCap > 1_000_000_000) throw new SettingsError("models.dailyTokenCap", "Set a daily token budget between 10,000 and 1,000,000,000.");

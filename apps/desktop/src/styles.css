@@ -370,3 +370,4 @@ input, textarea, select { font-family: var(--font); }
 .mic-on { background: rgba(240, 106, 99, .16); color: #ffd2cf; border: 1px solid rgba(240, 106, 99, .4); }
 @media (prefers-reduced-motion: reduce) { .page, .toast { animation: none; } .skel { animation: none; } }
 @media (max-width: 900px) { .app { grid-template-columns: 56px minmax(0, 1fr); } .side span:not(.badge) { display: none; } .side button { justify-content: center; padding: 0; } .search-btn span { display: none; } }
+.bar-track.inline { display: inline-block; width: 70px; vertical-align: middle; margin-right: 6px; }

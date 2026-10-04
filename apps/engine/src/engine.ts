@@ -10,7 +10,7 @@ import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, s
 import { LocalEmbedder } from "@deck/embed-local";
 import { ApprovalQueue, redactPII, redactSecrets } from "@deck/gate";
 import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder, type Memory } from "@deck/memory";
-import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, webResearch, type ChatModel, type ModelRef } from "@deck/models";
+import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, webResearch, type ChatModel, type ChatRequest, type ChatResponse, type ModelRef } from "@deck/models";
 import { applyUpdate, type DeepPartial, type Settings } from "@deck/settings";
 import { SqliteTrackerStore, Tracker } from "@deck/tracker";
 import { getPack, listPacks } from "@deck/packs";
@@ -112,6 +112,10 @@ export class Engine {
       this.emit("deck", e);
       const ev = e as { type?: string; task?: { id: string; agent?: string; title: string; status: string; note?: string; why?: string; doneWhen?: string[] } };
       if (ev.type === "task.updated" && ev.task?.agent && ["done", "failed", "cancelled"].includes(ev.task.status)) this.activity?.logTask({ id: ev.task.id, agent: ev.task.agent, title: ev.task.title, status: ev.task.status, checked: /^Checked/.test(ev.task.note ?? ""), ...(ev.task.note ? { note: ev.task.note } : {}), ...(ev.task.why ? { why: ev.task.why } : {}), ...(ev.task.doneWhen ? { doneWhen: ev.task.doneWhen } : {}) });
+      if (ev.type === "task.updated" && ev.task && this.pendingReports.has(ev.task.id) && ["done", "failed", "cancelled"].includes(ev.task.status)) {
+        this.activity?.setReport(ev.task.id, this.pendingReports.get(ev.task.id)!);
+        this.pendingReports.delete(ev.task.id);
+      }
     });
   }
 
@@ -197,6 +201,11 @@ export class Engine {
   private policyFor(agent: string) {
     return effectivePolicy(loadPolicy(agent), this.crew[agent]);
   }
+  /** The model role for an agent's main work: its own model from the arena if chosen, else heavy. */
+  private mainRole(agent: string): "heavy" | `heavy:${string}` {
+    return this.d.settings.models.agents?.[agent as keyof typeof this.d.settings.models.agents] ? `heavy:${agent}` : "heavy";
+  }
+
   private roleFor(agent: string) {
     return effectiveRole(loadRole(agent), this.crew[agent]);
   }
@@ -295,11 +304,12 @@ export class Engine {
   private buildRouter() {
     const m = this.d.settings.models;
     const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch));
-    const chosen = [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : [])];
+    const own = Object.entries(m.agents ?? {}) as [string, ModelRef][];
+    const chosen = [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : []), ...own.map(([, r]) => r)];
     const models: Record<string, ChatModel> = {};
     for (const ref of chosen) models[refId(ref)] ??= make(ref, () => this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider]));
     const chain = (ref: ModelRef) => [refId(ref), ...(m.fallback && refId(m.fallback) !== refId(ref) ? [refId(m.fallback)] : [])];
-    this.router = new ModelRouter({ roles: { heavy: chain(m.heavy), cheap: chain(m.cheap) }, models, prices: {}, caps: { tokens: m.dailyTokenCap }, clock: this.clock, onUsage: (u) => this.activity?.logUsage(u) });
+    this.router = new ModelRouter({ roles: { heavy: chain(m.heavy), cheap: chain(m.cheap), ...Object.fromEntries(own.map(([a, r]) => [`heavy:${a}`, [refId(r), ...chain(m.heavy).filter((x) => x !== refId(r))]])) }, models, prices: {}, caps: { tokens: m.dailyTokenCap }, clock: this.clock, onUsage: (u) => this.activity?.logUsage(u) });
   }
 
   private async reembed(path: string, key: string, oldDim: number, embedder: Embedder) {
@@ -616,7 +626,7 @@ export class Engine {
     try {
       const out = await runAgent({
         agent,
-        chat: (req) => this.router.chat("heavy", agent, req),
+        chat: (req) => this.router.chat(this.mainRole(agent), agent, req),
         system: p.system,
         messages: [{ role: "user", content: p.user }],
         tools: this.toolsFor(agent),
@@ -632,7 +642,7 @@ export class Engine {
       });
       const v = out.verdict;
       this.say({ sender: agent, recipient: "chief-of-staff", kind: "report", text: out.text, taskId: task.id });
-      setTimeout(() => this.activity?.setReport(task.id, out.text), 0); // after the task's log row is written
+      this.pendingReports.set(task.id, out.text); // saved with the task's log row when it finishes
       if (v) this.say({ sender: "verifier", recipient: agent, kind: "check", text: v.passed ? (v.checked ? "Checked: every done-when item is met." : "Not independently checked.") : `Not finished: ${v.missing.join("; ")}`, taskId: task.id });
       const check = !v ? "" : v.passed ? (v.checked ? "\nChecked: all done-when items met." : "\nNot independently checked.") : `\nNot finished: ${v.missing.join("; ")}`;
       this.board.move(task.id, v && !v.passed ? "failed" : "done", { result: out.text.slice(0, 2000), note: check.trim() });
@@ -745,10 +755,69 @@ export class Engine {
   }
 
   /**
+   * One practice run of a past task: reading works, anything that would change or send something is only
+   * recorded, and the verifier scores the result. learned: null keeps the agent's current guidance.
+   */
+  private async practice(agent: string, c: { goal: string; why: string; doneWhen: string[] }, o: { learned: string | null; chat: (req: ChatRequest) => Promise<ChatResponse> }): Promise<{ score: number; tokens: number }> {
+    const cur = this.crew[agent] ?? {};
+    const { learned: _old, ...base } = cur;
+    const role = effectiveRole(loadRole(agent), o.learned ? { ...base, learned: o.learned } : o.learned === null ? cur : base);
+    const p = buildPrompt({ coreRules: loadCoreRules(), role, userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal: c.goal, why: c.why, doneWhen: c.doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(await this.reader.retrieve(c.goal, { tokenBudget: 500 })), working: "(practice run: nothing you do is saved or sent)" });
+    const tools = this.toolsFor(agent).map((t) => (t.kind === "read" && t.spec.name !== "web_research" ? t : { ...t, kind: "read" as const, run: async () => "Recorded (practice run: nothing was changed or sent)." }));
+    let tokens = 0;
+    const counted = async (req: ChatRequest) => {
+      const r = await o.chat(req);
+      tokens += r.usage.inputTokens + r.usage.outputTokens;
+      return r;
+    };
+    const out = await runAgent({ agent, chat: counted, system: p.system, messages: [{ role: "user", content: p.user }], tools, policy: this.policyFor(agent), taskScopes: this.policyFor(agent).allow, preset: "autonomous", approvals: new ApprovalQueue(() => {}), tripwire: this.tripwire, onTripwire: (t) => this.onTripwire(agent, t), verify: { goal: c.goal, doneWhen: c.doneWhen, chat: (req) => this.router.chat("cheap", "arena", req) } });
+    return { score: practiceScore(out.verdict, out.turns), tokens };
+  }
+
+  /**
+   * Model arena: runs an agent's recent tasks as practice with each candidate model, scores them with the same
+   * checker, and recommends the best (ties go to the model that used fewer tokens). You apply it with one click.
+   */
+  async arena(agent: string, candidates?: ModelRef[], cases = 3): Promise<{ agent: string; results: { model: string; provider: string; score: number; tokens: number }[]; best: ModelRef | null; summary: string; proposalId?: string }> {
+    const name = agent === AGENT ? "Chief of Staff" : Engine.CREW[agent];
+    if (!name) throw new Error(`There is no crew member called ${agent}.`);
+    const m = this.d.settings.models;
+    const pool = candidates?.length ? candidates : [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : []), ...(m.agents?.[agent as keyof typeof m.agents] ? [m.agents[agent as keyof typeof m.agents]!] : [])];
+    const uniq = [...new Map(pool.map((r) => [refId(r), r])).values()].slice(0, 4);
+    const tasks = this.activity!.practiceCases(agent, cases);
+    if (tasks.length < 2) throw new Error(`${name} needs at least 2 finished tasks to compare models.`);
+    const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch));
+    const results: { model: string; provider: string; score: number; tokens: number }[] = [];
+    for (const ref of uniq) {
+      const model = make(ref, () => this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider]));
+      let score = 0, tokens = 0;
+      for (const c of tasks) {
+        try {
+          const r = await this.practice(agent, c, { learned: null, chat: (req) => model.chat(req) });
+          (score += r.score), (tokens += r.tokens);
+        } catch {
+          /* a model that errors scores zero for that task */
+        }
+      }
+      results.push({ model: ref.model, provider: ref.provider, score: Math.round((score / tasks.length) * 100) / 100, tokens });
+      this.say({ sender: "arena", recipient: agent, kind: "check", text: `${ref.model}: practice score ${Math.round((score / tasks.length) * 100) / 100} on ${tasks.length} tasks, ${tokens.toLocaleString("en-US")} tokens.` });
+    }
+    const top = Math.max(...results.map((r) => r.score));
+    const winner = results.filter((r) => r.score >= top - 0.1).sort((a, b) => a.tokens - b.tokens)[0];
+    const best = winner ? uniq.find((r) => r.model === winner.model && r.provider === winner.provider)! : null;
+    const current = refId(m.agents?.[agent as keyof typeof m.agents] ?? m.heavy);
+    if (!best || refId(best) === current) return { agent, results, best, summary: `${name}: the current model is already the best choice.` };
+    const p: Proposal = { id: randomBytes(3).toString("hex"), summary: `Use ${best.model} for ${name} (practice ${winner!.score}, ${winner!.tokens.toLocaleString("en-US")} tokens)`, patch: { models: { agents: { [agent]: best } } } as never };
+    this.proposals.set(p.id, p);
+    return { agent, results, best, summary: p.summary, proposalId: p.id };
+  }
+
+  /**
    * Experience recall: the agent's past tasks most like this one, with how they went and what was reported.
    * Unlike skills (which you approve), this is automatic, and it shows failures too so mistakes are not repeated.
    */
   private expVecs = new Map<string, Float32Array>();
+  private pendingReports = new Map<string, string>();
   async experienceFor(agent: string, goal: string, k = 3): Promise<string> {
     const past = (this.activity?.experiences(agent, 200) ?? []).filter((x) => x.title !== goal);
     if (!past.length) return "";
@@ -796,15 +865,7 @@ export class Engine {
     const guidance = await draftGuidance({ chat: (req) => this.router.chat("heavy", "tuning", req), agentName: name, role: this.roleFor(agent), ...(cur.learned ? { current: cur.learned } : {}), evidence: misses });
     if (!guidance) return `${name}: no useful guidance found.`;
     this.say({ sender: "learning", recipient: agent, kind: "note", text: `Testing new guidance on ${cases.length} practice tasks:\n${guidance}` });
-    const practice = async (learned: string | undefined, c: (typeof cases)[number]) => {
-      const { learned: _old, ...base } = cur;
-      const role = effectiveRole(loadRole(agent), learned ? { ...base, learned } : base);
-      const p = buildPrompt({ coreRules: loadCoreRules(), role, userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal: c.goal, why: c.why, doneWhen: c.doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(await this.reader.retrieve(c.goal, { tokenBudget: 500 })), working: "(practice run: nothing you do is saved or sent)" });
-      // Practice: reading works; anything that would change or send something only records the attempt.
-      const tools = this.toolsFor(agent).map((t) => (t.kind === "read" && t.spec.name !== "web_research" ? t : { ...t, kind: "read" as const, run: async () => "Recorded (practice run: nothing was changed or sent)." }));
-      const out = await runAgent({ agent, chat: (req) => this.router.chat("heavy", "tuning", req), system: p.system, messages: [{ role: "user", content: p.user }], tools, policy: this.policyFor(agent), taskScopes: this.policyFor(agent).allow, preset: "autonomous", approvals: new ApprovalQueue(() => {}), tripwire: this.tripwire, onTripwire: (t) => this.onTripwire(agent, t), verify: { goal: c.goal, doneWhen: c.doneWhen, chat: (req) => this.router.chat("cheap", "tuning", req) } });
-      return practiceScore(out.verdict, out.turns);
-    };
+    const practice = async (learned: string | undefined, c: (typeof cases)[number]) => (await this.practice(agent, c, { learned: learned ?? null, chat: (req) => this.router.chat(this.mainRole(agent), "tuning", req) })).score;
     const before: number[] = [], after: number[] = [];
     for (const c of cases) {
       before.push(await practice(cur.learned, c));
@@ -1013,7 +1074,7 @@ export class Engine {
       this.toolProposals = [];
       const out = await runAgent({
         agent: AGENT,
-        chat: (req, onText) => this.router.chat("heavy", AGENT, req, undefined, onText),
+        chat: (req, onText) => this.router.chat(this.mainRole(AGENT), AGENT, req, undefined, onText),
         onText: (delta) => this.emit("chat.delta", { threadId: tid, delta }),
         onAction: (a) => this.say({ sender: AGENT, recipient: a.tool, kind: "tool", text: `${a.status}: ${a.summary}` }),
         system: p.system,

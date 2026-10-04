@@ -45,6 +45,7 @@ async function main() {
     "brain.graph": () => engine.brain.graph(),
     "deck.stats": () => engine.deckStats(),
     "tools.list": () => engine.toolsList(),
+    "arena.run": (p) => { const q = p as { agent?: string; candidates?: { provider: string; model: string }[] }; return engine.arena(String(q?.agent ?? ""), q?.candidates as never); },
     "backup.now": (p) => engine.backupNow(String((p as { passphrase?: string })?.passphrase ?? "")),
     "backup.restore": (p) => { const q = p as { data?: string; passphrase?: string }; return engine.restoreBackup(String(q?.data ?? ""), String(q?.passphrase ?? "")); },
     "learn.tune": (p) => engine.tune(String((p as { agent?: string })?.agent ?? "")),

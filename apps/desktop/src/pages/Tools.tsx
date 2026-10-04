@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { engineCall, inTauri, loadSettings, saveSettings } from "../bridge";
 import { invoke } from "@tauri-apps/api/core";
+import { ArenaCard } from "./Arena";
 
 type Tool = { id: string; name: string; what: string; status: string; ready: boolean; keyName?: string; setup: string };
 type Member = { id: string; name: string; tools: { scope: string; label: string; mode: string }[] };
@@ -78,6 +79,7 @@ export function Tools({ openSettings, openBrain }: { openSettings: () => void; o
           </article>
         ))}
       </div>
+      <ArenaCard />
       <section className="card">
         <h3>Who can use what</h3>
         <p className="muted">Each crew member's tools. Change them in Settings, Crew. Sending, deleting and paying are never allowed without you.</p>

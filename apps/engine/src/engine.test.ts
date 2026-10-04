@@ -511,6 +511,34 @@ describe("research agent", () => {
   });
 });
 
+describe("model arena", () => {
+  it("compares models on an agent's past tasks and applies the winner only for that agent", async () => {
+    const U = { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const used: string[] = [];
+    const settings = { ...DEFAULTS, models: { ...DEFAULTS.models, heavy: { provider: "anthropic" as const, model: "weak-model" }, cheap: { provider: "anthropic" as const, model: "strong-model" } } };
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        if (req.tools?.length) return (used.push(ref.model), { text: `Report from ${ref.model}`, model: ref.model, stopReason: "end_turn", usage: U });
+        const m = JSON.stringify(req.messages);
+        return { text: m.includes("Report from strong-model") || !m.includes("Report from") ? '{"passed": true, "missing": []}' : '{"passed": false, "missing": ["weak"]}', model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    await expect(e.arena("gtm")).rejects.toThrow(/at least 2 finished tasks/);
+    for (const g of ["Draft follow-up to Dana", "Score new leads"]) e.activity!.logTask({ id: g, agent: "gtm", title: g, status: "done", why: "pipeline", doneWhen: ["done"] });
+    const r = await e.arena("gtm");
+    expect(r.results.map((x) => `${x.model}:${x.score}`)).toEqual(["weak-model:0", "strong-model:1"]);
+    expect(r.summary).toMatch(/^Use strong-model for GTM \(practice 1, /);
+    await e.applyProposal(r.proposalId!);
+    used.length = 0;
+    await e.delegate("gtm", "Draft follow-up to Priya", "pipeline", ["a draft exists"]);
+    expect(used[0]).toBe("strong-model");
+    used.length = 0;
+    await e.delegate("ops", "Tidy labels", "hygiene", ["labels tidy"]);
+    expect(used[0]).toBe("weak-model"); // others keep the main model
+    await e.close();
+  });
+});
+
 describe("experience recall", () => {
   it("shows an agent its similar past tasks, including what failed, before it starts", async () => {
     const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model) });
