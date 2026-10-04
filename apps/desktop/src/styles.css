@@ -513,3 +513,7 @@ input, textarea, select { font-family: var(--font); }
 .custom-form textarea, .custom-form input { width: 100%; box-sizing: border-box; }
 .tool-picks { border: 1px solid var(--seam); border-radius: var(--r); padding: 8px 12px; display: grid; gap: 6px; }
 .tool-picks legend { padding: 0 6px; color: var(--muted); font-size: 13px; }
+.capture { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--seam); border-radius: var(--r); }
+.capture .muted { font-size: 12.5px; }
+.capture-card { display: grid; gap: 8px; }
+.capture-card textarea, .capture-card input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13.5px; color: var(--text); background: var(--hull); border: 1px solid var(--seam); border-radius: var(--r); padding: 7px 10px; }

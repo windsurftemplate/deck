@@ -890,6 +890,34 @@ describe("research swarm and meeting prep", () => {
   });
 });
 
+describe("capture", () => {
+  it("reads cards and boards, refuses photos of people, and saves only after confirmation", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    let reply = "";
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: { ...DEFAULTS, camera: { enabled: true } }, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async () => ({ text: reply, model: ref.model, stopReason: "end_turn", usage: U }) }) });
+    await e.open();
+    const img = { mediaType: "image/jpeg", data: "AAAA" };
+    reply = '{"name":"Dana Wright","title":"CISO","company":"Acme","email":"dana@acme.com","phone":"","website":"acme.com"}';
+    const c = await e.capture({ image: img, kind: "card" });
+    expect(c.card).toMatchObject({ name: "Dana Wright", title: "CISO", company: "Acme" });
+    expect((await e.brain.documents()).length).toBe(0); // nothing saved yet
+    await e.captureSave({ kind: "card", card: c.card! });
+    expect((await e.brain.documents()).map((d) => d.title)).toEqual(["Contact: Dana Wright"]);
+    reply = "NOT_A_DOCUMENT";
+    await expect(e.capture({ image: img, kind: "document" })).rejects.toThrow(/does not identify people/);
+    reply = "# Q4 plan\n- SSO -> pilot";
+    const w = await e.capture({ image: img, kind: "whiteboard" });
+    await e.captureSave({ kind: "whiteboard", title: "Q4 planning board", text: w.text! });
+    expect((await e.brain.documents()).map((d) => d.title)).toContain("Q4 planning board");
+    await e.close();
+    const off = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });
+    await off.open();
+    await expect(off.capture({ image: img, kind: "card" })).rejects.toThrow(/Camera and pictures/);
+    await off.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");

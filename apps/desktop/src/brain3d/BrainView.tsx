@@ -1,3 +1,4 @@
+import { CaptureBox } from "./Capture";
 import { useEffect, useRef, useState } from "react";
 import { engineCall, inTauri } from "../bridge";
 import { FileText, NotebookPen } from "lucide-react";
@@ -159,6 +160,7 @@ export function BrainView() {
 
         {tab === "add" && (
           <div className="stack">
+            <CaptureBox onSaved={() => void refresh()} />
             <label className="drop">
               <b>Drop files on the map, or choose them</b>
               <span className="muted">PDF, Word, Markdown, text, CSV, HTML. 25 MB each.</span>
