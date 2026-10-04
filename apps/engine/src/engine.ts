@@ -10,7 +10,7 @@ import { execFile } from "node:child_process";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
 import { LocalEmbedder } from "@deck/embed-local";
-import { ApprovalQueue, redactPII, redactSecrets } from "@deck/gate";
+import { ApprovalQueue, redactPII, redactSecrets, scanInjection } from "@deck/gate";
 import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder, type Memory } from "@deck/memory";
 import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, webResearch, type ChatModel, type ChatRequest, type ChatResponse, type ModelRef } from "@deck/models";
 import { applyUpdate, type DeepPartial, type Settings } from "@deck/settings";
@@ -190,6 +190,7 @@ export class Engine {
     this.workflows = new Workflows(this.store.connection, this.clock);
     for (const a of this.automations.list()) if (a.enabled) this.scheduleAutomation(a.id);
     if (this.d.settings.labs.plugins.enabled) void this.refreshPlugins().catch(() => {});
+    this.startIdlePrep();
     if (this.d.settings.labs.federation.enabled) await this.startFederation().catch((e) => this.emit("status", { message: `Federation did not start: ${(e as Error).message}` }));
     this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
     this.buildRouter();
@@ -702,6 +703,64 @@ export class Engine {
     return [...this.tools(), ...extra];
   }
 
+  /* ---------- idle-time memory prep (sleep-time compute) ---------- */
+  private lastActive = Date.now();
+  private idleTimer: ReturnType<typeof setInterval> | null = null;
+  private touch() {
+    this.lastActive = Date.now();
+  }
+  /**
+   * While you are away, condense recent facts and events into short prepared notes: one for the Chief of Staff
+   * about you and what is in motion, one per crew member, and the requests you are likely to make next.
+   * Inputs are your facts and the crew's own episodes only (not documents or web pages), so outside content
+   * cannot write itself into these notes. The output is scanned and secrets are stripped before it is saved.
+   */
+  async prepNotes(force = false): Promise<string> {
+    if (this.stopped) return "Agents are stopped.";
+    const last = Number((await this.store.getMeta("notes.cursor")) ?? "0");
+    const eps = await this.store.episodesSince(last, 120);
+    if (!eps.length && !force) return "Nothing new since the last notes.";
+    const owner = await this.userModel();
+    const goals = (await this.goalsList().catch(() => [])).filter((g) => g.status === "active").map((g) => `${g.title} (${g.progress.done}/${g.progress.total})`);
+    const open = (await this.tracker.list({ status: "open" })).slice(0, 15).map((i) => `${i.key} ${i.title}`);
+    const res = await this.router.chat("cheap", "memory", {
+      system: [{ type: "text", text: 'You prepare working notes for an AI crew while the owner is away, so they can act fast later. From the facts and recent events, reply with JSON only: {"owner": "under 120 words: who the owner is, this week\'s priorities, people in play, open threads", "agents": {"chief-of-staff": "...", "gtm": "...", "ops": "...", "code": "...", "research": "..."} (each under 60 words: what that member should keep in mind next time; empty string if nothing), "anticipate": ["up to 3 requests the owner is likely to make soon, each with what to check first"]}. Only use what is given; never invent.' }],
+      messages: [{ role: "user", content: `# Owner facts\n${owner}\n\n# Active goals\n${goals.join("; ") || "none"}\n\n# Open issues\n${open.join("; ") || "none"}\n\n# Recent events\n${eps.map((e) => `- ${e.ts.slice(0, 16)} ${e.agent} ${e.kind}: ${e.summary}`).join("\n").slice(-8000)}` }],
+      maxTokens: 900,
+      temperature: 0,
+    });
+    let j: { owner?: string; agents?: Record<string, string>; anticipate?: string[] };
+    try {
+      j = JSON.parse(res.text.slice(res.text.indexOf("{"), res.text.lastIndexOf("}") + 1));
+    } catch {
+      return "Notes came back in the wrong shape; kept the old ones.";
+    }
+    const safe = (t: unknown, n: number) => {
+      const text = redactSecrets(String(t ?? "")).clean.trim().slice(0, n);
+      return scanInjection(text).score >= 0.5 ? "" : text;
+    };
+    const notes = { at: this.clock().toISOString(), owner: safe(j.owner, 900), agents: Object.fromEntries(Object.entries(j.agents ?? {}).filter(([a]) => a === AGENT || Engine.CREW[a]).map(([a, t]) => [a, safe(t, 500)])), anticipate: (j.anticipate ?? []).map((t) => safe(t, 240)).filter(Boolean).slice(0, 3) };
+    await this.store.setMeta("notes.prepared", JSON.stringify(notes));
+    if (eps.length) await this.store.setMeta("notes.cursor", String(eps.at(-1)!.id));
+    this.say({ sender: "learning", recipient: "owner", kind: "note", text: `Prepared notes while idle from ${eps.length} recent events.` });
+    return `Prepared notes from ${eps.length} recent events.`;
+  }
+  async preparedNotes(): Promise<{ at: string; owner: string; agents: Record<string, string>; anticipate: string[] } | null> {
+    const raw = await this.store.getMeta("notes.prepared");
+    return raw ? JSON.parse(raw) : null;
+  }
+  private startIdlePrep() {
+    this.idleTimer = setInterval(() => {
+      const t = this.d.settings.thinking;
+      if (t?.idlePrep === false || this.stopped || Date.now() - this.lastActive < 20 * 60_000) return;
+      void this.store.getMeta("notes.prepared").then((raw) => {
+        const at = raw ? Date.parse((JSON.parse(raw) as { at: string }).at) : 0;
+        if (Date.now() - at >= 3 * 3_600_000) return this.prepNotes().catch(() => {});
+      });
+    }, 5 * 60_000);
+    (this.idleTimer as { unref?: () => void }).unref?.();
+  }
+
   /* ---------- observe, think ---------- */
   /**
    * Decides how much thinking a request gets. auto: complex work plans first, hard work also uses the model's
@@ -731,6 +790,12 @@ export class Engine {
     const used = this.router?.usedToday?.() ?? null;
     if (used !== null && this.d.settings.models.dailyTokenCap) lines.push(`Token budget used today: ${Math.round((used / this.d.settings.models.dailyTokenCap) * 100)}%`);
     if (this.stopped) lines.push("Agents are stopped.");
+    const notes = await this.preparedNotes().catch(() => null);
+    if (notes) {
+      const mine = agent === AGENT ? [notes.owner, notes.agents[AGENT]].filter(Boolean).join(" ") : notes.agents[agent];
+      if (mine) lines.push(`Prepared notes (${notes.at.slice(0, 10)}): ${mine}`);
+      if (agent === AGENT && notes.anticipate.length) lines.push(`Likely next requests: ${notes.anticipate.join(" | ")}`);
+    }
     return `# Situation now\n${lines.map((l) => `- ${l}`).join("\n")}`;
   }
 
@@ -1002,6 +1067,7 @@ export class Engine {
 
   /** Runs one crew member on a task, checks the result, and returns a report the Chief of Staff can relay. */
   async delegate(agent: string, goal: string, why: string, doneWhen: string[]): Promise<string> {
+    this.touch();
     const name = Engine.CREW[agent];
     if (!name) return `There is no crew member called ${agent}.`;
     if (this.stopped) return "Agents are stopped.";
@@ -1487,6 +1553,7 @@ export class Engine {
   }
 
   async chat(text: string, images: { mediaType: string; data: string }[] = [], threadId?: string): Promise<{ reply: string; memories: string[]; redacted: string[]; proposal?: Proposal; actions?: ActionRecord[]; threadId?: string }> {
+    this.touch();
     // Each chat in the sidebar keeps its own history; without one, a new chat starts.
     const tid = threadId && this.threads.exists(threadId) ? threadId : this.threads.create().id;
     this.turns = this.threads.messages(tid, 20).map((m) => ({ from: m.role, text: m.text }));
@@ -2075,6 +2142,7 @@ export class Engine {
     await this.stopFederation().catch(() => {});
     this.bot?.stop();
     this.scheduler.stop();
+    if (this.idleTimer) clearInterval(this.idleTimer);
     await this.store?.close();
   }
 

@@ -46,6 +46,8 @@ async function main() {
     "deck.stats": () => engine.deckStats(),
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
+    "notes.prep": () => engine.prepNotes(true),
+    "notes.get": () => engine.preparedNotes(),
     "workflows.list": async () => engine.workflowsList(),
     "workflows.save": async (p) => engine.workflowSave(p as never),
     "workflows.delete": async (p) => engine.workflowDelete(String((p as { id?: string })?.id ?? "")),

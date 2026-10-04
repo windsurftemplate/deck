@@ -93,7 +93,7 @@ export interface Settings {
   /** Desktop notifications when deck is in the background. */
   notifications: { enabled: boolean };
   /** How agents think: a plan step for complex work, built-in model reasoning for hard work. */
-  thinking: { mode: "auto" | "always" | "off"; reasoning: "low" | "medium" | "high" };
+  thinking: { mode: "auto" | "always" | "off"; reasoning: "low" | "medium" | "high"; idlePrep: boolean };
   /** Labs: features that are off until you turn them on. Each has its own settings. */
   labs: Labs;
   /** Camera snapshots in chat. The camera is on only while you take a picture; pictures go to your chosen model and are not stored. */
@@ -117,7 +117,7 @@ export const DEFAULTS: Settings = {
   world: { view: "3d" },
   voice: { enabled: false, whisperBin: "", modelPath: "", speakReplies: false, handsFree: false, wakeWord: "deck" },
   notifications: { enabled: true },
-  thinking: { mode: "auto", reasoning: "medium" },
+  thinking: { mode: "auto", reasoning: "medium", idlePrep: true },
   labs: {
     routing: false,
     ollama: { enabled: false, baseUrl: "http://localhost:11434" },
@@ -308,6 +308,7 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
       if (!["auto", "always", "off"].includes(t.mode)) throw new SettingsError("thinking.mode", "Choose auto, always or off.");
       next.thinking.mode = t.mode;
     }
+    if ((t as { idlePrep?: unknown }).idlePrep !== undefined) next.thinking.idlePrep = !!(t as { idlePrep?: unknown }).idlePrep;
     if (t.reasoning !== undefined) {
       if (!["low", "medium", "high"].includes(t.reasoning)) throw new SettingsError("thinking.reasoning", "Choose low, medium or high.");
       next.thinking.reasoning = t.reasoning;
