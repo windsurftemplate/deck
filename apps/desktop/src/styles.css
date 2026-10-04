@@ -505,3 +505,4 @@ input, textarea, select { font-family: var(--font); }
 .playbook li { display: grid; grid-template-columns: 36px 1fr auto auto; gap: 10px; align-items: center; padding: 6px 8px; background: var(--hull-2); border-radius: var(--r-sm); font-size: 13.5px; }
 .pb-score { font-size: 12px; color: var(--muted); }
 .file-btn { cursor: pointer; display: inline-flex; align-items: center; }
+.auto-pick { display: grid; gap: 6px; padding: 10px 12px; border: 1px dashed var(--seam-strong); border-radius: var(--r); }

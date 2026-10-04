@@ -8,7 +8,8 @@ import { HashEmbedder } from "@deck/memory";
 import { ModelError, type ChatModel, type ChatRequest } from "@deck/models";
 import { applyUpdate, DEFAULTS as REAL_DEFAULTS, type Settings } from "@deck/settings";
 // Most tests script the model's replies turn by turn, so they run with thinking off; thinking has its own test.
-const DEFAULTS: Settings = { ...REAL_DEFAULTS, thinking: { mode: "off", reasoning: "medium" } };
+// They also pin Claude models (the shipped default is OpenAI auto-pick, tested on its own below).
+const DEFAULTS: Settings = { ...REAL_DEFAULTS, thinking: { mode: "off", reasoning: "medium", idlePrep: true }, models: { ...REAL_DEFAULTS.models, heavy: { provider: "anthropic", model: "claude-sonnet-5" }, cheap: { provider: "anthropic", model: "claude-haiku-4-5-20251001" } } };
 import { Engine } from "./engine.js";
 import { memoryKeychain, type Keychain } from "./keychain.js";
 import { handleLine } from "./protocol.js";
@@ -792,6 +793,37 @@ describe("skills in the open SKILL.md format", () => {
     const x = await e.skillsExport(out);
     expect(x.count).toBe(1);
     expect(readFileSync(join(out, "pilot-recap", "SKILL.md"), "utf8")).toMatch(/^---\nname: pilot-recap\ndescription: Use after a pilot check-in to write the recap\.\n/);
+    await e.close();
+  });
+});
+
+describe("OpenAI auto-pick by default", () => {
+  it("uses the newest reasoning model and mini the key can use, re-checks weekly, and reports an upgrade", async () => {
+    let list = ["gpt-4o", "o4-mini", "gpt-5", "gpt-5-mini", "gpt-5.5", "gpt-5.5-mini"];
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const used: string[] = [];
+    let now = new Date("2026-10-01T10:00:00Z");
+    const data = dir();
+    const kc = memoryKeychain({ "provider.openai": "sk-proj-" + "a".repeat(40) });
+    const f = (async (u: string) => (u.endsWith("/models") ? new Response(JSON.stringify({ data: list.map((id) => ({ id })) })) : offline(u))) as unknown as typeof fetch;
+    const mk = () => new Engine({ dataDir: data, keychain: kc, settings: { ...REAL_DEFAULTS, thinking: { mode: "off", reasoning: "medium", idlePrep: true } }, fetch: f, clock: () => now, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => ({ id: ref.model, chat: async (req) => (used.push(`${ref.provider}:${ref.model}${req.tools?.length ? "" : ":check"}`), { text: '{"missing": []}', model: ref.model, stopReason: "end_turn", usage: U }) }) });
+    expect(REAL_DEFAULTS.models.heavy).toEqual({ provider: "openai", model: "auto" });
+    let e = mk();
+    await e.open();
+    await e.chat("Draft a follow-up to Dana");
+    expect(used[0]).toBe("openai:gpt-5.5");
+    expect(e.models().cheap.model).toBe("gpt-5.5-mini");
+    await e.close();
+    list = [...list, "gpt-6", "gpt-6-mini"];
+    e = mk();
+    await e.open();
+    expect(e.models().heavy.model).toBe("gpt-5.5"); // cached for a week
+    await e.close();
+    now = new Date("2026-10-09T10:00:00Z");
+    e = mk();
+    await e.open();
+    expect(e.models().heavy.model).toBe("gpt-6");
+    expect(e.crewMessages("activity").some((m) => /heavy work now uses gpt-6 \(was gpt-5\.5\)/.test(m.text))).toBe(true);
     await e.close();
   });
 });

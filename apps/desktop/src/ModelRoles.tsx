@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PROVIDERS, SettingsError, type ModelChoice, type Provider, type Settings } from "@deck/settings";
 import { engineCall, inTauri, saveSettings } from "./bridge";
 
@@ -73,6 +73,9 @@ export function ModelRoles({ s, onSaved }: { s: Settings; onSaved: (s: Settings)
   const [fallback, setFallback] = useState<ModelChoice | null>(s.models.fallback);
   const [escalation, setEscalation] = useState<ModelChoice | null>(s.models.escalation ?? null);
   const [escalate, setEscalate] = useState<boolean>(s.models.escalate !== false);
+  const [auto, setAuto] = useState<{ heavy?: string; cheap?: string } | null>(null);
+  useEffect(() => void engineCall<{ heavy?: string; cheap?: string }>("models.auto").then(setAuto).catch(() => {}), []);
+  const isAuto = (c: ModelChoice | null) => c?.provider === "openai" && /^auto(-mini)?$/.test(c.model);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const save = async () => {
     try {
@@ -89,6 +92,17 @@ export function ModelRoles({ s, onSaved }: { s: Settings; onSaved: (s: Settings)
       <p className="muted">Pick a provider and model for each job. Each provider uses its own key from above. If the main model fails, the backup takes over.</p>
       <RolePicker label="Heavy work" help="Planning, writing, code" value={heavy} onChange={setHeavy} />
       <RolePicker label="Quick tasks" help="Triage, summaries, checks" value={cheap} onChange={setCheap} />
+      <div className="auto-pick">
+        {isAuto(heavy) || isAuto(cheap) ? (
+          <p className="muted">OpenAI auto-pick is on{auto?.heavy ? `: heavy work uses ${auto.heavy}, quick work uses ${auto.cheap}` : ""}. deck checks weekly and moves to newer models. Pick a specific model above to turn it off.</p>
+        ) : (
+          <p className="muted">Want deck to choose? OpenAI auto-pick uses the newest reasoning model and mini your key can use, and keeps them current.</p>
+        )}
+        <div className="row">
+          <button className="btn" type="button" onClick={() => (setHeavy({ provider: "openai", model: "auto" }), setCheap({ provider: "openai", model: "auto-mini" }))}>Use OpenAI auto-pick</button>
+          <button className="btn" type="button" onClick={async () => setAuto(await engineCall("models.auto", { refresh: true }))}>Check for newer models</button>
+        </div>
+      </div>
       <RolePicker label="Backup" help="Used when the main model is down" value={fallback} onChange={setFallback} optional />
       <label className="check">
         <input type="checkbox" checked={escalate} onChange={(e) => setEscalate(e.target.checked)} />

@@ -1,4 +1,5 @@
 import { REASONING_BUDGET } from "./types.js";
+import { isOpenAIReasoning } from "./openai-pick.js";
 import { sseJson } from "./stream.js";
 import { ModelError, blocksOf, type ChatMessage, type ChatModel, type ChatRequest, type ChatResponse, type Fetch, type ToolCallBlock } from "./types.js";
 import { AnthropicDirect, type ProviderId } from "./direct.js";
@@ -79,7 +80,7 @@ export class OpenAICompatible implements ChatModel {
     const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${await this.o.getKey()}` };
     if (this.o.provider === "openrouter") headers["x-title"] = "deck";
     // Reasoning models (o-series, GPT-5) take reasoning_effort and refuse temperature; others ignore reasoning.
-    const reasons = this.o.provider === "openai" && /^(o\d|gpt-5)/i.test(this.id);
+    const reasons = this.o.provider === "openai" && isOpenAIReasoning(this.id);
     const res = await send(
       this.o.fetch ?? fetch,
       `${this.o.baseUrl.replace(/\/$/, "")}/chat/completions`,

@@ -110,7 +110,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   version: 1,
   storage: { engine: "sqlite" },
-  models: { heavy: { provider: "anthropic", model: "claude-sonnet-5" }, cheap: { provider: "anthropic", model: "claude-haiku-4-5-20251001" }, fallback: null, dailyTokenCap: 2_000_000, agents: {}, escalate: true, escalation: null },
+  models: { heavy: { provider: "openai", model: "auto" }, cheap: { provider: "openai", model: "auto-mini" }, fallback: null, dailyTokenCap: 2_000_000, agents: {}, escalate: true, escalation: null },
   embeddings: { provider: "local" },
   preset: "balanced",
   onboarding: { done: false },

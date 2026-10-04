@@ -46,6 +46,7 @@ async function main() {
     "deck.stats": () => engine.deckStats(),
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
+    "models.auto": (p) => engine.resolveAuto(!!(p as { refresh?: boolean })?.refresh),
     "notes.prep": () => engine.prepNotes(true),
     "skills.export": () => engine.skillsExport(),
     "skills.import": (p) => engine.skillsImport(((p as { files?: { name: string; content: string }[] })?.files ?? []).map((f) => ({ name: String(f.name), content: String(f.content) }))),

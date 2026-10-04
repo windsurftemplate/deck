@@ -12,7 +12,7 @@ import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, s
 import { LocalEmbedder } from "@deck/embed-local";
 import { ApprovalQueue, redactPII, redactSecrets, scanInjection } from "@deck/gate";
 import { MemoryReader, MemoryWriter, SqliteMemoryStore, migrateMemory, storedDim, type Embedder, type Memory } from "@deck/memory";
-import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, refId, webResearch, type ChatModel, type ChatRequest, type ChatResponse, type ModelRef } from "@deck/models";
+import { ModelError, ModelRouter, OpenAIEmbedder, SpendCapError, listModels, makeChatModel, pickOpenAIModels, refId, webResearch, type ChatModel, type ChatRequest, type ChatResponse, type ModelRef } from "@deck/models";
 import { applyUpdate, type DeepPartial, type Settings } from "@deck/settings";
 import { SqliteTrackerStore, Tracker } from "@deck/tracker";
 import { getPack, listPacks } from "@deck/packs";
@@ -193,6 +193,7 @@ export class Engine {
     this.startIdlePrep();
     if (this.d.settings.labs.federation.enabled) await this.startFederation().catch((e) => this.emit("status", { message: `Federation did not start: ${(e as Error).message}` }));
     this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
+    await this.resolveAuto().catch(() => {});
     this.buildRouter();
     this.crew = JSON.parse((await this.store.getMeta("crew.overrides")) ?? "{}") as CrewOverrides;
     // One-time move from a single block of learned guidance to playbook lessons (ACE).
@@ -352,7 +353,7 @@ export class Engine {
   }
 
   private buildRouter() {
-    const m = this.d.settings.models;
+    const m = this.models();
     const make = this.d.makeModel ?? ((ref: ModelRef, k: () => Promise<string>) => makeChatModel(ref, k, this.d.fetch, { ollamaUrl: this.d.settings.labs.ollama.baseUrl }));
     const own = Object.entries(m.agents ?? {}) as [string, ModelRef][];
     const chosen = [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : []), ...(m.escalation ? [m.escalation] : []), ...own.map(([, r]) => r)];
@@ -551,7 +552,7 @@ export class Engine {
           const used = Number((await this.store.getMeta(`research.${day}`)) ?? 0);
           if (used >= Engine.RESEARCH_PER_DAY) return `Daily web research limit reached (${Engine.RESEARCH_PER_DAY}). Answer from memory or try tomorrow.`;
           await this.store.setMeta(`research.${day}`, String(used + 1));
-          const ref = this.d.settings.models.heavy;
+          const ref = this.models().heavy;
           const key = await this.secret(`provider.${ref.provider}`, KEY_PHRASE[ref.provider]);
           // Personal data stays here: emails, phone numbers, card and ID numbers are removed from the search question.
           const q = redactPII(str(i.question));
@@ -701,6 +702,41 @@ export class Engine {
         run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
       });
     return [...this.tools(), ...extra];
+  }
+
+  /* ---------- OpenAI auto-pick ---------- */
+  private autoModels: { heavy?: string; cheap?: string; at?: string } = {};
+  /**
+   * "auto" and "auto-mini" mean: the newest OpenAI reasoning model, and the newest mini, that the key can use.
+   * Re-checked weekly (or on demand), so the crew moves to newer models without anyone typing a name.
+   */
+  async resolveAuto(force = false): Promise<{ heavy?: string; cheap?: string }> {
+    const m = this.d.settings.models;
+    const needs = [m.heavy, m.cheap, m.fallback, m.escalation, ...Object.values(m.agents ?? {})].some((r) => r?.provider === "openai" && /^auto(-mini)?$/.test(r.model));
+    const cached = JSON.parse((await this.store.getMeta("models.auto")) ?? "null") as { heavy?: string; cheap?: string; at: string } | null;
+    if (cached) this.autoModels = cached;
+    if (!needs && !force) return this.autoModels;
+    if (cached && !force && this.clock().getTime() - Date.parse(cached.at) < 7 * 86_400_000) return this.autoModels;
+    const key = await this.d.keychain.get("provider.openai").catch(() => null);
+    if (!key) return this.autoModels;
+    try {
+      const picked = pickOpenAIModels(await listModels("openai", key, this.d.fetch ?? fetch));
+      if (picked.heavy) {
+        const next = { ...picked, at: this.clock().toISOString() };
+        if (cached?.heavy && cached.heavy !== picked.heavy) this.say({ sender: "learning", recipient: "owner", kind: "note", text: `A newer OpenAI model is available: heavy work now uses ${picked.heavy} (was ${cached.heavy}).` });
+        this.autoModels = next;
+        await this.store.setMeta("models.auto", JSON.stringify(next));
+      }
+    } catch {
+      /* keep the last pick; the next check tries again */
+    }
+    return this.autoModels;
+  }
+  /** Model settings with "auto" replaced by the picked OpenAI models (safe fallbacks if nothing is picked yet). */
+  models(): Settings["models"] {
+    const m = this.d.settings.models;
+    const r = (ref: ModelRef): ModelRef => (ref.provider !== "openai" ? ref : ref.model === "auto" ? { provider: "openai", model: this.autoModels.heavy ?? "gpt-5" } : ref.model === "auto-mini" ? { provider: "openai", model: this.autoModels.cheap ?? "gpt-5-mini" } : ref);
+    return { ...m, heavy: r(m.heavy), cheap: r(m.cheap), fallback: m.fallback ? r(m.fallback) : null, escalation: m.escalation ? r(m.escalation) : null, agents: Object.fromEntries(Object.entries(m.agents ?? {}).map(([a, x]) => [a, r(x as ModelRef)])) };
   }
 
   /* ---------- skills in the open SKILL.md format ---------- */
@@ -1145,7 +1181,7 @@ export class Engine {
       });
       let out = await attempt(this.mainRole(agent));
       // Escalation: if the check fails on a smaller model, try once more on the strong one, with what was missing.
-      const m = this.d.settings.models;
+      const m = this.models();
       const used = m.agents?.[agent as keyof typeof m.agents] ?? m.heavy;
       const strong = m.escalation ?? m.heavy;
       if (out.verdict && !out.verdict.passed && m.escalate !== false && refId(used) !== refId(strong) && !this.stopped) {
@@ -1337,7 +1373,7 @@ export class Engine {
   async arena(agent: string, candidates?: ModelRef[], cases = 3): Promise<{ agent: string; results: { model: string; provider: string; score: number; tokens: number }[]; best: ModelRef | null; summary: string; proposalId?: string }> {
     const name = agent === AGENT ? "Chief of Staff" : Engine.CREW[agent];
     if (!name) throw new Error(`There is no crew member called ${agent}.`);
-    const m = this.d.settings.models;
+    const m = this.models();
     const pool = candidates?.length ? candidates : [m.heavy, m.cheap, ...(m.fallback ? [m.fallback] : []), ...(m.agents?.[agent as keyof typeof m.agents] ? [m.agents[agent as keyof typeof m.agents]!] : [])];
     const uniq = [...new Map(pool.map((r) => [refId(r), r])).values()].slice(0, 4);
     const tasks = this.activity!.practiceCases(agent, cases);
@@ -1486,7 +1522,7 @@ export class Engine {
   private async modelCommand(text: string): Promise<{ reply: string; proposal?: Proposal } | null> {
     const cmd = parseModelCommand(text);
     if (!cmd) return null;
-    const m = this.d.settings.models;
+    const m = this.models();
     if (cmd.kind === "show") return { reply: describeModels(m) };
     if (cmd.kind === "clear-backup") {
       if (!m.fallback) return { reply: "There is no backup model set." };
@@ -1590,6 +1626,7 @@ export class Engine {
     }
     const next = this.writeSettings(applyUpdate(this.d.settings, p.patch));
     this.proposals.delete(id);
+    await this.resolveAuto().catch(() => {});
     this.buildRouter();
     this.emit("settings", next);
     return { applied: true, summary: `Done: ${p.summary}.`, settings: next };
@@ -1710,7 +1747,7 @@ export class Engine {
     const t0 = Date.now();
     try {
       await this.router.chat("cheap", "selftest", { maxTokens: 5, messages: [{ role: "user", content: "Reply with: ok" }] });
-      return { ok: true, message: `Connected. ${refId(this.d.settings.models.cheap)} answered in ${Date.now() - t0} ms.` };
+      return { ok: true, message: `Connected. ${refId(this.models().cheap)} answered in ${Date.now() - t0} ms.` };
     } catch (err) {
       return { ok: false, message: (err as Error).message };
     }

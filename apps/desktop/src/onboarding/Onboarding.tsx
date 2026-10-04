@@ -19,7 +19,7 @@ const FIELDS: { id: string; label: string; hint: string; area?: boolean }[] = [
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState<Step>("llm");
   const [key, setKey] = useState("");
-  const [provider, setProvider] = useState<Provider>("anthropic");
+  const [provider, setProvider] = useState<Provider>("openai");
   const [models, setModels] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [llm, setLlm] = useState<{ ok: boolean; text: string } | null>(null);
@@ -54,6 +54,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     if (err) {
       setBusy(false);
       return setLlm({ ok: false, text: err });
+    }
+    if (provider === "openai") {
+      // OpenAI: deck picks the newest reasoning model for heavy work and the newest mini for quick work, and keeps them current.
+      await saveSettings({ models: { heavy: { provider: "openai", model: "auto" }, cheap: { provider: "openai", model: "auto-mini" } } });
+      await new Promise((r) => setTimeout(r, 1200));
+      const picked = await engineCall<{ heavy?: string; cheap?: string }>("models.auto", { refresh: true }).catch(() => null);
+      const res = await engineCall<{ ok: boolean; message: string }>("models.test").catch((e) => ({ ok: false, message: String(e) }));
+      setBusy(false);
+      return setLlm(res && !res.ok ? { ok: false, text: res.message } : { ok: true, text: picked?.heavy ? `Connected. Heavy work uses ${picked.heavy}, quick work uses ${picked.cheap}. deck moves to newer OpenAI models automatically; change this any time in Settings, Models.` : "Saved. (Preview mode cannot check models.)" });
     }
     if (provider !== "anthropic") {
       // Other providers: pick a model the key can use, and use it for both jobs.
@@ -96,7 +105,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <h3>Connect an LLM</h3>
           <p className="muted">Choose a provider and paste its API key. It goes straight into your system keychain. You can add the others later and switch any time in Settings.</p>
           <select aria-label="Provider" value={provider} onChange={(e) => (setProvider(e.target.value as Provider), setModels([]), setLlm(null))}>
-            {(["anthropic", "openai", "gemini", "openrouter"] as Provider[]).map((p) => (
+            {(["openai", "anthropic", "gemini", "openrouter"] as Provider[]).map((p) => (
               <option key={p} value={p}>
                 {PROVIDER_LABEL[p]}
               </option>
