@@ -47,6 +47,8 @@ async function main() {
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
     "jev.test": () => engine.jevTest(),
+    "keys.test": (p) => engine.testKey(String((p as { key?: string })?.key ?? "") as never),
+    "keys.testAll": () => engine.testAllKeys(),
     "security.status": () => engine.securityStatus(),
     "security.review": () => engine.securityReview(),
     "helpers.recent": () => engine.recentHelpersList(),

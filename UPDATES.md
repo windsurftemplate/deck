@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **268 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **269 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,18 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: API key tests (models and Jev)
+
+**Changed**
+- `testKey` and `testAllKeys`: model keys are tested by listing the models they can use (no tokens spent) and checking that the models you chose are available; Jev with one tiny question. Results: works, missing, rejected, out of credits or rate limited (402 and 429 now reported plainly), cannot connect, or model unavailable. Results are saved; saves are serialized so parallel tests do not overwrite each other.
+- Setup health: new check "Saved keys passed their last test".
+- Settings > API keys: Test per key, a new key is tested right after saving, a Jev row, and Test all keys with a result per key. OpenAI listed first.
+- Manual: settings reference, troubleshooting, command center.
+
+**Verified**
+- Five keys tested together: OpenAI works with auto-pick shown; Claude works but cannot use the chosen model; Gemini out of credits; OpenRouter rejected; Jev works; no chat calls made; setup health lists the three failing keys.
+- 269 TypeScript tests pass (counted); `pnpm check` green.
 
 ## 2026-10-04: Jev (TypeSafe AI) wired in
 

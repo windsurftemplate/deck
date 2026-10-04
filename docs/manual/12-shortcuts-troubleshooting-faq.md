@@ -23,7 +23,9 @@ On Windows and Linux use <kbd>Ctrl</kbd> where this says <kbd>Cmd</kbd>.
 | Install stops at signing: "detritus not allowed" | Fixed in the current installer. Use the latest zip |
 | Windows SmartScreen blocks it | More info, then Run anyway; or unblock the zip in its Properties before unzipping |
 | Models segment stays dark | Add a key in Settings > API keys and press Test |
-| "The API key was rejected" | The key is wrong or revoked; paste a new one |
+| "The API key was rejected" | The key is wrong or revoked; paste a new one. Settings > API keys > **Test all keys** checks every key at once |
+| "Out of credits or limited" | Add credits or raise limits with the provider |
+| "Works, model unavailable" | The key cannot use the model you chose; pick another in Settings > Models |
 | Replies stop with a budget message | You reached the daily token budget; raise it in Settings > Models or wait until tomorrow |
 | "The workspace exists but its key is missing" | Use the Restore box with your recovery key, or restore a backup |
 | Web research says it needs Claude, OpenAI or Gemini | Your main model is on OpenRouter; switch the heavy model |

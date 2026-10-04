@@ -11,7 +11,7 @@ with encrypted memory on your machine and your approval on anything that leaves 
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-12151c?style=flat-square)](#install)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](#development)
-[![Tests](https://img.shields.io/badge/tests-268%20passing-5fd39a?style=flat-square)](#evals)
+[![Tests](https://img.shields.io/badge/tests-269%20passing-5fd39a?style=flat-square)](#evals)
 [![Safety evals](https://img.shields.io/badge/safety%20evals-9%2F9-5fd39a?style=flat-square)](#evals)
 [![Models](https://img.shields.io/badge/models-OpenAI%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Ollama-79a8ff?style=flat-square)](#models)
 [![MCP](https://img.shields.io/badge/MCP-ready-c59bff?style=flat-square)](https://modelcontextprotocol.io)
@@ -165,7 +165,7 @@ Goals are planned into 3 to 7 dated milestones (as issues) and checked every Mon
 <details>
 <summary><b>📊 Command center and setup health</b></summary>
 
-A score out of 100 from twelve checks (keys, fallback model, recent backup, approval preset, tripwire, budget, learning, stale approvals, success rate, automations, Telegram, web research), each with a Fix button, a daily history, and alerts when a check starts failing. Charts for tokens, crew work and performance, brain growth and issues.
+A score out of 100 from thirteen checks (keys and whether they pass their tests, fallback model, recent backup, approval preset, tripwire, budget, learning, stale approvals, success rate, automations, Telegram, web research), each with a Fix button, a daily history, and alerts when a check starts failing. Charts for tokens, crew work and performance, brain growth and issues.
 
 </details>
 
@@ -298,7 +298,7 @@ Built-in reasoning is used on hard work with OpenAI reasoning models, Claude and
 | Memory evals | Recall finds the right facts, follows relationships, prefers current facts over outdated ones (also with the real local embedding model) | 5/5 |
 | Safety evals | With a model that obeys an injected email: sends wait for approval on every preset, rejected and denied actions never run, secrets never reach the model, the wrapper holds, the tripwire stops the run | 9/9 |
 | Baseline gate | Any score drop fails the build (`evals/baseline.json`) | 100% |
-| Unit and contract tests | Every package, plus Rust | 268 TS + 6 Rust |
+| Unit and contract tests | Every package, plus Rust | 269 TS + 6 Rust |
 
 In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
 

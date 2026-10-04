@@ -4,11 +4,12 @@ The command center shows how deck is set up and how the crew is doing. Choose 7,
 
 ## Setup health
 
-A score out of 100, from twelve checks. Each check that fails has a plain fix and a **Fix** button that takes you there.
+A score out of 100, from thirteen checks. Each check that fails has a plain fix and a **Fix** button that takes you there.
 
 | Check | Why it matters |
 |---|---|
 | Key for your main model | Nothing works without it |
+| Saved keys passed their last test | A rejected or out-of-credit key fails quietly otherwise |
 | A fallback model on another provider | An outage at one provider does not stop the crew |
 | A backup in the last 14 days | Your memory survives a lost laptop |
 | Approvals on Cautious or Balanced | Autonomous lets writes happen without asking |

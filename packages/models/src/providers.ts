@@ -237,6 +237,8 @@ export async function listModels(provider: ProviderId, key: string, f: Fetch = f
   const get = async (url: string, headers: Record<string, string>) => {
     const res = await f(url, { headers });
     if (res.status === 401 || res.status === 403) throw new Error(`${provider}: the API key was rejected.`);
+    if (res.status === 429) throw new Error(`${provider}: rate limited or out of credits (429). Check billing and usage limits with the provider.`);
+    if (res.status === 402) throw new Error(`${provider}: payment required (402). Add credits with the provider.`);
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       if (/API_KEY_INVALID|invalid api key/i.test(body)) throw new Error(`${provider}: the API key was rejected.`);

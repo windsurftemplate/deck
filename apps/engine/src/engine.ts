@@ -89,6 +89,14 @@ const MEMORY_KEY = "memory.key";
 const HELPER_SCOPES = ["memory.read", "memory.write", "issues.read", "issues.write", "drafts.write", "web.search", "skills.read", "repo.read", "google.read"];
 /** Tools a custom crew member may be given. Nothing here sends, deletes or delegates. */
 const CUSTOM_SCOPES = ["memory.read", "memory.write", "issues.read", "issues.write", "drafts.write", "web.search", "skills.read"];
+export interface KeyTest {
+  key: string;
+  at: string;
+  ok: boolean;
+  status: "works" | "missing" | "invalid" | "limited" | "unreachable" | "model-missing";
+  message: string;
+  models?: number;
+}
 export interface CustomAgent {
   id: string;
   name: string;
@@ -2255,6 +2263,64 @@ export class Engine {
   }
 
   /** Cheap one-shot model test for onboarding. */
+  /**
+   * Tests one saved key without spending tokens: language-model keys by listing the models they can use (and
+   * whether the model you chose is among them); Jev with one tiny question. Results are kept for setup health.
+   */
+  async testKey(name: "anthropic" | "openai" | "gemini" | "openrouter" | "jev"): Promise<KeyTest> {
+    const at = this.clock().toISOString();
+    const done = async (r: Omit<KeyTest, "at" | "key">): Promise<KeyTest> => {
+      const out = { key: name, at, ...r };
+      // Saves one at a time, so tests running together do not overwrite each other's results.
+      this.keyTestSave = this.keyTestSave.then(async () => {
+        const all = JSON.parse((await this.store.getMeta("keys.tests")) ?? "{}") as Record<string, KeyTest>;
+        all[name] = out;
+        await this.store.setMeta("keys.tests", JSON.stringify(all));
+      });
+      await this.keyTestSave;
+      return out;
+    };
+    if (name === "jev") {
+      if (!(await this.d.keychain.get("tool.jev").catch(() => null))) return done({ ok: false, status: "missing", message: "No Jev key saved." });
+      try {
+        return done({ ok: true, status: "works", message: await this.jevTest() });
+      } catch (e) {
+        const m = (e as Error).message;
+        return done({ ok: false, status: /rejected/.test(m) ? "invalid" : /busy|rate/.test(m) ? "limited" : "unreachable", message: m });
+      }
+    }
+    const key = await this.d.keychain.get(`provider.${name}`).catch(() => null);
+    if (!key) return done({ ok: false, status: "missing", message: `No ${PROVIDER_LABEL[name]} key saved.` });
+    try {
+      const ids = await listModels(name, key, this.d.fetch ?? fetch);
+      const m = this.models();
+      const chosen = [m.heavy, m.cheap, m.fallback, m.escalation].filter((r): r is ModelRef => !!r && r.provider === name).map((r) => r.model);
+      const missingModels = chosen.filter((id) => ids.length && !ids.includes(id));
+      const auto = name === "openai" ? pickOpenAIModels(ids) : null;
+      return done({
+        ok: missingModels.length === 0,
+        status: missingModels.length ? "model-missing" : "works",
+        message: missingModels.length
+          ? `The key works, but it cannot use ${missingModels.join(", ")}. Pick another model in Settings, Models.`
+          : `Works. ${ids.length} models available${chosen.length ? `, including ${[...new Set(chosen)].join(" and ")}` : ""}.${auto?.heavy ? ` Auto-pick: ${auto.heavy} and ${auto.cheap}.` : ""}`,
+        models: ids.length,
+      });
+    } catch (e) {
+      const msg = (e as Error).message.replace(/^\w+: /, "");
+      const status = /rejected/.test(msg) ? "invalid" : /429|402|credits|rate/.test(msg) ? "limited" : "unreachable";
+      return done({ ok: false, status, message: status === "invalid" ? "The key was rejected. Paste a new one." : status === "limited" ? msg.charAt(0).toUpperCase() + msg.slice(1) : `Could not reach ${PROVIDER_LABEL[name]}: ${msg}` });
+    }
+  }
+  private keyTestSave: Promise<void> = Promise.resolve();
+  /** Tests every saved key, in parallel. */
+  async testAllKeys(): Promise<KeyTest[]> {
+    const names = (["openai", "anthropic", "gemini", "openrouter"] as const).filter(Boolean);
+    const saved: ("anthropic" | "openai" | "gemini" | "openrouter" | "jev")[] = [];
+    for (const n of names) if (await this.d.keychain.get(`provider.${n}`).catch(() => null)) saved.push(n);
+    if (await this.d.keychain.get("tool.jev").catch(() => null)) saved.push("jev");
+    return Promise.all(saved.map((n) => this.testKey(n)));
+  }
+
   async testModel(): Promise<{ ok: boolean; message: string }> {
     const t0 = Date.now();
     try {
@@ -2458,6 +2524,11 @@ export class Engine {
     const failing = (this.automations?.list() ?? []).filter((x) => x.enabled && x.lastResult?.startsWith("Failed"));
     const c: { id: string; label: string; ok: boolean | null; weight: number; fix?: string; go?: string }[] = [
       { id: "key", label: `Key for your main model (${PROVIDER_LABEL[s.models.heavy.provider]})`, ok: await has(`provider.${s.models.heavy.provider}`), weight: 15, fix: "Add the key in Settings, Models.", go: "settings" },
+      await (async () => {
+        const tests = Object.values(JSON.parse((await this.store.getMeta("keys.tests")) ?? "{}") as Record<string, KeyTest>).filter((t) => t.status !== "missing");
+        const bad = tests.filter((t) => !t.ok);
+        return { id: "keys-work", label: "Saved keys passed their last test", ok: tests.length === 0 ? null : bad.length === 0, weight: 8, fix: `Failing: ${bad.map((t) => `${t.key} (${t.message})`).join("; ")}. Test or replace them in Settings, API keys.`, go: "settings" };
+      })(),
       { id: "fallback", label: "A fallback model on another provider", ok: !!s.models.fallback && s.models.fallback.provider !== s.models.heavy.provider, weight: 8, fix: "Pick a fallback from a different provider, so an outage does not stop the crew.", go: "settings" },
       { id: "backup", label: "A backup in the last 14 days", ok: days(await this.store.getMeta("backup.last")) <= 14, weight: 12, fix: "Make an encrypted backup in Settings, Backups.", go: "settings" },
       { id: "preset", label: "Approvals on Cautious or Balanced", ok: s.preset !== "autonomous", weight: 8, fix: "Autonomous lets the crew change things without asking. Balanced is safer.", go: "settings" },

@@ -1070,6 +1070,42 @@ describe("Jev (TypeSafe AI)", () => {
   });
 });
 
+describe("API key tests", () => {
+  it("tests each saved key without spending tokens, explains failures, and feeds setup health", async () => {
+    const calls: string[] = [];
+    const f = (async (u: string) => {
+      calls.push(u.split("?")[0]!);
+      if (u.startsWith("https://api.openai.com/v1/models")) return new Response(JSON.stringify({ data: [{ id: "gpt-5.5" }, { id: "gpt-5.5-mini" }, { id: "gpt-4o" }] }));
+      if (u.startsWith("https://api.anthropic.com/v1/models")) return new Response(JSON.stringify({ data: [{ id: "claude-haiku-4-5-20251001" }] }));
+      if (u.includes("generativelanguage")) return new Response("", { status: 429 });
+      if (u.startsWith("https://openrouter.ai")) return new Response("", { status: 401 });
+      if (u.startsWith("https://api.typesafe.ai/")) return new Response(JSON.stringify({ model: "jev-1.13.0", answers: { urgent: { type: "noul", noul: 0.95 } }, usage: { input_tokens: 10, output_tokens: 2 } }));
+      return offline(u);
+    }) as unknown as typeof fetch;
+    const kc = memoryKeychain({ "provider.anthropic": ANTHROPIC, "provider.openai": "sk-proj-" + "a".repeat(40), "provider.gemini": "AIza" + "b".repeat(35), "provider.openrouter": "sk-or-" + "c".repeat(40), "tool.jev": "jev-test-key" });
+    const e = new Engine({ dataDir: dir(), keychain: kc, settings: DEFAULTS, fetch: f, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model) });
+    await e.open();
+    const r = Object.fromEntries((await e.testAllKeys()).map((t) => [t.key, t]));
+    expect(r.openai).toMatchObject({ ok: true, status: "works", models: 3 });
+    expect(r.openai!.message).toContain("Auto-pick: gpt-5.5 and gpt-5.5-mini");
+    // The Claude key works, but the chosen heavy model is not available to it.
+    expect(r.anthropic).toMatchObject({ ok: false, status: "model-missing" });
+    expect(r.anthropic!.message).toContain("cannot use claude-sonnet-5");
+    expect(r.gemini).toMatchObject({ ok: false, status: "limited" });
+    expect(r.gemini!.message).toMatch(/out of credits/);
+    expect(r.openrouter).toMatchObject({ ok: false, status: "invalid", message: "The key was rejected. Paste a new one." });
+    expect(r.jev).toMatchObject({ ok: true, status: "works" });
+    expect(calls.some((u) => /chat\/completions|messages$|generateContent/.test(u))).toBe(false); // no tokens spent on model keys
+    const h = await e.health();
+    const keys = h.checks.find((c) => c.id === "keys-work")!;
+    expect(keys.ok).toBe(false);
+    for (const k of ["anthropic", "gemini", "openrouter"]) expect(keys.fix).toContain(`${k} (`);
+    expect(keys.fix).not.toContain("openai (");
+    expect((await e.testKey("jev")).status).toBe("works");
+    await e.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");
