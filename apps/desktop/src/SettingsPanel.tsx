@@ -13,6 +13,7 @@ import { BackupCard } from "./Backup";
 import { LabsCard } from "./Labs";
 import { ThinkingCard } from "./Thinking";
 import { CustomCrewCard, HelpersCard } from "./CustomCrew";
+import { SecurityCard } from "./Security";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [s, setS] = useState<Settings | null>(null);
@@ -59,6 +60,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <EmbeddingsCard s={s} onSaved={setS} />
       <TelegramCard s={s} onSaved={setS} />
       <CrewCard />
+      <SecurityCard s={s} onSaved={setS} />
       <CustomCrewCard />
       <HelpersCard s={s} onSaved={setS} />
       <VoiceCard s={s} onSaved={setS} />

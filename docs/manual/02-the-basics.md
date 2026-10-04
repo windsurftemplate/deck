@@ -11,6 +11,7 @@ This chapter explains the ideas you will meet everywhere in the app. Read it onc
 | **Operations** | Tracker hygiene, admin drafts, commitments | Send, delete, pay |
 | **Engineering** | Breaks work into issues, records decisions | Merge code, deploy |
 | **Research** | Web research with sources, weekly self-review of the crew | Contact anyone, send anything |
+| **CISO** | deck's own security: a risk opinion on every approval card, security questions, a weekly security review that opens issues for high-risk findings | Approve, reject, block or change anything: it only advises |
 
 Crew members cannot hand work further down. Only the Chief of Staff delegates.
 
@@ -32,7 +33,7 @@ The Chief of Staff and every crew member (yours included) can create temporary *
 
 ### How many agents, and the limits
 
-You have the Chief of Staff, the four built-in crew members, up to 8 of your own, and temporary helpers for each task.
+You have the Chief of Staff, five built-in crew members (GTM, Operations, Engineering, Research, CISO), up to 8 of your own, and temporary helpers for each task.
 
 | What | Limit |
 |---|---|
@@ -74,6 +75,8 @@ Every tool an agent can use has a kind:
 - **Read**: looking things up (memory, issues, the web). Never needs approval.
 - **Write**: changing something on your machine (creating an issue, saving a fact, writing a draft).
 - **External**: anything that leaves your machine (sending email, posting). Always needs approval, on every preset.
+
+Before you decide, the **CISO** adds its opinion to the card: low, medium or high risk, and what to check (for example, a recipient that is not in your memory). It is advice only; you still decide. Turn it off in Settings > CISO.
 
 Your preset decides the rest:
 

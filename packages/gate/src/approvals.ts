@@ -12,6 +12,8 @@ export interface Approval {
   scope: string;
   createdAt: number;
   status: ApprovalStatus;
+  /** A security opinion (from the CISO) shown next to the request. Advice only: it never decides. */
+  review?: { risk: "low" | "medium" | "high"; text: string; by: string };
 }
 
 /** Holds external actions until the owner decides. Nothing in here runs without an explicit approve. */
@@ -30,6 +32,15 @@ export class ApprovalQueue {
     const decision = new Promise<Approval>((res) => this.waiters.set(approval.id, res));
     this.onChange({ ...approval });
     return { approval: { ...approval }, decision };
+  }
+
+  /** Attaches an advisory review to a pending request. It changes nothing about whether the action runs. */
+  setReview(id: string, review: { risk: "low" | "medium" | "high"; text: string; by: string }): boolean {
+    const a = this.items.get(id);
+    if (!a || a.status !== "pending") return false;
+    a.review = { risk: review.risk, text: review.text.slice(0, 600), by: review.by };
+    this.onChange({ ...a });
+    return true;
   }
 
   decide(id: string, approve: boolean): Approval {

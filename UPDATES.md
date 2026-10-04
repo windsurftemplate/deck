@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 67 commits.
-Tests (counted): **261 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
+Tests (counted): **263 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -284,10 +284,27 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 65. `feat: capture business cards, whiteboards and documents into the second brain (text only, never people)`
 66. `feat: investigation board; docs`
 67. `feat: helper agents (agents create temporary helpers under strict limits)`
+68. `feat: CISO crew member (approval risk reviews, security status, weekly review)`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: CISO
+
+**Changed**
+- New built-in crew member `ciso` (role and policy files): memory and issue access, drafts, skills, telemetry, `security.read`, web research and helpers; no settings changes, no sending, no deleting.
+- Approval reviews: when a request waits for the owner, the CISO (cheap model) adds an advisory review: risk low, medium or high, and one or two sentences on what to check. The request detail is passed as untrusted. `ApprovalQueue.setReview` attaches it without deciding anything. On by default (Settings > CISO).
+- `security_status` tool and `securityStatus()`: preset, budget, setup health and newly failing checks, tripwire alerts, scanner flags, refused actions, approvals with their risk, Labs features on, plugins and their trust, federation peers, GitHub and Google access, Ollama address (warns if not local), skills awaiting approval, custom crew and helper settings.
+- Weekly security review (Mondays 09:30, or on demand): a checked CISO task that rates findings and opens an issue for each high one; notification and Telegram.
+- Tripwire stops post a CISO incident note.
+- UI: review notes on chat and deck approval cards (with a "reviewing" state), Vault station now the CISO's, Settings > CISO card (switch, status, review now), CISO in crew lists and Crew chat.
+- Manual: basics, deck stations, safety, settings reference.
+
+**Verified**
+- A pending send gets a high-risk review attached while staying pending; the detail reached the reviewer wrapped as untrusted; review after a decision is refused.
+- Security status reflects plugins and trust settings; the weekly review calls security_status and reports; the CISO has no sending or settings tools.
+- 263 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: Helper agents (agents creating agents)
 

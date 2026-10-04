@@ -19,7 +19,7 @@ export const STATIONS: Station[] = [
   { id: "science", name: "Science lab", crew: "Research", agent: "research", color: 0xff9dd2, about: "Web research with sources, and the weekly self-review of the crew." },
   { id: "archive", name: "Archive", crew: "Memory", color: 0x9fb7ff, about: "Encrypted memory: facts, past work and skills. Lights up when the crew learns." },
   { id: "core", name: "Reactor core", crew: "Models", color: 0xe9fbff, about: "The models in use. Glows while the crew works; dark when stopped." },
-  { id: "vault", name: "Vault", crew: "Approvals", color: 0xff8f6b, about: "Every action that needs you waits here. Beams go out when you approve one." },
+  { id: "vault", name: "Vault", crew: "CISO", agent: "ciso", color: 0xff8f6b, about: "Security. Every action that needs you waits here, with the CISO's opinion on its risk. Beams go out when you approve one." },
 ];
 
 export const stationForAgent = (agent: string) => STATIONS.find((s) => s.agent === agent);

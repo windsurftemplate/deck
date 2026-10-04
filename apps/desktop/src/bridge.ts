@@ -182,7 +182,7 @@ export async function restoreRecoveryKey(key: string): Promise<string | null> {
   }
 }
 
-export type Approval = { id: string; agent: string; summary: string; detail: string; status: "pending" | "approved" | "rejected" | "expired" };
+export type Approval = { id: string; agent: string; summary: string; detail: string; status: "pending" | "approved" | "rejected" | "expired"; review?: { risk: "low" | "medium" | "high"; text: string; by: string } };
 export type ActionRecord = { tool: string; summary: string; status: "done" | "waiting" | "denied" | "failed"; approvalId?: string; result?: string };
 
 /** Engine events (approvals, finished actions). Returns an unsubscribe function. */

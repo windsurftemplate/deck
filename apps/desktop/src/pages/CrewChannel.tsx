@@ -12,6 +12,7 @@ const WHO: Record<string, { name: string; color: string }> = {
   ops: { name: "Operations", color: "#ffd27a" },
   code: { name: "Engineering", color: "#7cf5b0" },
   research: { name: "Research", color: "#ff9dd2" },
+  ciso: { name: "CISO", color: "#ff8f6b" },
   verifier: { name: "Verifier", color: "#9fb7ff" },
   owner: { name: "You", color: "#ff9a3d" },
 };

@@ -15,7 +15,7 @@ The Deck page shows your crew as astronauts on a space station sitting on an ast
 | Science lab | Research | Research tasks |
 | Archive | Memory | Facts, documents and skills; lights up when the crew learns |
 | Reactor core | Models | Tokens used today against your budget; glows while the crew works, dims when stopped |
-| Vault | Approvals | Everything waiting for you; sends a beam when you approve |
+| Vault | CISO | Everything waiting for you, each with the CISO's risk opinion; sends a beam when you approve |
 
 ### Status rings and labels
 

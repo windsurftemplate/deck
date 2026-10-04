@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { engineCall, onEngineEvent } from "../bridge";
 
-const BUILT_IN: [string, string][] = [["chief-of-staff", "Chief of Staff"], ["gtm", "GTM"], ["ops", "Operations"], ["code", "Engineering"], ["research", "Research"]];
+const BUILT_IN: [string, string][] = [["chief-of-staff", "Chief of Staff"], ["gtm", "GTM"], ["ops", "Operations"], ["code", "Engineering"], ["research", "Research"], ["ciso", "CISO"]];
 
 /** Every crew member as [id, name]: the built-in five plus any you created. Updates when the crew changes. */
 export function useCrew(): [string, string][] {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Approval } from "../bridge";
 import { DeckScene, type DeckStats } from "./scene";
+import { ReviewNote } from "../ui/Review";
 import { STATIONS, STATUS_TEXT, stationForAgent, stationStatus } from "./stations";
 
 export interface DeckState {
@@ -146,6 +147,7 @@ export function Deck3D({ state, signal, onDecide, onOpenBrain, stats, tours = fa
               {pendingHere.map((a) => (
                 <div key={a.id} className="deck-approval">
                   <p>{a.summary}</p>
+                  <ReviewNote review={a.review} />
                   <div className="row">
                     <button className="primary" type="button" onClick={() => onDecide(a.id, true)}>
                       Approve

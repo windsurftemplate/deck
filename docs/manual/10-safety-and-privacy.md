@@ -10,6 +10,10 @@ These are in code, not settings. No preset, pack, crew rule, chat request or lea
 - A planted secret (the tripwire, or honeytoken) stops all agents if any tool call ever contains it.
 - Crew members cannot delegate. Every task stops after a set number of steps.
 
+## The CISO
+
+A crew member dedicated to deck's own security. It gives a risk opinion (low, medium, high) on every approval card, answers security questions using a live security status (tripwire alerts, scanner flags, refused actions, approvals, Labs features, plugins, federation, Google and GitHub access, setup health), and runs a review every Monday at 09:30 that opens an issue for each high-risk finding. After a tripwire stop it posts an incident note. It advises only: it cannot approve, reject, block or change settings. Settings > CISO has the review switch, **Show security status** and **Run security review now**.
+
 ## The input scanner
 
 Text from outside is checked for signs that it is trying to give orders: "ignore previous instructions", fake system messages, attempts to change the AI's persona, requests for keys, requests to hide something from you, image links that carry data out, and long encoded blocks. Hidden characters that can conceal instructions are removed. Flagged content carries a warning every time an agent reads it.

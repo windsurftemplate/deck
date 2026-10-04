@@ -46,6 +46,8 @@ async function main() {
     "deck.stats": () => engine.deckStats(),
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
+    "security.status": () => engine.securityStatus(),
+    "security.review": () => engine.securityReview(),
     "helpers.recent": () => engine.recentHelpersList(),
     "helpers.keep": (p) => { const q = p as { id?: string; name?: string }; return engine.keepHelper(String(q?.id ?? ""), q?.name); },
     "capture.read": (p) => engine.capture(p as never),

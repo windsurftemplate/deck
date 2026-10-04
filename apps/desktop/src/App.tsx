@@ -14,6 +14,7 @@ import { Tools } from "./pages/Tools";
 import { Automations } from "./pages/Automations";
 import { Goals } from "./pages/Goals";
 import { Board } from "./pages/Board";
+import { ReviewNote, type Review } from "./ui/Review";
 import { Help } from "./help/Help";
 import { MicButton } from "./Voice";
 import { HandsFree } from "./HandsFree";
@@ -29,6 +30,23 @@ type Line = { from: "you" | "agent" | "system"; text: string; typing?: boolean; 
 
 export function App() {
   const [phase, setPhase] = useState<"boot" | "onboarding" | "shell">("boot");
+  const [reviews, setReviews] = useState<Record<string, Review>>({});
+  const [cisoOn, setCisoOn] = useState(true);
+  useEffect(() => {
+    void loadSettings().then((x) => setCisoOn(x.ciso?.reviews !== false)).catch(() => {});
+    let off: (() => void) | undefined;
+    void onEngineEvent((ev, data) => {
+      const a = data as Approval | undefined;
+      if (ev === "approval" && a?.review) setReviews((r) => ({ ...r, [a.id]: a.review! }));
+    }).then((u) => (off = u));
+    return () => {
+      try {
+        off?.();
+      } catch {
+        /* gone */
+      }
+    };
+  }, []);
   const [labs3d, setLabs3d] = useState(false);
   const [tours, setTours] = useState(false);
   useEffect(() => void loadSettings().then((s) => (setLabs3d(!!s.labs?.powerUp3d), setTours(!!s.labs?.tours))).catch(() => {}), [phase]);
@@ -316,6 +334,7 @@ export function App() {
                     ))}
                   </ul>
                 )}
+                {l.approval && !l.settled && <ReviewNote review={reviews[l.approval.id] ?? l.approval.review} waiting={cisoOn} />}
                 {l.approval && !l.settled && (
                   <div className="row proposal">
                     <button

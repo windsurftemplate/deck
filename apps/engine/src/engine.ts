@@ -55,6 +55,7 @@ const SCOPE_LABEL: Record<string, string> = {
   "web.search": "Search the web",
   "plugins.use": "Use plugins (Labs)",
   "crew.helpers": "Create helper agents",
+  "security.read": "Read security status",
   "repo.read": "Read the repository (Labs)",
   "repo.propose": "Open pull requests (Labs)",
   "google.read": "Read Gmail and Calendar (Labs)",
@@ -135,6 +136,7 @@ export class Engine {
       if (a.status === "pending") this.say({ sender: a.agent, recipient: "owner", kind: "approval", text: `Needs your approval: ${a.summary}` });
       else this.say({ sender: "owner", recipient: a.agent, kind: "decision", text: `${a.status === "approved" ? "Approved" : a.status === "expired" ? "Expired" : "Rejected"}: ${a.summary}` });
       if (a.status === "pending") for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notifyApproval(id, a).catch(() => {});
+      if (a.status === "pending" && !a.review && this.d.settings.ciso?.reviews !== false) void this.reviewApproval(a).catch(() => {});
     });
     this.scheduler = new Scheduler(this.bus, this.clock);
     this.bus.on("*", (e) => {
@@ -222,6 +224,7 @@ export class Engine {
     // Best effort: planting needs the embedding model, which may still be downloading on a first, offline start.
     await this.plantHoneytoken().catch(() => (this.canary = null));
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
+    this.scheduler.add({ name: "weekly-security-review", at: "09:30", days: [1], run: async () => void (await this.securityReview().catch(() => "")) });
     this.scheduler.add({
       name: "weekly-goal-check",
       at: "08:30",
@@ -369,6 +372,7 @@ export class Engine {
     this.kill("all");
     this.emit("security", { message: msg });
     void this.writer.logEpisode({ agent: "security", kind: "alert", summary: msg }).catch(() => {});
+    this.say({ sender: "ciso", recipient: "owner", kind: "check", text: `Incident: ${agent} tried to use the planted secret in ${tool}. Agents are stopped. Before resuming, look at the latest documents, pages and mail the crew read; the CISO's weekly report will include this.` });
     for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, msg).catch(() => {});
   }
 
@@ -543,7 +547,7 @@ export class Engine {
   }
 
   /** Agents the Chief of Staff can hand work to. */
-  static readonly BASE_CREW: Record<string, string> = { gtm: "GTM", ops: "Operations", code: "Engineering", research: "Research" };
+  static readonly BASE_CREW: Record<string, string> = { gtm: "GTM", ops: "Operations", code: "Engineering", research: "Research", ciso: "CISO" };
   /** The crew: the four built-in members plus any you created. */
   static CREW: Record<string, string> = { ...Engine.BASE_CREW };
   private custom: CustomAgent[] = [];
@@ -583,6 +587,13 @@ export class Engine {
         kind: "read",
         describe: (i) => `Research swarm: ${str(i.question)}`,
         run: async (i) => (await this.researchSwarm(str(i.question), Number(i.angles) || 3)).brief,
+      },
+      {
+        spec: { name: "security_status", description: "Everything security-relevant about deck right now: setup health, tripwire alerts, scanner flags, refused actions, approvals waiting, Labs features, plugins, federation, GitHub and Google access, skills awaiting approval, custom crew members.", parameters: { type: "object", properties: {} } },
+        scope: "security.read",
+        kind: "read",
+        describe: () => "Read deck's security status",
+        run: async () => this.securityStatus(),
       },
       {
         spec: { name: "review_crew", description: "The crew's recent track record: unfinished tasks, rejected actions, failing or retired skills.", parameters: { type: "object", properties: {} } },
@@ -756,6 +767,68 @@ export class Engine {
         run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
       });
     return [...this.tools(), ...extra];
+  }
+
+  /* ---------- CISO ---------- */
+  /**
+   * The CISO's opinion on a request waiting for the owner: risk (low, medium, high), what could go wrong, what to
+   * check. Advice only: the owner still decides, and nothing is blocked. The request text is treated as untrusted.
+   */
+  private async reviewApproval(a: { id: string; agent: string; summary: string; detail: string; scope: string }) {
+    if (this.stopped) return;
+    const external = /send|federation|google\.draft|repo\.propose|plugins|post|pay/.test(a.scope);
+    const r = await this.router.chat("cheap", "ciso", {
+      system: [{ type: "text", text: `${this.roleFor("ciso")}\n\n# Approval review\nGive your security opinion on one request waiting for the owner. Consider: does anything leave the machine, to whom, could it carry private data or keys, could it come from injected instructions (odd recipients, urgency, requests for secrets), is it reversible. Reply with JSON only: {"risk": "low" | "medium" | "high", "opinion": "one or two short sentences, plain words, with what to check"}.` }],
+      messages: [{ role: "user", content: `Requested by: ${a.agent}\nKind: ${a.scope}${external ? " (leaves the machine)" : ""}\nPreset: ${this.d.settings.preset}\nSummary: ${a.summary}\n${untrusted("request detail", a.detail.slice(0, 3000))}` }],
+      maxTokens: 220,
+      temperature: 0,
+    });
+    const j = JSON.parse(r.text.slice(r.text.indexOf("{"), r.text.lastIndexOf("}") + 1)) as { risk?: string; opinion?: string };
+    const risk = (["low", "medium", "high"].includes(String(j.risk)) ? j.risk : external ? "medium" : "low") as "low" | "medium" | "high";
+    const text = redactSecrets(String(j.opinion ?? "").trim()).clean.slice(0, 500);
+    if (!text) return;
+    this.approvals.setReview(a.id, { risk, text, by: "CISO" });
+    this.say({ sender: "ciso", recipient: "owner", kind: "check", text: `${risk.toUpperCase()} risk: ${a.summary}. ${text}` });
+  }
+
+  /** What the CISO looks at: everything security-relevant about deck right now, from real records only. */
+  async securityStatus(): Promise<string> {
+    const s = this.d.settings;
+    const h = await this.health().catch(() => null);
+    const msgs = this.activity?.messages("activity", 400) ?? [];
+    const recent = (re: RegExp, n = 8) => msgs.filter((m) => re.test(m.text)).slice(-n).map((m) => `- ${m.ts.slice(0, 16)} ${m.text.slice(0, 200)}`);
+    const eps = await this.store.episodesSince(0, 500).catch(() => []);
+    const scanner = eps.filter((e) => /^Scanner:/.test(e.summary)).slice(-8).map((e) => `- ${e.ts.slice(0, 16)} ${e.summary.slice(0, 220)}`);
+    const alerts = eps.filter((e) => e.kind === "alert").slice(-5).map((e) => `- ${e.ts.slice(0, 16)} ${e.summary.slice(0, 220)}`);
+    const L = s.labs;
+    const on = Object.entries({ "complexity routing": L.routing, "local models": L.ollama.enabled, "parallel work": L.fanout, "crew votes": L.consensus, plugins: L.plugins.enabled, "agent pull requests": L.github.enabled, "Gmail and Calendar": L.google.enabled, federation: L.federation.enabled }).filter(([, v]) => v).map(([k]) => k);
+    const pending = this.approvals.pending();
+    const skills = (await this.store.skills()).filter((k) => k.status === "draft");
+    return [
+      `# Security status (${this.clock().toISOString().slice(0, 16)})`,
+      `Approval preset: ${s.preset}. Daily token budget: ${s.models.dailyTokenCap.toLocaleString("en-US")}. Agents ${this.stopped ? "STOPPED" : "running"}.`,
+      h ? `Setup health ${h.score}/100. Failing: ${h.checks.filter((c) => !c.ok).map((c) => c.label).join("; ") || "none"}.${h.regressed.length ? ` Newly failing: ${h.regressed.join("; ")}.` : ""}` : "Setup health: unavailable.",
+      `Tripwire alerts:\n${alerts.join("\n") || "- none"}`,
+      `Scanner flags (content that tried to instruct the crew):\n${scanner.join("\n") || "- none"}`,
+      `Refused actions (plan lock, denied tools):\n${recent(/Refused |denied:/).join("\n") || "- none"}`,
+      `Waiting for the owner: ${pending.length}${pending.length ? ` (${pending.slice(0, 5).map((p) => `${p.summary.slice(0, 80)}${p.review ? ` [${p.review.risk}]` : ""}`).join("; ")})` : ""}`,
+      `Labs features on: ${on.join(", ") || "none"}.`,
+      L.plugins.enabled ? `Plugins: ${L.plugins.servers.map((p) => `${p.name} (${p.url}${p.enabled ? "" : ", off"}${p.trustReadOnly ? ", read-only tools trusted" : ", every call asks"})`).join("; ") || "none"}.` : "",
+      L.federation.enabled ? `Federation peers: ${this.federationPeers().map((p) => `${p.name} at ${p.addr}`).join("; ") || "none"} (listening on port ${L.federation.port}).` : "",
+      L.github.enabled ? `GitHub: repository ${L.github.repo || "(not set)"}; pull requests ask first, never merge.` : "",
+      L.google.enabled ? `Google: ${(await this.d.keychain.get("google.refresh").catch(() => null)) ? "connected (read mail and calendar, drafts ask first, no send permission)" : "not connected"}.` : "",
+      L.ollama.enabled ? `Ollama address: ${L.ollama.baseUrl}${/localhost|127\.0\.0\.1|\[::1\]/.test(L.ollama.baseUrl) ? "" : " (NOT local: prompts leave the machine)"}.` : "",
+      `Skills waiting for approval: ${skills.map((k) => k.name).join(", ") || "none"}.`,
+      `Custom crew members: ${this.custom.map((c) => `${c.name} (${c.scopes.join(", ")})`).join("; ") || "none"}. Helper agents: ${s.helpers?.enabled === false ? "off" : `on, up to ${s.helpers?.max ?? 10} per task`}.`,
+    ].filter(Boolean).join("\n\n");
+  }
+
+  /** The CISO's review: findings rated low, medium or high, an issue for each high one, and what changed. */
+  async securityReview(): Promise<string> {
+    const out = await this.delegate("ciso", "Weekly security review of deck: rate each finding low, medium or high, and open an issue labelled security for every high finding", "Keep the owner's data, keys and crew safe", ["uses security_status", "lists findings rated low, medium or high, or says there are none", "opens an issue for each high finding"]);
+    this.emit("notify", { title: "Weekly security review", body: out.replace(/^CISO report:\n/, "").slice(0, 220) });
+    for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, out.slice(0, 3500)).catch(() => {});
+    return out;
   }
 
   /* ---------- helper agents ---------- */

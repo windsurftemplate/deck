@@ -1,0 +1,21 @@
+{
+  "agent": "ciso",
+  "allow": [
+    "memory.read",
+    "issues.read",
+    "issues.write",
+    "drafts.write",
+    "skills.read",
+    "telemetry.read",
+    "security.read",
+    "web.search",
+    "crew.helpers"
+  ],
+  "requiresApproval": [],
+  "deny": [
+    "gmail.send",
+    "*.delete",
+    "payments.*",
+    "crew.configure"
+  ]
+}

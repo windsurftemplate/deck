@@ -549,3 +549,10 @@ input, textarea, select { font-family: var(--font); }
 .recent-helpers { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .recent-helpers li { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--seam); border-radius: var(--r); }
 .recent-helpers p { margin: 2px 0 0; font-size: 13px; }
+.review { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; padding: 7px 10px; border-radius: var(--r); font-size: 13px; line-height: 1.45; border: 1px solid var(--seam); background: var(--hull-2); }
+.review svg { flex: none; margin-top: 2px; }
+.review.low { border-color: rgba(95, 211, 154, .35); } .review.low svg { color: var(--ok); }
+.review.medium { border-color: rgba(242, 179, 74, .45); } .review.medium svg { color: var(--warn); }
+.review.high { border-color: rgba(240, 106, 99, .55); background: rgba(240, 106, 99, .08); } .review.high svg { color: var(--fail); }
+.review.pending { color: var(--muted); }
+.security-out { white-space: pre-wrap; font-family: var(--mono); font-size: 12px; background: var(--void); border: 1px solid var(--seam); border-radius: var(--r); padding: 10px 12px; max-height: 360px; overflow: auto; }
