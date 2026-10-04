@@ -511,6 +511,32 @@ describe("research agent", () => {
   });
 });
 
+describe("encrypted backups", () => {
+  it("backs up, refuses a wrong passphrase, and restores everything on a fresh machine", async () => {
+    const out = dir();
+    const a = make({ keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }) });
+    await a.open();
+    await a.issues().create({ title: "Sign Acme", by: "owner" });
+    await a.brain.addText("Pricing", "2k per month for the pilot");
+    await expect(a.backupNow("short", out)).rejects.toThrow(/at least 12/);
+    const { path } = await a.backupNow("correct horse battery", out);
+    const file = readFileSync(path);
+    expect(file.subarray(0, 8).toString()).toBe("DECKBAK1");
+    expect(file.includes(Buffer.from("Sign Acme"))).toBe(false); // sealed
+    await a.close();
+    const fresh = memoryKeychain({});
+    const b = make({ keychain: fresh });
+    await b.open();
+    await expect(b.restoreBackup(file.toString("base64"), "wrong passphrase!")).rejects.toThrow(/Wrong passphrase/);
+    expect((await b.restoreBackup(file.toString("base64"), "correct horse battery")).createdAt).toMatch(/^20/);
+    const c = new Engine({ dataDir: (b as unknown as { d: { dataDir: string } }).d.dataDir, keychain: fresh, settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64) });
+    await c.open();
+    expect((await c.issues().list()).map((i) => i.title)).toEqual(["Sign Acme"]);
+    expect((await c.brain.documents()).map((d) => d.title)).toEqual(["Pricing"]);
+    await c.close();
+  });
+});
+
 describe("smarter learning", () => {
   const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
   it("turns your documents into facts once, and skips web pages", async () => {

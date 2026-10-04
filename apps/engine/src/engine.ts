@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, draftGuidance, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
@@ -15,6 +16,7 @@ import { SqliteTrackerStore, Tracker } from "@deck/tracker";
 import { getPack, listPacks } from "@deck/packs";
 import type { Keychain } from "./keychain.js";
 import { Threads } from "./threads.js";
+import { checkPassphrase, openBackup, sealBackup } from "./backup.js";
 import { Brain } from "./brain.js";
 import { Activity, type CrewMessage } from "./activity.js";
 import { Automations, checkAutomation, describeSchedule, parseDays, type NewAutomation } from "./automations.js";
@@ -1207,6 +1209,48 @@ export class Engine {
     this.emit("notify", { title: `Automation: ${a.name}`, body: result.slice(0, 200) });
     for (const chat of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(chat, note).catch(() => {});
     return result;
+  }
+
+  /* ---------- backups ---------- */
+  /**
+   * Writes an encrypted backup (workspace, memory key and settings, sealed with your passphrase).
+   * Saved under ~/Documents/deck-backups unless a folder is given. Returns where it went.
+   */
+  async backupNow(passphrase: string, folder?: string): Promise<{ path: string; bytes: number }> {
+    const perr = checkPassphrase(passphrase);
+    if (perr) throw new Error(perr);
+    const dir = folder ?? join(homedir(), "Documents", "deck-backups");
+    mkdirSync(dir, { recursive: true });
+    // A consistent copy of the encrypted workspace (same cipher and key as the live file).
+    const tmp = join(this.d.dataDir, `backup-${Date.now()}.db`);
+    this.store.connection.prepare("VACUUM INTO ?").run(tmp);
+    try {
+      const key = await this.d.keychain.get(MEMORY_KEY);
+      if (!key) throw new Error("The memory key is not in the keychain.");
+      const file = sealBackup({ createdAt: this.clock().toISOString(), workspace: readFileSync(tmp), memoryKey: key, settings: JSON.stringify(this.d.settings) }, passphrase);
+      const path = join(dir, `deck-${this.clock().toISOString().slice(0, 10)}-${Date.now().toString(36)}.deckbak`);
+      writeFileSync(path, file, { mode: 0o600 });
+      await this.store.setMeta("backup.last", this.clock().toISOString());
+      await this.writer.logEpisode({ agent: "owner", kind: "backup", summary: `Made an encrypted backup (${Math.round(file.length / 1024)} KB).` });
+      return { path, bytes: file.length };
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  }
+
+  /**
+   * Restores a backup: checks the passphrase, then replaces the workspace, the memory key and settings.
+   * The current workspace is kept beside it as workspace.before-restore.db. The app restarts the engine after.
+   */
+  async restoreBackup(base64: string, passphrase: string): Promise<{ createdAt: string }> {
+    const c = openBackup(Buffer.from(base64, "base64"), passphrase);
+    const path = join(this.d.dataDir, "workspace.db");
+    await this.close();
+    if (existsSync(path)) renameSync(path, join(this.d.dataDir, "workspace.before-restore.db"));
+    writeFileSync(path, c.workspace, { mode: 0o600 });
+    await this.d.keychain.set(MEMORY_KEY, c.memoryKey);
+    writeFileSync(join(this.d.dataDir, "settings.json"), c.settings);
+    return { createdAt: c.createdAt };
   }
 
   /** Every outside tool and integration, with its state, for the Tools page. */
