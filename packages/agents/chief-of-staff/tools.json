@@ -13,7 +13,8 @@
     "memory.write",
     "skills.read",
     "tasks.assign",
-    "tasks.create"
+    "tasks.create",
+    "plugins.use"
   ],
   "requiresApproval": [],
   "deny": [

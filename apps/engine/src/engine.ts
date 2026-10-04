@@ -5,6 +5,7 @@ import { statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, draftGuidance, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
 import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
+import { McpHttpClient, type McpTool } from "@deck/connectors";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
 import { LocalEmbedder } from "@deck/embed-local";
@@ -49,6 +50,12 @@ const SCOPE_LABEL: Record<string, string> = {
   "tasks.create": "Create tasks",
   "tasks.assign": "Assign tasks",
   "web.search": "Search the web",
+  "plugins.use": "Use plugins (Labs)",
+  "repo.read": "Read the repository (Labs)",
+  "repo.propose": "Open pull requests (Labs)",
+  "google.read": "Read Gmail and Calendar (Labs)",
+  "google.draft": "Write Gmail drafts (Labs)",
+  "federation.send": "Message trusted crews (Labs)",
   "telemetry.read": "Review the crew's track record",
 };
 
@@ -172,6 +179,7 @@ export class Engine {
     this.goals = new Goals(this.store.connection, this.clock);
     this.workflows = new Workflows(this.store.connection, this.clock);
     for (const a of this.automations.list()) if (a.enabled) this.scheduleAutomation(a.id);
+    if (this.d.settings.labs.plugins.enabled) void this.refreshPlugins().catch(() => {});
     this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
     this.buildRouter();
     this.crew = JSON.parse((await this.store.getMeta("crew.overrides")) ?? "{}") as CrewOverrides;
@@ -625,6 +633,7 @@ export class Engine {
         describe: (i) => `Ask ${Engine.CREW[str(i.agent)] ?? str(i.agent)}: ${str(i.goal)}`,
         run: async (i) => this.delegate(str(i.agent), str(i.goal), str(i.why) || "Asked by the Chief of Staff", (Array.isArray(i.done_when) ? i.done_when : [i.done_when]).map(str).filter(Boolean)),
       });
+    if (agent === AGENT && this.d.settings.labs.plugins.enabled) extra.push(...this.pluginTools());
     if (agent === AGENT && this.d.settings.labs.fanout)
       extra.push({
         spec: {
@@ -657,6 +666,55 @@ export class Engine {
         run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
       });
     return [...this.tools(), ...extra];
+  }
+
+  /* ---------- labs: plugins (outside MCP servers) ---------- */
+  private plugins = new Map<string, { client: McpHttpClient; tools: McpTool[]; error?: string }>();
+  /** Connects to each enabled plugin server and lists its tools. Safe to call again after settings change. */
+  async refreshPlugins(): Promise<{ id: string; name: string; tools: string[]; error?: string }[]> {
+    this.plugins.clear();
+    const L = this.d.settings.labs.plugins;
+    if (!L.enabled) return [];
+    const out: { id: string; name: string; tools: string[]; error?: string }[] = [];
+    for (const p of L.servers.filter((x) => x.enabled)) {
+      const token = (await this.d.keychain.get(`plugin.${p.id}`).catch(() => null)) ?? undefined;
+      const client = new McpHttpClient(p.url, { ...(token ? { token } : {}), fetch: this.d.fetch ?? fetch });
+      try {
+        const tools = await client.listTools();
+        this.plugins.set(p.id, { client, tools });
+        out.push({ id: p.id, name: p.name, tools: tools.map((t) => t.name) });
+      } catch (e) {
+        this.plugins.set(p.id, { client, tools: [], error: (e as Error).message });
+        out.push({ id: p.id, name: p.name, tools: [], error: (e as Error).message });
+      }
+    }
+    this.emit("plugins", {});
+    return out;
+  }
+  /**
+   * Plugin tools for the Chief of Staff. Every call asks you first, unless you trusted a plugin's read-only
+   * tools (and the server marks the tool read-only). Results are wrapped and scanned as untrusted.
+   */
+  private pluginTools(): AgentTool[] {
+    const out: AgentTool[] = [];
+    for (const p of this.d.settings.labs.plugins.servers.filter((x) => x.enabled)) {
+      const conn = this.plugins.get(p.id);
+      for (const t of conn?.tools ?? []) {
+        const name = `plugin_${p.id.replace(/-/g, "_")}__${t.name}`.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 64);
+        const readOnly = p.trustReadOnly && t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint !== true;
+        out.push({
+          spec: { name, description: `[Plugin: ${p.name}] ${(t.description ?? t.name).slice(0, 400)}`, parameters: { type: "object" as const, properties: {}, ...((t.inputSchema ?? {}) as object) } as { type: "object"; properties: Record<string, unknown> } },
+          scope: "plugins.use",
+          kind: readOnly ? "read" : "external",
+          describe: (i) => `Use ${p.name}: ${t.name} ${JSON.stringify(i).slice(0, 200)}`,
+          run: async (i) => {
+            const r = await conn!.client.callTool(t.name, i as Record<string, unknown>);
+            return untrusted(`plugin ${p.name}`, `${r.isError ? "The tool reported an error: " : ""}${r.text}`);
+          },
+        });
+      }
+    }
+    return out;
   }
 
   /** Labs: several delegated tasks at once (2 to 4), each checked as usual. */
