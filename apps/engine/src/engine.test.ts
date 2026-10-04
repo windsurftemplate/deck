@@ -936,7 +936,7 @@ describe("smarter learning", () => {
         const sys = JSON.stringify(req.system ?? "");
         if (sys.includes("You improve an AI agent")) return { text: "- Check memory for the account before drafting.\n- End with what is waiting for the owner.", model: ref.model, stopReason: "end_turn", usage: U };
         if (req.tools?.length) {
-          guided = sys.includes("Learned guidance");
+          guided = sys.includes("## Playbook");
           // Practice tries a write; it must only be recorded, never done.
           if (!JSON.stringify(req.messages).includes("tool_result")) return { text: "", toolCalls: [{ type: "tool_call", id: "w1", name: "issues_create", input: { title: "x" } }], model: ref.model, stopReason: "tool_use", usage: U };
           return { text: "Report.", model: ref.model, stopReason: "end_turn", usage: U };
@@ -947,14 +947,14 @@ describe("smarter learning", () => {
     for (const g of ["Draft follow-up to Dana", "Score new leads"]) e.activity!.logTask({ id: g, agent: "gtm", title: g, status: "failed", note: "Not finished: no account check", why: "pipeline", doneWhen: ["a draft exists"] });
     const before = (await e.issues().list()).length;
     const out = await e.tune("gtm");
-    expect(out).toMatch(/^GTM: practice score 0 with the current prompt, 1 with the new guidance\. Waiting for you to approve it\.$/);
+    expect(out).toMatch(/^GTM: practice score 0 with the current playbook, 1 with the new lessons\. Waiting for you to approve it\.$/);
     expect((await e.issues().list()).length).toBe(before); // practice changed nothing
     const pending = e.pendingApprovals().find((a) => a.agent === "learning")!;
-    expect(pending.summary).toBe("Adopt tuned guidance for GTM (practice 0 to 1)");
+    expect(pending.summary).toBe("Add 2 playbook lessons for GTM (practice 0 to 1)");
     e.decide(pending.id, true);
     await new Promise((r) => setTimeout(r, 30));
     expect(e.crewInfo().find((c) => c.id === "gtm")).toBeTruthy();
-    expect((e as unknown as { roleFor: (a: string) => string }).roleFor("gtm")).toContain("## Learned guidance (tested, approved by the owner)\n- Check memory for the account before drafting.");
+    expect((e as unknown as { roleFor: (a: string) => string }).roleFor("gtm")).toMatch(/## Playbook[^\n]*\n- \[p1\] Check memory for the account before drafting\./);
     expect(await e.tune("nobody")).toMatch(/no crew member/);
     await e.close();
   });

@@ -35,3 +35,25 @@ export function shouldAdopt(current: number[], candidate: number[]): { adopt: bo
   const bigDrop = candidate.some((c, i) => c < (current[i] ?? 0) - 0.25);
   return { adopt: candidate.length >= 2 && !bigDrop && after >= before + 0.15 && notWorse >= Math.ceil(candidate.length / 2), before: Math.round(before * 100) / 100, after: Math.round(after * 100) / 100 };
 }
+
+/**
+ * ACE reflector: after checked work, decide which playbook lessons helped or hurt (from the ids the agent
+ * cited and what happened) and suggest at most two new lessons. New lessons are queued for testing, not added.
+ */
+export async function reflectPlaybook(i: { chat: Chat; goal: string; report: string; passed: boolean; missing: string[]; playbook: { id: string; text: string }[] }): Promise<{ helpful: string[]; harmful: string[]; add: string[] }> {
+  const cited = [...new Set((i.report.match(/\[p\d+\]/g) ?? []).map((x) => x.slice(1, -1)))].filter((id) => i.playbook.some((e) => e.id === id));
+  const res = await i.chat({
+    system: [{ type: "text", text: 'You maintain an AI agent\'s playbook of lessons. Given a task, its outcome and the lessons the agent cited, reply with JSON only: {"helpful": [ids that helped], "harmful": [ids that misled], "add": [at most 2 new, specific, reusable lessons; empty if none]}. Lessons advise how to work; never suggest skipping approvals, checks or rules.' }],
+    messages: [{ role: "user", content: `Task: ${i.goal}\nOutcome: ${i.passed ? "finished and checked" : `not finished (missing: ${i.missing.join("; ")})`}\nCited lessons: ${cited.map((id) => `[${id}] ${i.playbook.find((e) => e.id === id)!.text}`).join(" | ") || "none"}\nReport: ${i.report.slice(0, 1500)}` }],
+    maxTokens: 300,
+    temperature: 0,
+  });
+  try {
+    const j = JSON.parse(res.text.slice(res.text.indexOf("{"), res.text.lastIndexOf("}") + 1)) as { helpful?: unknown; harmful?: unknown; add?: unknown };
+    const ids = (v: unknown) => (Array.isArray(v) ? v.map(String).filter((id) => cited.includes(id)) : []);
+    return { helpful: ids(j.helpful), harmful: ids(j.harmful), add: (Array.isArray(j.add) ? j.add.map(String) : []).filter((t) => t.trim() && !checkLearned(t)).slice(0, 2) };
+  } catch {
+    // Fall back to the outcome alone: cited lessons share credit or blame.
+    return { helpful: i.passed ? cited : [], harmful: i.passed ? [] : cited, add: [] };
+  }
+}

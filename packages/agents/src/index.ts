@@ -8,3 +8,6 @@ export { reflect, extractFacts, jsonFrom, skillName, type SkillDraft } from "./l
 export { LOCKED_RULES, validateOverride, checkLearned, effectivePolicy, effectiveRole, describeOverrideChange, type CrewOverride, type CrewOverrides, type ToolMode } from "./crew-config.js";
 export { draftGuidance, practiceScore, shouldAdopt } from "./tune.js";
 export { routeComplexity } from "./route.js";
+
+export { applyPlaybookDelta, playbookFromLearned, overlap, type PlaybookEntry, type PlaybookDelta } from "./crew-config.js";
+export { reflectPlaybook } from "./tune.js";

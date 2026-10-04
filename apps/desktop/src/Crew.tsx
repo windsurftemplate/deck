@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { engineCall, inTauri } from "./bridge";
 
 type Mode = "allowed" | "ask" | "off";
-type Member = { id: string; name: string; defaultInstructions: string; instructions: string | null; rules: string[]; learned: string | null; tools: { scope: string; label: string; mode: Mode }[]; locked: string[] };
+type Member = { id: string; name: string; defaultInstructions: string; instructions: string | null; rules: string[]; learned: string | null; playbook: { id: string; text: string; helpful: number; harmful: number; added: string }[]; tools: { scope: string; label: string; mode: Mode }[]; locked: string[] };
 type Change = { ts: string; agent: string; summary: string; source: string };
 
 /** Settings > Crew: each agent's instructions, your rules, and tool permissions. Locked safety rules are shown, not editable. */
@@ -120,7 +120,22 @@ export function CrewCard() {
         </table>
       </div>
 
-      {m.learned && (
+      {m.playbook?.length > 0 && (
+        <div className="field">
+          Playbook: lessons this agent has learned (tested on practice tasks, approved by you). Counts show how often each helped or misled; lessons that keep misleading are retired automatically.
+          <ul className="playbook">
+            {[...m.playbook].sort((a, b) => b.helpful - b.harmful - (a.helpful - a.harmful)).map((e) => (
+              <li key={e.id}>
+                <span className="mono muted">{e.id}</span>
+                <span>{e.text}</span>
+                <span className="num pb-score" title="helped / misled">+{e.helpful} / -{e.harmful}</span>
+                <button className="icon-btn" type="button" aria-label={`Remove lesson ${e.id}`} onClick={async () => { await engineCall("crew.update", { agent: m.id, override: { instructions: m.instructions ?? undefined, rules: m.rules, tools: Object.fromEntries(m.tools.map((t) => [t.scope, t.mode])), playbook: m.playbook.filter((x) => x.id !== e.id) } }).catch(() => {}); void load(); }}>×</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {m.learned && !m.playbook?.length && (
         <div className="field">
           Learned guidance (tested on practice tasks, approved by you)
           <pre className="learned">{m.learned}</pre>

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { homedir } from "node:os";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, draftGuidance, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
 import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
 import { GitHubRepo, GoogleApi, McpHttpClient, googleSignIn, type McpTool } from "@deck/connectors";
 import { execFile } from "node:child_process";
@@ -194,6 +194,15 @@ export class Engine {
     this.brain = new Brain({ store: this.store, embedder, clock: this.clock, fetch: this.d.fetch ?? fetch, ...(this.d.osascript ? { osascript: this.d.osascript } : {}), log: (summary) => this.writer.logEpisode({ agent: "owner", kind: "brain", summary }).then(() => this.emit("brain", { summary })) });
     this.buildRouter();
     this.crew = JSON.parse((await this.store.getMeta("crew.overrides")) ?? "{}") as CrewOverrides;
+    // One-time move from a single block of learned guidance to playbook lessons (ACE).
+    let migrated = false;
+    for (const [a, o] of Object.entries(this.crew))
+      if (o.learned && !o.playbook?.length) {
+        const { learned, ...rest } = o;
+        this.crew[a] = { ...rest, playbook: playbookFromLearned(learned, this.clock().toISOString()) };
+        migrated = true;
+      }
+    if (migrated) await this.store.setMeta("crew.overrides", JSON.stringify(this.crew));
     // Best effort: planting needs the embedding model, which may still be downloading on a first, offline start.
     await this.plantHoneytoken().catch(() => (this.canary = null));
     this.scheduler.add({ name: "nightly-learning", at: "02:00", run: async () => void (await this.learnNow()) });
@@ -258,6 +267,7 @@ export class Engine {
         instructions: o.instructions ?? null,
         rules: o.rules ?? [],
         learned: o.learned ?? null,
+        playbook: o.playbook ?? [],
         tools: base.allow.map((scope) => ({ scope, label: SCOPE_LABEL[scope] ?? scope, mode: (o.tools?.[scope] ?? (base.requiresApproval.includes(scope) ? "ask" : "allowed")) as ToolMode })),
         locked: LOCKED_RULES,
       };
@@ -275,6 +285,9 @@ export class Engine {
     // Tuned guidance stays unless the change sets it (an empty string removes it).
     const learned = "learned" in override ? override.learned?.trim() : this.crew[agent]?.learned;
     if (learned) clean.learned = learned;
+    // The playbook stays unless the change sets it (an empty list clears it).
+    const playbook = "playbook" in override ? override.playbook : this.crew[agent]?.playbook;
+    if (playbook?.length) clean.playbook = playbook.map((e) => ({ id: String(e.id), text: String(e.text).trim(), helpful: Number(e.helpful) || 0, harmful: Number(e.harmful) || 0, added: String(e.added) }));
     const err = validateOverride(loadPolicy(agent), clean);
     if (err) throw new Error(err);
     const before = this.crew[agent] ?? {};
@@ -1041,12 +1054,37 @@ export class Engine {
       for (const a of out.actions) if (a.tool === "load_skill" && a.status === "done" && v?.checked) await this.store.recordSkillOutcome(a.summary.replace(/^Use skill /, ""), v.passed);
       void this.learnFromTask(agent, goal, out.text, out.actions, v);
       if (v && !v.passed && v.checked) void this.lessonFrom(task.id, goal, out.text, v.missing, out.actions);
+      if (v?.checked) void this.reflectOnPlaybook(agent, goal, out.text, v);
       await this.writer.logEpisode({ agent, kind: "task", taskId: task.id, summary: `${goal}: ${v?.passed === false ? "not finished" : "done"}`, outcome: out.text.slice(0, 300) });
       return `${name} report:\n${out.text}${did ? `\n\nActions:\n${did}` : ""}${check}`;
     } catch (err) {
       this.board.move(task.id, "failed", { note: (err as Error).message });
       this.say({ sender: agent, recipient: "chief-of-staff", kind: "report", text: `Could not finish: ${(err as Error).message}`, taskId: task.id });
       return `${name} could not finish: ${(err as Error).message}`;
+    }
+  }
+
+  /**
+   * ACE reflector, after each checked task: lessons the agent cited get credit or blame automatically (small,
+   * safe changes); new lessons are queued and only added after practice tests and the owner's approval.
+   */
+  private async reflectOnPlaybook(agent: string, goal: string, report: string, v: { passed: boolean; missing: string[] }) {
+    try {
+      const cur = this.crew[agent] ?? {};
+      const r = await reflectPlaybook({ chat: (req) => this.router.chat("cheap", "reflection", req), goal, report, passed: v.passed, missing: v.missing, playbook: cur.playbook ?? [] });
+      if ((r.helpful.length || r.harmful.length) && cur.playbook?.length) {
+        const playbook = applyPlaybookDelta(cur.playbook, { helpful: r.helpful, harmful: r.harmful }, this.clock().toISOString());
+        this.crew = { ...this.crew, [agent]: { ...cur, playbook } };
+        await this.store.setMeta("crew.overrides", JSON.stringify(this.crew));
+        const retired = cur.playbook.filter((e) => !playbook.some((x) => x.id === e.id));
+        if (retired.length) this.say({ sender: "learning", recipient: agent, kind: "note", text: `Retired playbook lesson${retired.length > 1 ? "s" : ""} that kept misleading: ${retired.map((e) => e.text).join("; ")}` });
+      }
+      if (r.add.length) {
+        const q = JSON.parse((await this.store.getMeta(`playbook.queue.${agent}`)) ?? "[]") as string[];
+        await this.store.setMeta(`playbook.queue.${agent}`, JSON.stringify([...q, ...r.add].slice(-10)));
+      }
+    } catch {
+      /* best effort */
     }
   }
 
@@ -1168,10 +1206,9 @@ export class Engine {
    * One practice run of a past task: reading works, anything that would change or send something is only
    * recorded, and the verifier scores the result. learned: null keeps the agent's current guidance.
    */
-  private async practice(agent: string, c: { goal: string; why: string; doneWhen: string[] }, o: { learned: string | null; chat: (req: ChatRequest) => Promise<ChatResponse> }): Promise<{ score: number; tokens: number }> {
+  private async practice(agent: string, c: { goal: string; why: string; doneWhen: string[] }, o: { adds?: string[]; chat: (req: ChatRequest) => Promise<ChatResponse> }): Promise<{ score: number; tokens: number }> {
     const cur = this.crew[agent] ?? {};
-    const { learned: _old, ...base } = cur;
-    const role = effectiveRole(loadRole(agent), o.learned ? { ...base, learned: o.learned } : o.learned === null ? cur : base);
+    const role = effectiveRole(loadRole(agent), o.adds?.length ? { ...cur, playbook: applyPlaybookDelta(cur.playbook ?? [], { add: o.adds }, "practice") } : cur);
     const p = buildPrompt({ coreRules: loadCoreRules(), role, userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal: c.goal, why: c.why, doneWhen: c.doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(await this.reader.retrieve(c.goal, { tokenBudget: 500 })), working: "(practice run: nothing you do is saved or sent)" });
     const tools = this.toolsFor(agent).map((t) => (t.kind === "read" && t.spec.name !== "web_research" ? t : { ...t, kind: "read" as const, run: async () => "Recorded (practice run: nothing was changed or sent)." }));
     let tokens = 0;
@@ -1203,7 +1240,7 @@ export class Engine {
       let score = 0, tokens = 0;
       for (const c of tasks) {
         try {
-          const r = await this.practice(agent, c, { learned: null, chat: (req) => model.chat(req) });
+          const r = await this.practice(agent, c, { chat: (req) => model.chat(req) });
           (score += r.score), (tokens += r.tokens);
         } catch {
           /* a model that errors scores zero for that task */
@@ -1273,22 +1310,31 @@ export class Engine {
     ];
     if (misses.length < 2 || cases.length < 2) return `${name}: not enough misses or past tasks to tune yet.`;
     const cur = this.crew[agent] ?? {};
-    const guidance = await draftGuidance({ chat: (req) => this.router.chat("heavy", "tuning", req), agentName: name, role: this.roleFor(agent), ...(cur.learned ? { current: cur.learned } : {}), evidence: misses });
-    if (!guidance) return `${name}: no useful guidance found.`;
-    this.say({ sender: "learning", recipient: agent, kind: "note", text: `Testing new guidance on ${cases.length} practice tasks:\n${guidance}` });
-    const practice = async (learned: string | undefined, c: (typeof cases)[number]) => (await this.practice(agent, c, { learned: learned ?? null, chat: (req) => this.router.chat(this.mainRole(agent), "tuning", req) })).score;
+    // ACE: candidate lessons are the ones the reflector queued from real work, plus new ones drafted from misses.
+    // They are only ever added to the playbook; existing lessons are never rewritten.
+    const queued = JSON.parse((await this.store.getMeta(`playbook.queue.${agent}`)) ?? "[]") as string[];
+    const drafted = await draftGuidance({ chat: (req) => this.router.chat("heavy", "tuning", req), agentName: name, role: this.roleFor(agent), evidence: misses });
+    const adds = [...new Set([...queued, ...(drafted ?? "").split("\n").map((l) => l.replace(/^-\s*/, "").trim()).filter(Boolean)])].filter((t) => !(cur.playbook ?? []).some((e) => overlap(e.text, t) >= 0.8)).slice(0, 6);
+    if (!adds.length) return `${name}: no new lessons to test.`;
+    const guidance = adds.map((t) => `- ${t}`).join("\n");
+    this.say({ sender: "learning", recipient: agent, kind: "note", text: `Testing ${adds.length} new playbook lesson${adds.length > 1 ? "s" : ""} on ${cases.length} practice tasks:\n${guidance}` });
+    const practice = async (withAdds: boolean, c: (typeof cases)[number]) => (await this.practice(agent, c, { ...(withAdds ? { adds } : {}), chat: (req) => this.router.chat(this.mainRole(agent), "tuning", req) })).score;
     const before: number[] = [], after: number[] = [];
     for (const c of cases) {
-      before.push(await practice(cur.learned, c));
-      after.push(await practice(guidance, c));
+      before.push(await practice(false, c));
+      after.push(await practice(true, c));
     }
     const d = shouldAdopt(before, after);
-    const result = `${name}: practice score ${d.before} with the current prompt, ${d.after} with the new guidance.`;
-    this.say({ sender: "learning", recipient: agent, kind: "check", text: `${result} ${d.adopt ? "Asking the owner to adopt it." : "Not better enough; keeping the current prompt."}` });
-    if (!d.adopt) return `${result} Kept the current prompt.`;
-    const { decision } = this.approvals.request({ agent: "learning", summary: `Adopt tuned guidance for ${name} (practice ${d.before} to ${d.after})`, detail: guidance, scope: "crew.tune" });
+    const result = `${name}: practice score ${d.before} with the current playbook, ${d.after} with the new lessons.`;
+    this.say({ sender: "learning", recipient: agent, kind: "check", text: `${result} ${d.adopt ? "Asking the owner to add them." : "Not better enough; keeping the playbook as it is."}` });
+    await this.store.setMeta(`playbook.queue.${agent}`, "[]");
+    if (!d.adopt) return `${result} Kept the playbook as it is.`;
+    const { decision } = this.approvals.request({ agent: "learning", summary: `Add ${adds.length} playbook lesson${adds.length > 1 ? "s" : ""} for ${name} (practice ${d.before} to ${d.after})`, detail: guidance, scope: "crew.tune" });
     void decision.then(async (a) => {
-      if (a.status === "approved") await this.crewUpdate(agent, { ...(this.crew[agent] ?? {}), learned: guidance }, "settings").catch(() => {});
+      if (a.status === "approved") {
+        const now = this.crew[agent] ?? {};
+        await this.crewUpdate(agent, { ...now, playbook: applyPlaybookDelta(now.playbook ?? [], { add: adds }, this.clock().toISOString()) }, "settings").catch(() => {});
+      }
     });
     return `${result} Waiting for you to approve it.`;
   }
