@@ -617,6 +617,28 @@ describe("labs: GitHub pull requests", () => {
   });
 });
 
+describe("labs: Gmail and Calendar", () => {
+  it("adds mail and calendar tools only when on and connected; drafts ask first; content is untrusted", async () => {
+    const g = (async (u: string) => {
+      if (u.includes("/token")) return new Response(JSON.stringify({ access_token: "a", expires_in: 3600 }));
+      if (u.includes("/events")) return new Response(JSON.stringify({ items: [{ summary: "Acme call", start: { dateTime: "T1" }, end: { dateTime: "T2" } }] }));
+      return offline(u);
+    }) as unknown as typeof fetch;
+    const labs = { ...DEFAULTS.labs, google: { enabled: true, clientId: "1-a.apps.googleusercontent.com" } };
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC, "google.refresh": "r", "google.client_secret": "s" }), settings: { ...DEFAULTS, labs }, fetch: g, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model) });
+    await e.open();
+    const tools = (e as unknown as { toolsFor: (a: string) => { spec: { name: string }; kind: string; run: (i: object) => Promise<string> }[] }).toolsFor("chief-of-staff");
+    expect(tools.filter((t) => /^(gmail|calendar)_/.test(t.spec.name)).map((t) => `${t.spec.name}:${t.kind}`)).toEqual(["gmail_search:read", "gmail_read:read", "calendar_upcoming:read", "gmail_create_draft:external"]);
+    expect(await tools.find((t) => t.spec.name === "calendar_upcoming")!.run({})).toBe('<untrusted source="calendar">\nT1 to T2: Acme call\n</untrusted>');
+    await e.close();
+    const off = make({});
+    await off.open();
+    expect((off as unknown as { toolsFor: (a: string) => { spec: { name: string } }[] }).toolsFor("chief-of-staff").some((t) => t.spec.name.startsWith("gmail_"))).toBe(false);
+    await expect(off.googleConnect()).rejects.toThrow(/Turn on Gmail and Calendar/);
+    await off.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");

@@ -14,7 +14,10 @@
     "skills.read",
     "tasks.assign",
     "tasks.create",
-    "plugins.use"
+    "plugins.use",
+    "google.read",
+    "google.draft",
+    "federation.send"
   ],
   "requiresApproval": [],
   "deny": [

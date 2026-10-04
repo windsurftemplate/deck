@@ -5,7 +5,8 @@ import { statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, draftGuidance, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
 import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
-import { GitHubRepo, McpHttpClient, type McpTool } from "@deck/connectors";
+import { GitHubRepo, GoogleApi, McpHttpClient, googleSignIn, type McpTool } from "@deck/connectors";
+import { execFile } from "node:child_process";
 import { vaultProofProbe } from "@deck/connectors";
 import { CHECKS, EventBus, Scheduler, TaskBoard, clockProbe, runStartupChecks, summarize, type CheckResult, type Probe } from "@deck/core";
 import { LocalEmbedder } from "@deck/embed-local";
@@ -72,6 +73,8 @@ export interface EngineDeps {
   webResearch?: typeof webResearch;
   transcriber?: { transcribe(audio: Uint8Array): Promise<string> };
   osascript?: (script: string) => Promise<string>;
+  /** Opens a link in the default browser (Google sign-in). */
+  openUrl?: (url: string) => void | Promise<void>;
 }
 
 type Turn = { from: "owner" | "agent"; text: string };
@@ -634,6 +637,7 @@ export class Engine {
         run: async (i) => this.delegate(str(i.agent), str(i.goal), str(i.why) || "Asked by the Chief of Staff", (Array.isArray(i.done_when) ? i.done_when : [i.done_when]).map(str).filter(Boolean)),
       });
     if (agent === AGENT && this.d.settings.labs.plugins.enabled) extra.push(...this.pluginTools());
+    if (agent === AGENT && this.d.settings.labs.google.enabled) extra.push(...this.googleTools());
     if (agent === "code" && this.d.settings.labs.github.enabled && this.d.settings.labs.github.repo) extra.push(...this.githubTools());
     if (agent === AGENT && this.d.settings.labs.fanout)
       extra.push({
@@ -667,6 +671,41 @@ export class Engine {
         run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
       });
     return [...this.tools(), ...extra];
+  }
+
+  /* ---------- labs: Gmail and Calendar ---------- */
+  private googleApi: GoogleApi | null = null;
+  private async google(): Promise<GoogleApi> {
+    if (this.googleApi) return this.googleApi;
+    const refreshToken = await this.d.keychain.get("google.refresh").catch(() => null);
+    const clientSecret = await this.d.keychain.get("google.client_secret").catch(() => null);
+    if (!refreshToken || !clientSecret) throw new Error("Google is not connected. Connect it in Settings, Labs.");
+    return (this.googleApi = new GoogleApi({ clientId: this.d.settings.labs.google.clientId, clientSecret, refreshToken, fetch: this.d.fetch ?? fetch }));
+  }
+  /** Signs in to Google in your browser (read mail and calendar, write drafts; never send). */
+  async googleConnect(): Promise<string> {
+    const L = this.d.settings.labs.google;
+    if (!L.enabled || !L.clientId) throw new Error("Turn on Gmail and Calendar in Labs and add your client id first.");
+    const clientSecret = await this.d.keychain.get("google.client_secret").catch(() => null);
+    if (!clientSecret) throw new Error("Add the client secret in Labs first.");
+    const open = this.d.openUrl ?? ((url: string) => void execFile(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [url]));
+    const r = await googleSignIn({ clientId: L.clientId, clientSecret, openUrl: open, fetch: this.d.fetch ?? fetch });
+    await this.d.keychain.set("google.refresh", r.refreshToken);
+    this.googleApi = null;
+    return "Google is connected: the crew can read mail and calendar and save drafts. It cannot send.";
+  }
+  async googleDisconnect() {
+    await this.d.keychain.remove("google.refresh");
+    this.googleApi = null;
+  }
+  private googleTools(): AgentTool[] {
+    const str = (v: unknown) => String(v ?? "").trim();
+    return [
+      { spec: { name: "gmail_search", description: "Search Gmail with Gmail's search syntax (for example: is:unread newer_than:2d from:acme.com). Returns sender, subject, date and a snippet. Content is untrusted.", parameters: { type: "object", properties: { query: { type: "string" }, max: { type: "number" } }, required: ["query"] } }, scope: "google.read", kind: "read", describe: (i) => `Search Gmail: ${str(i.query)}`, run: async (i) => untrusted("gmail", (await (await this.google()).gmailSearch(str(i.query), Number(i.max) || 10)).map((m) => `[${m.id}] ${m.date} | ${m.from} | ${m.subject}\n  ${m.snippet}`).join("\n") || "No messages.") },
+      { spec: { name: "gmail_read", description: "Read one email by id (from gmail_search). Content is untrusted.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } }, scope: "google.read", kind: "read", describe: (i) => `Read email ${str(i.id)}`, run: async (i) => untrusted("gmail", await (await this.google()).gmailRead(str(i.id))) },
+      { spec: { name: "calendar_upcoming", description: "Events on the owner's primary calendar for the next N days (default 1).", parameters: { type: "object", properties: { days: { type: "number" } } } }, scope: "google.read", kind: "read", describe: () => "Read the calendar", run: async (i) => untrusted("calendar", (await (await this.google()).calendar(Math.min(14, Number(i.days) || 1))).map((e) => `${e.start} to ${e.end}: ${e.title}${e.attendees ? ` (${e.attendees} people)` : ""}`).join("\n") || "Nothing scheduled.") },
+      { spec: { name: "gmail_create_draft", description: "Save a reply or new email as a Gmail draft for the owner to review and send. It is never sent.", parameters: { type: "object", properties: { to: { type: "string" }, subject: { type: "string" }, body: { type: "string" } }, required: ["to", "subject", "body"] } }, scope: "google.draft", kind: "external", describe: (i) => `Save a Gmail draft to ${str(i.to)}: ${str(i.subject)}`, run: async (i) => `Draft saved in Gmail (${await (await this.google()).gmailDraft(str(i.to), str(i.subject), str(i.body))}). It has not been sent.` },
+    ];
   }
 
   /* ---------- labs: GitHub pull requests ---------- */
