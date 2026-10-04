@@ -639,6 +639,46 @@ describe("labs: Gmail and Calendar", () => {
   });
 });
 
+// Built at runtime so secret scanners do not flag a test value.
+const FAKE_GH = ["ghp", "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"].join("_");
+
+describe("labs: federation", () => {
+  it("two trusted crews exchange signed, encrypted messages, with the owner approving every outgoing message", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const labs = { ...DEFAULTS.labs, federation: { enabled: true, port: 0, name: "" } };
+    const mk = (name: string) => new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC, "github.token": "ghp_x" }), settings: { ...DEFAULTS, labs: { ...labs, federation: { ...labs.federation, name } } }, fetch: (u: string, init?: RequestInit) => fetch(u, init), makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => ({ text: JSON.stringify(req.system).includes("drafting a reply") ? `We used Okta for the pilot. Token ${FAKE_GH}` : "ok", model: ref.model, stopReason: "end_turn", usage: U }) }) });
+    const a = mk("Alpha"), b = mk("Bravo");
+    await a.open();
+    await b.open();
+    await a.federationAddPeer(await b.federationInvite("127.0.0.1"));
+    await b.federationAddPeer(await a.federationInvite("127.0.0.1"));
+    const bravo = a.federationPeers()[0]!;
+    expect(bravo.name).toBe("Bravo");
+    const wait = () => new Promise((r) => setTimeout(r, 80));
+    const { approvalId } = a.federationSend(bravo.id, "Which SSO provider did you use? Mail me at nelson@example.com");
+    await wait();
+    expect(b.crewMessages("federation")).toHaveLength(1); // nothing arrives before approval... (only the add-peer note)
+    a.decide(approvalId, true);
+    await wait();
+    const got = b.crewMessages("federation").at(-1)!;
+    expect(got.text).toBe("Alpha: Which SSO provider did you use? Mail me at [email]"); // personal data stripped before leaving
+    const ask = b.pendingApprovals().find((x) => x.summary.startsWith("Alpha asks"))!;
+    b.decide(ask.id, true); // let the Chief of Staff draft
+    await wait();
+    const send = b.pendingApprovals().find((x) => x.summary.startsWith("Send to Alpha"))!;
+    expect(send.detail).not.toContain(FAKE_GH); // secrets never leave
+    b.decide(send.id, true);
+    await wait();
+    expect(a.crewMessages("federation").at(-1)!.text).toMatch(/^Bravo: We used Okta for the pilot\./);
+    // A forged message (unknown sender) is refused.
+    const res = await fetch(`http://127.0.0.1:${(await b.startFederation()).port}/federation`, { method: "POST", body: JSON.stringify({ from: "0000000000000000", to: "x", ts: Date.now(), nonce: "n", iv: "i", ct: "c", tag: "t", sig: "s" }) });
+    expect(res.status).toBe(403);
+    await a.close();
+    await b.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");
