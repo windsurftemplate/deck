@@ -47,6 +47,8 @@ async function main() {
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
     "notes.prep": () => engine.prepNotes(true),
+    "skills.export": () => engine.skillsExport(),
+    "skills.import": (p) => engine.skillsImport(((p as { files?: { name: string; content: string }[] })?.files ?? []).map((f) => ({ name: String(f.name), content: String(f.content) }))),
     "notes.get": () => engine.preparedNotes(),
     "workflows.list": async () => engine.workflowsList(),
     "workflows.save": async (p) => engine.workflowSave(p as never),

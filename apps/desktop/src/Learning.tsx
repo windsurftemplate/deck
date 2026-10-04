@@ -56,8 +56,31 @@ export function LearningCard() {
           Tune prompts now
         </button>
       </div>
-      <p className="muted">Learning also turns the files and notes you add into facts. Tuning drafts guidance from each agent's misses, tests it on practice tasks (nothing is changed or sent), and asks you before using it. It runs on its own every Sunday night.</p>
+      <p className="muted">Learning also turns the files and notes you add into facts. Tuning tests new playbook lessons (from real work and from each agent's misses) on practice tasks (nothing is changed or sent), and asks you before adding them. Existing lessons are never rewritten. It runs on its own every Sunday night.</p>
       {report && <p className="ok" style={{ whiteSpace: "pre-wrap" }}>{report}</p>}
+      <h3>Skills (open SKILL.md format)</h3>
+      <p className="muted">Skills use the open Agent Skills format, so you can bring in skills written for other agents and share deck's. Imported skills are scanned and wait for your approval; only their instructions are used, never scripts.</p>
+      <div className="row">
+        <label className="btn file-btn">
+          Import SKILL.md files
+          <input
+            type="file"
+            accept=".md"
+            multiple
+            hidden
+            onChange={async (e) => {
+              const files = [...(e.target.files ?? [])];
+              e.target.value = "";
+              if (!files.length) return;
+              const r = await engineCall<{ added: string[]; errors: string[] }>("skills.import", { files: await Promise.all(files.map(async (f) => ({ name: f.webkitRelativePath || f.name, content: await f.text() }))) }).catch((err) => ({ added: [], errors: [String(err)] }));
+              setReport([r?.added.length ? `Waiting for your approval: ${r.added.join(", ")}` : "", ...(r?.errors ?? [])].filter(Boolean).join("\n") || "Nothing imported.");
+            }}
+          />
+        </label>
+        <button className="btn" type="button" onClick={async () => { const r = await engineCall<{ path: string; count: number }>("skills.export").catch(() => null); setReport(r ? `Exported ${r.count} skill${r.count === 1 ? "" : "s"} to ${r.path}` : "Export works inside the desktop app."); }}>
+          Export skills
+        </button>
+      </div>
     </div>
   );
 }

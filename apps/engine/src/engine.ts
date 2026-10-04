@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { homedir } from "node:os";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, routeComplexity, parseSkillMd, toSkillMd, skillSlug, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode } from "@deck/agents";
 import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
 import { GitHubRepo, GoogleApi, McpHttpClient, googleSignIn, type McpTool } from "@deck/connectors";
 import { execFile } from "node:child_process";
@@ -701,6 +701,49 @@ export class Engine {
         run: async (i) => (await this.crewVote(str(i.question), Array.isArray(i.agents) ? i.agents.map(str) : undefined)).summary,
       });
     return [...this.tools(), ...extra];
+  }
+
+  /* ---------- skills in the open SKILL.md format ---------- */
+  /** Writes every active skill as <name>/SKILL.md under Documents/deck-skills (or a folder you give). */
+  async skillsExport(folder?: string): Promise<{ path: string; count: number }> {
+    const dir = folder ?? join(homedir(), "Documents", "deck-skills");
+    const active = (await this.store.skills()).filter((k) => k.status === "active");
+    for (const k of active) {
+      const d = join(dir, skillSlug(k.name));
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, "SKILL.md"), toSkillMd(k));
+    }
+    return { path: dir, count: active.length };
+  }
+  /**
+   * Imports SKILL.md files. Each is checked by the input scanner and waits for your approval before the crew
+   * can use it. Only the instructions are imported; scripts and extra files in a skill folder are not run.
+   */
+  async skillsImport(files: { name: string; content: string }[]): Promise<{ added: string[]; errors: string[] }> {
+    const added: string[] = [], errors: string[] = [];
+    for (const f of files.slice(0, 50)) {
+      try {
+        const sk = parseSkillMd(f.content);
+        const scan = scanInjection(`${sk.description}\n${sk.body}`);
+        if (scan.score >= 0.5) throw new Error(`${sk.name}: looks like it tries to instruct the crew (${scan.signals.join("; ")}). Not imported.`);
+        const body = redactSecrets(scan.clean.slice(sk.description.length + 1)).clean;
+        const existing = await this.store.skill(sk.name);
+        if (existing && existing.body === body) {
+          errors.push(`${sk.name}: already have it.`);
+          continue;
+        }
+        await this.store.saveSkill({ name: sk.name, description: sk.description, body }, this.clock().toISOString());
+        const { decision } = this.approvals.request({ agent: AGENT, summary: `Add imported skill "${sk.name}": ${sk.description.slice(0, 140)}`, detail: body, scope: "skills.activate" });
+        void decision.then(async (a) => {
+          await this.store.setSkillStatus(sk.name, a.status === "approved" ? "active" : "retired");
+          this.emit("skill", { name: sk.name, status: a.status === "approved" ? "active" : "retired" });
+        });
+        added.push(sk.name);
+      } catch (e) {
+        errors.push(`${f.name}: ${(e as Error).message}`);
+      }
+    }
+    return { added, errors };
   }
 
   /* ---------- idle-time memory prep (sleep-time compute) ---------- */
