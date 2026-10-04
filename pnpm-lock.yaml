@@ -41,6 +41,9 @@ importers:
       lucide-react:
         specifier: ^0.460.0
         version: 0.460.0(react@18.3.1)
+      marked:
+        specifier: ^14.1.0
+        version: 14.1.4
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -1561,6 +1564,11 @@ packages:
   mammoth@1.13.0:
     resolution: {integrity: sha512-2cawcYFcP7ISfXbBcL9lmVgTNWo88v/52ND1gnywHtVT/pX0//puPnf0iMPV9ZgmuvNOE+zkIhDgZ9M2c2dDDg==}
     engines: {node: '>=12.0.0'}
+    hasBin: true
+
+  marked@14.1.4:
+    resolution: {integrity: sha512-vkVZ8ONmUdPnjCKc5uTRvmkRbx4EAi2OkTOXmfTDhZz3OFqMNBM1oTTWwTr4HY4uAEojhzPf+Fy8F1DWa3Sndg==}
+    engines: {node: '>= 18'}
     hasBin: true
 
   matcher@3.0.0:
@@ -3118,6 +3126,8 @@ snapshots:
       lop: 0.4.2
       underscore: 1.13.8
       xmlbuilder: 10.1.1
+
+  marked@14.1.4: {}
 
   matcher@3.0.0:
     dependencies:

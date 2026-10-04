@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 46 commits.
-Tests (counted): **221 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 47 commits.
+Tests (counted): **224 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -263,10 +263,25 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 44. `feat: goals planned into milestone issues with progress and weekly checks; tracker lists every status (fixes closed-issue counts)`
 45. `feat: multi-step workflows with templates, schedulable as automations`
 46. `feat: setup health score with fixes and history`
+47. `docs: user manual and agent course, with an in-app Help page`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: User manual and agent course
+
+**Changed**
+- `docs/manual`: 12 chapters covering install on each system, first run, every page, chat, pictures, voice and hands-free, Telegram, the second brain, goals, automations and workflows, the command center and setup health, models and tools, the model arena, learning, crew rules, safety, privacy, data locations, backups, a full settings reference, shortcuts, troubleshooting, FAQ and glossary.
+- `docs/course`: 15 chapters from high level to low level: what an agent is; how language models work; context engineering; tools and function calling (provider formats, MCP); the agent loop; memory and retrieval (embeddings, BM25, RRF, chunking, write discipline); multi-agent systems; learning without retraining; security (OWASP LLM risks, injection, the lethal trifecta, defense in depth); evals; production engineering; and three forward deployed engineering chapters (discovery and scoping, building the pilot, rollout, security reviews, operations and handoff), ending with a capstone. Every chapter has a lab using deck's real code and a quiz.
+- `docs/README.md` indexes both, with further reading.
+- In the app: **Help and course** in the sidebar (<kbd>Cmd</kbd> + <kbd>9</kbd>). Table of contents, search across everything with snippets, Markdown rendering, interactive quizzes (options shuffled, explanations shown, score saved), chapter completion and course progress, previous and next.
+- About 23,000 words in total.
+
+**Verified**
+- Tests check that both sections are bundled in order, every course chapter has a lab and at least 3 valid quizzes, quiz parsing, and search.
+- Desktop: table of contents, opening a chapter, answering a quiz, searching "lethal trifecta".
+- 224 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: Ideas from Ruflo: backups, scanner, recall, arena, goals, workflows, health
 

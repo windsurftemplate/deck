@@ -1,7 +1,7 @@
-import { Flag, Bot, Boxes, BrainCircuit, CalendarClock, ChevronsLeft, ChevronsRight, LayoutDashboard, ListTree, MessagesSquare, OctagonX, Play, Settings, Wrench } from "lucide-react";
+import { CircleHelp, Flag, Bot, Boxes, BrainCircuit, CalendarClock, ChevronsLeft, ChevronsRight, LayoutDashboard, ListTree, MessagesSquare, OctagonX, Play, Settings, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type View = "3d" | "brain" | "goals" | "center" | "channel" | "automations" | "tools" | "list";
+export type View = "3d" | "brain" | "goals" | "center" | "channel" | "automations" | "tools" | "list" | "help";
 export const PAGES: { id: View; label: string; icon: LucideIcon; key: string }[] = [
   { id: "3d", label: "Deck", icon: Boxes, key: "1" },
   { id: "brain", label: "Brain", icon: BrainCircuit, key: "2" },
@@ -11,6 +11,7 @@ export const PAGES: { id: View; label: string; icon: LucideIcon; key: string }[]
   { id: "automations", label: "Automations", icon: CalendarClock, key: "6" },
   { id: "tools", label: "Tools", icon: Wrench, key: "7" },
   { id: "list", label: "List view", icon: ListTree, key: "8" },
+  { id: "help", label: "Help and course", icon: CircleHelp, key: "9" },
 ];
 const mod = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl+";
 

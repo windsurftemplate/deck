@@ -13,6 +13,7 @@ import { CrewChannel } from "./pages/CrewChannel";
 import { Tools } from "./pages/Tools";
 import { Automations } from "./pages/Automations";
 import { Goals } from "./pages/Goals";
+import { Help } from "./help/Help";
 import { MicButton } from "./Voice";
 import { HandsFree } from "./HandsFree";
 import { notify, setNotifications } from "./notify";
@@ -214,6 +215,8 @@ export function App() {
           <CommandCenter go={(t) => (t === "settings" ? setShowSettings(true) : t === "learn" ? void engineCall<string>("learn.now").then((r) => toast("Learning finished", r ?? undefined)) : (setShowSettings(false), void switchView(t as View)))} />
         ) : view === "channel" ? (
           <CrewChannel />
+        ) : view === "help" ? (
+          <Help />
         ) : view === "goals" ? (
           <Goals />
         ) : view === "automations" ? (

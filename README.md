@@ -39,6 +39,10 @@ pnpm install
 pnpm check
 ```
 
+## Documentation
+
+The user manual and the course on how AI agents work are in `docs/` (start at `docs/README.md`), and inside the app under **Help and course**.
+
 ## License
 
 MIT (see `LICENSE`). Third-party assets and their licenses are listed in `THIRD_PARTY_NOTICES.md`. To report a security problem, see `SECURITY.md`; to contribute, see `CONTRIBUTING.md`.
