@@ -859,6 +859,37 @@ describe("custom crew members", () => {
   });
 });
 
+describe("research swarm and meeting prep", () => {
+  it("splits a question into parallel searches and combines them; meeting prep stays professional", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const asked: string[] = [];
+    const prompts: string[] = [];
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      webResearch: async (_ref, _key, q) => (asked.push(q), { provider: "anthropic", text: `Answer about ${q}`, sources: [{ title: `Source for ${q}`, url: `https://example.com/${asked.length}` }] }),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const sys = JSON.stringify(req.system);
+        prompts.push(sys);
+        if (sys.includes("Split the research question")) return { text: '{"questions": ["Acme funding 2026", "Acme security team", "Acme product launches"]}', model: ref.model, stopReason: "end_turn", usage: U };
+        if (sys.includes("Combine the search results")) return { text: "Acme raised a Series B [1] and launched SSO [3].", model: ref.model, stopReason: "end_turn", usage: U };
+        if (sys.includes("preparing the owner for a meeting")) return { text: "## Who\nDana Wright is CISO at Acme [2]. She lives in Palo Alto with her husband.\n## Talking points\nAsk about SSO rollout.", model: ref.model, stopReason: "end_turn", usage: U };
+        return { text: "ok", model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    const r = await e.researchSwarm("What is Acme up to?", 3);
+    expect(asked).toEqual(["Acme funding 2026", "Acme security team", "Acme product launches"]);
+    expect(r.brief).toMatch(/^Acme raised a Series B \[1\] and launched SSO \[3\]\.\n\nSources:\n\[1\] Source for Acme funding 2026/);
+    expect(e.crewMessages("activity").filter((m) => m.text.startsWith("Search ")).length).toBe(3);
+    await expect(e.meetingPrep({ name: "Dana Wright" })).rejects.toThrow(/Add Dana Wright's company/);
+    await expect(e.meetingPrep({ name: "https://evil", company: "x" })).rejects.toThrow(/name/);
+    const m = await e.meetingPrep({ name: "Dana Wright", company: "Acme", when: "Tuesday 10:00" });
+    expect(m.brief).toContain("Dana Wright is CISO at Acme [2].");
+    expect(m.brief).not.toMatch(/Palo Alto|husband/); // private life filtered out
+    expect(prompts.some((p) => p.includes("Split the research question") && p.includes("Never search for or include home address"))).toBe(true);
+    expect((await e.brain.documents()).map((d) => d.title)).toContain("Meeting prep: Dana Wright, Acme");
+    await e.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");

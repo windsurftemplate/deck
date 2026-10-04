@@ -46,6 +46,8 @@ async function main() {
     "deck.stats": () => engine.deckStats(),
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
+    "research.swarm": (p) => { const q = p as { question?: string; angles?: number }; return engine.researchSwarm(String(q?.question ?? ""), Number(q?.angles) || 3); },
+    "meeting.prep": (p) => engine.meetingPrep(p as never),
     "crew.custom.list": async () => engine.customList(),
     "crew.custom.save": (p) => engine.customSave(p as never),
     "crew.custom.delete": (p) => engine.customDelete(String((p as { id?: string })?.id ?? "")),
