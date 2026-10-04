@@ -258,6 +258,8 @@ flowchart TB
 | **Budgets** | Daily tokens, searches, helper budgets, step limits |
 | **Stop switch** | Stops everything and rejects all waiting actions |
 
+**No keys in this repository.** Every API key (OpenAI, Jev, GitHub, Google and the rest) is entered in the app and kept in your OS keychain; a pre-commit hook and CI scan every commit for secrets.
+
 **Your data stays local.** Memory, chats, issues, goals and the second brain live in one encrypted `workspace.db`; keys in the OS keychain; backups in Documents/deck-backups. Only requests to your model provider, search questions (personal data removed), pages you add and Telegram (if on) leave your machine. Speech never does.
 
 <a id="models"></a>
@@ -369,7 +371,7 @@ Everything is also inside the app under **Help and course** (⌘/Ctrl + 9). Star
 - [x] Labs: Ollama, MCP plugins, Gmail and Calendar, GitHub, federation
 - [ ] Live-model eval mode and score trends in the Command center
 - [ ] Eval cases for plan lock, CISO reviews, helpers and playbooks
-- [ ] Jev model routing
+- [ ] Jev model routing (you add your own key in the app; no key ships with deck)
 - [ ] Signed and notarized installers
 - [ ] Automations that run while deck is closed
 

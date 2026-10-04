@@ -43,7 +43,7 @@ Every integration in one place, each with its status and a shortcut to set it up
 
 | Tool | What it does | Setup |
 |---|---|---|
-| **Jev** | Model routing | Key and API address saved; connects once Jev's API is added |
+| **Jev** | Model routing | Paste your Jev key and API address on the Tools page (the key goes to your system keychain, never a file); routing connects once Jev's API is added |
 | **Web research** | Research searches the web (25 searches a day) | Needs Claude, OpenAI or Gemini as the main model |
 | **Telegram** | Chat and approve from your phone | Settings > Telegram |
 | **VaultProof** | Keys and actions checked over MCP | Settings > VaultProof |
