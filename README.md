@@ -1,276 +1,420 @@
+<div align="center">
+
+<img src="docs/assets/logo.svg" width="104" alt="deck logo">
+
 # deck
 
-A local-first AI agent crew for your desktop. A Chief of Staff talks with you and hands work to a crew of specialists (GTM, Operations, Engineering, Research, CISO, and members you define). Everything they know lives in an encrypted file on your computer. Anything that leaves your machine waits for your approval.
+**Your local-first AI crew.** A Chief of Staff that plans, remembers and delegates to specialist agents,<br>
+with encrypted memory on your machine and your approval on anything that leaves it.
 
-Version 0.1.0 · MIT license · Mac, Windows and Linux
+[![License: MIT](https://img.shields.io/badge/license-MIT-7fe3ff?style=flat-square)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-12151c?style=flat-square)](#install)
+[![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](#development)
+[![Tests](https://img.shields.io/badge/tests-263%20passing-5fd39a?style=flat-square)](#evals)
+[![Safety evals](https://img.shields.io/badge/safety%20evals-9%2F9-5fd39a?style=flat-square)](#evals)
+[![Models](https://img.shields.io/badge/models-OpenAI%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Ollama-79a8ff?style=flat-square)](#models)
+[![MCP](https://img.shields.io/badge/MCP-ready-c59bff?style=flat-square)](https://modelcontextprotocol.io)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-f2b34a?style=flat-square)](CONTRIBUTING.md)
 
-## Contents
+[Install](#install) · [Features](#features) · [How it works](#how-it-works) · [Safety](#safety) · [Docs](#docs) · [Roadmap](#roadmap)
 
-1. [What deck does](#what-deck-does)
-2. [Install](#install)
-3. [First run](#first-run)
-4. [The crew](#the-crew)
-5. [How agents work](#how-agents-work)
-6. [Features](#features)
-7. [Labs (off until you turn them on)](#labs-off-until-you-turn-them-on)
-8. [Safety and privacy](#safety-and-privacy)
-9. [Models](#models)
-10. [Limits](#limits)
-11. [Evals and tests](#evals-and-tests)
-12. [Architecture](#architecture)
-13. [Development](#development)
-14. [Documentation](#documentation)
-15. [What deck will not do](#what-deck-will-not-do)
-16. [Status and known gaps](#status-and-known-gaps)
-17. [License, security and contributing](#license-security-and-contributing)
+<img src="docs/assets/screenshots/deck.png" alt="The deck: a 3D space station where each crew member works at a station" width="920">
 
-## What deck does
+</div>
 
-- **Chat with a Chief of Staff** that plans, remembers, and delegates to a crew. Replies stream as they are written; chats are saved.
-- **Delegated work is checked.** Every task has a "done when" list; a separate model checks the result, retries once with what was missing, and escalates to a stronger model if needed.
-- **Memory that lasts.** Facts, events, documents and skills in an encrypted SQLite file, searched by meaning and keywords, with history kept when facts change.
-- **A second brain.** Add files, notes, web pages, Obsidian vaults, Notion exports and Apple Notes; capture business cards, whiteboards and documents with your camera; explore it all in a 3D map or an investigation board.
-- **Goals, automations and workflows.** Big goals become milestones with weekly progress checks; jobs run on a schedule; multi-step workflows chain crew members.
-- **Research.** Web research with sources, research swarms that search several angles at once, and meeting prep briefs from professional sources.
-- **Learning without retraining.** Experience recall, failure lessons, an evolving playbook per agent, skills you approve, nightly learning and tested prompt tuning.
-- **Safety by design.** Locked rules in code, an approval for every external action, a CISO that reviews each approval, an input scanner, a tripwire, a plan lock, and safety evals that assume the model is compromised.
-- **A 3D command deck** showing who is working, what waits for you, and how much budget is used.
+<a id="highlights"></a>
 
-## Install
+## ✨ Highlights
 
-You need a Mac (Apple Silicon or Intel), Windows 10 or 11 (64-bit), or Linux, about 5 GB free for the first install, and an API key (OpenAI recommended; Anthropic, Google Gemini and OpenRouter also work). No coding needed.
+<table>
+<tr>
+<td width="33%" valign="top"><b>🧭 A crew, not a chatbot</b><br>A Chief of Staff delegates to GTM, Operations, Engineering, Research, a CISO and up to 8 agents you define. Agents can spin up temporary helpers for parallel work.</td>
+<td width="33%" valign="top"><b>✅ Work that gets checked</b><br>Every task has a "done when" list. A separate model checks the result, retries once with what was missing, then escalates to a stronger model.</td>
+<td width="33%" valign="top"><b>🔐 Local and encrypted</b><br>Memory, chats and documents live in one SQLCipher file. Keys stay in your OS keychain. Encrypted backups restore anywhere with your passphrase.</td>
+</tr>
+<tr>
+<td valign="top"><b>🧠 Memory that learns</b><br>Hybrid search, history when facts change, failure lessons, an evolving playbook per agent, approved skills, nightly learning and tested prompt tuning.</td>
+<td valign="top"><b>🛡️ Safe by design</b><br>Approval for anything external, a CISO opinion on every approval, an input scanner, a plan lock, a tripwire, and safety evals that assume the model is hijacked.</td>
+<td valign="top"><b>🔎 Research that cites</b><br>Web research with sources, research swarms that search several angles at once, and meeting prep briefs from professional sources.</td>
+</tr>
+<tr>
+<td valign="top"><b>📚 A second brain</b><br>Files, web pages, Obsidian, Notion, Apple Notes, notes with links, and camera capture of cards, whiteboards and documents. Explore it in 3D or on a corkboard.</td>
+<td valign="top"><b>🎯 Goals and automations</b><br>Goals become milestones with weekly check-ins. Jobs run on a schedule. Workflows chain agents step by step.</td>
+<td valign="top"><b>🧪 Labs</b><br>Local models with Ollama, MCP plugins, Gmail and Calendar, GitHub pull requests, crew votes, federation with trusted crews. All off until you turn them on.</td>
+</tr>
+</table>
 
-### Mac
+## 📸 Screenshots
 
-1. Unzip `deck.zip`.
-2. Open Terminal, type `bash ` (with a space), drag **Install deck.command** into the window, press Return.
-3. The first install takes 10 to 20 minutes. deck opens from Applications.
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/screenshots/command-center.png" alt="Command center"><br><sub><b>Command center.</b> Setup health with fixes, spend, crew performance and growth.</sub></td>
+<td width="50%"><img src="docs/assets/screenshots/crew-chat.png" alt="Crew chat"><br><sub><b>Crew chat.</b> Every handoff, tool call, check, thought and approval, live.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/assets/screenshots/board.png" alt="Investigation board"><br><sub><b>Board.</b> People, companies, facts and documents pinned and connected.</sub></td>
+<td><img src="docs/assets/screenshots/goals.png" alt="Goals"><br><sub><b>Goals.</b> Milestones as issues, progress, and weekly check-ins.</sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/assets/screenshots/help.png" alt="Help and course"><br><sub><b>Help and course.</b> The full manual and a 15-chapter course on how AI agents work, with quizzes.</sub></td>
+</tr>
+</table>
 
-Running it through `bash` avoids macOS blocking a downloaded script. Or unblock the folder once: `xattr -dr com.apple.quarantine ~/Downloads/deck`. The installer keeps its own Node and Rust in `~/.deck-tools` and logs to `~/Library/Logs/deck-install.log`.
+<a id="install"></a>
 
-### Windows
+## 🚀 Install
 
-1. Right-click `deck.zip`, Properties, tick **Unblock**, OK, then unzip.
-2. Double-click **Install deck.cmd** (SmartScreen: More info, Run anyway).
-3. It may install Microsoft's C++ build tools and WebView2 (several GB). First run: 20 to 40 minutes. Log: `%LOCALAPPDATA%\deck-install.log`.
+> Requires macOS (Apple Silicon or Intel), Windows 10/11 64-bit, or Linux; about 5 GB free for the first install; and an API key (OpenAI recommended; Anthropic, Gemini and OpenRouter also work). No coding needed.
 
-### Linux
+<table>
+<tr><th>macOS</th><th>Windows</th><th>Linux</th></tr>
+<tr>
+<td valign="top">
 
-Run `./install-linux.sh`. Ubuntu and Debian get a `.deb`, Fedora an `.rpm`, others an AppImage in `~/Applications`. Needs GNOME Keyring or KWallet.
+1. Unzip `deck.zip`
+2. In Terminal: `bash ` then drag in **Install deck.command**
+3. Wait 10 to 20 minutes the first time
 
-### Updating and uninstalling
+</td>
+<td valign="top">
 
-Unzip the new version and run its installer the same way; memory, settings and keys are kept. **Uninstall deck.command**, **Uninstall deck.cmd** or `./uninstall-linux.sh` remove the app and only delete your data if you type `DELETE`.
+1. Properties → **Unblock**, then unzip
+2. Double-click **Install deck.cmd**
+3. Wait 20 to 40 minutes the first time
 
-Prebuilt installers (`.dmg`, `.msi`/`.exe`, `.deb`, AppImage) are produced by the release workflow when a tag like `v0.2.0` is pushed.
+</td>
+<td valign="top">
 
-## First run
+1. Unzip
+2. Run `./install-linux.sh`
+3. Gets a `.deb`, `.rpm` or AppImage
 
-1. **Power-up check.** A ring (or a 3D reactor, in Labs) lights as each system checks out: keychain, memory, models, scheduler and more. Problems show a plain fix.
-2. **Connect an LLM.** OpenAI is first. Paste your key; deck picks the newest OpenAI reasoning model for heavy work and the newest mini for quick work, and re-checks weekly. Keys go to the system keychain, never a file.
-3. **Starting setup.** Pick a pack: Startup founder, Freelancer, Student, VaultProof, or blank. Packs can only make the crew more careful.
-4. **About you.** Name, role, priorities, people, style. These become facts.
-5. **How much to ask.** Cautious, Balanced (default) or Autonomous.
-6. **Ready.** Save your recovery key in a password manager.
+</td>
+</tr>
+</table>
 
-## The crew
+Installers keep their own Node and Rust in `~/.deck-tools` (Windows: `%LOCALAPPDATA%\deck-tools`) and write a readable log. Updating keeps your memory, settings and keys. Uninstallers only delete data if you type `DELETE`. Prebuilt `.dmg`, `.msi`, `.deb` and AppImage files come from the release workflow when a version tag is pushed.
 
-| Agent | Does | Cannot |
+**First run:** a power-up check lights each system, then a short setup: paste your OpenAI key (deck picks the newest reasoning model and mini automatically), choose a starting pack, tell the crew about you, choose how much it should ask, and save your recovery key.
+
+<a id="features"></a>
+
+## 🧩 Features
+
+### The crew
+
+| Agent | Role | Hard limits |
 |---|---|---|
-| Chief of Staff | Talks with you, plans, delegates, keeps approvals in one place, proposes settings and schedules | Act outside your machine without approval |
-| GTM | Leads, outreach drafts, follow-ups | Send email or contact anyone |
-| Operations | Tracker hygiene, admin drafts, commitments | Send, delete, pay |
-| Engineering | Breaks work into issues, records decisions, opens pull requests (Labs) | Merge or deploy |
-| Research | Web research with sources, research swarms, weekly crew self-review | Contact anyone |
-| CISO | deck's own security: a risk opinion on every approval, security status, weekly security review | Approve, reject, block or change anything (advice only) |
-| Your crew members | Up to 8 you define: name, role, tools from a safe list | Delegate, send, or use tools outside the safe list |
-| Helpers | Temporary agents created by any of the above for one task; dissolved after reporting | Create helpers, delegate, or do anything external |
+| **Chief of Staff** | Talks with you, plans, delegates, keeps approvals together, proposes settings and schedules | Nothing external without approval |
+| **GTM** | Leads, outreach drafts, follow-ups | Cannot send or contact anyone |
+| **Operations** | Tracker hygiene, admin drafts, commitments | Cannot send, delete or pay |
+| **Engineering** | Issues, decisions, pull requests (Labs) | Cannot merge or deploy |
+| **Research** | Web research, swarms, weekly crew self-review | Cannot contact anyone |
+| **CISO** | Risk opinion on every approval, security status, weekly review | Advice only: never decides or blocks |
+| **Your members** | Up to 8: name, role, tools from a safe list | Same rules as the built-in crew |
+| **Helpers** | Up to 10 temporary agents per task, created by any agent above | Cannot create helpers or act externally |
 
-Only the Chief of Staff delegates. Crew members (built-in or yours) can create up to 10 temporary helpers per task; keeping one as a crew member is your choice.
+<details>
+<summary><b>💬 Chat and voice</b></summary>
 
-## How agents work
+Streaming replies, saved chats, picture snapshots and attachments (never stored), push-to-talk and hands-free voice with a wake word (transcribed locally with whisper.cpp), spoken replies, desktop notifications, Telegram (only your chat id), and a ⌘K command menu.
 
-Every agent runs the same loop: **observe, think, act, reflect**.
+</details>
 
-1. **Observe.** A "Situation now" section: time, approvals waiting, goals, its recent misses, budget used, and notes prepared while you were idle. Plus memory recall and similar past tasks with their lessons.
-2. **Think.** Complex work gets a short plan first (a call with no tools, so planning cannot act). Hard work (analysis, comparisons, decisions) also uses the model's built-in reasoning. Simple requests skip both. Summaries appear in Crew chat as "Thinks".
-3. **Act.** Tool calls pass an action gate: permissions, your tool settings, approvals, the tripwire, and the plan lock (once outside content is in play, only planned tools can run).
-4. **Reflect.** Failed or refused steps are reported back plainly so the agent revises its plan. A living to-do list restates the plan and progress every step.
-5. **Check.** For delegated work, a separate model checks the result against the "done when" list; one retry with the gaps; then escalation to the strong model.
+<details>
+<summary><b>📚 Second brain and capture</b></summary>
 
-## Features
+Add PDF, Word, Markdown, text, CSV, JSON and HTML files; paste text; add web pages (private addresses refused); import Obsidian or Markdown folders, Notion exports and Apple Notes; write notes with `[[links]]`. Capture business cards, whiteboards and documents with your camera: deck reads the text, you confirm, it saves. Everything is chunked, searched by meaning and keywords, and handed to the model as untrusted data. Explore it in a 3D map or on the investigation board.
 
-### Chat
-Streaming replies, saved chats, pictures (snapshots and attachments, never stored), push-to-talk and hands-free voice with a wake word (transcribed on your machine with whisper.cpp), spoken replies, desktop notifications, and Telegram (only your chat id).
+</details>
 
-### Pages
+<details>
+<summary><b>🔎 Research and meeting prep</b></summary>
 
-| Page | What it is |
-|---|---|
-| Deck | 3D space station: crew at stations, status rings, approvals at the Vault, live screens. Optional camera tours |
-| Brain | Second brain: add, capture and import; 3D map; notes with `[[links]]`; library |
-| Board | Investigation board: people, companies, facts and documents pinned with string between them |
-| Goals | Goals planned into milestone issues, progress bars, weekly checks |
-| Command center | Setup health score with fixes, spend, crew performance, brain growth, issues |
-| Crew chat | Every handoff, tool call, report, check, thought and approval; crew discussions and votes; federation messages |
-| Automations | Scheduled jobs and multi-step workflows |
-| Tools | Integrations, keys, model arena, who can use what |
-| List view | The same information without 3D |
-| Help and course | The user manual and a 15-chapter course on how AI agents work, with search and quizzes |
+- **Web research** through the provider's own search tool, with sources, 25 searches a day, personal data removed from questions.
+- **Research swarm**: a planner splits a question into 2 to 5 angles, searches run in parallel, and one brief combines them with numbered sources and disagreements noted.
+- **Meeting prep**: by name, from your memory and calendar plus professional sources only. Private life is excluded from searches and filtered from the brief. Saved to the second brain.
 
-### Second brain
-Files (PDF, Word, Markdown, text, CSV, JSON, HTML, 25 MB each), pasted text, web pages (private addresses refused), Obsidian or Markdown folders, Notion exports, Apple Notes, in-app notes, and camera capture of business cards, whiteboards and documents (text only; photos of people are refused). Everything is split into passages, searched by meaning and keywords, and given to the model as untrusted data. Nightly learning turns new files and notes into facts.
+</details>
 
-### Research
-- **Web research** through the model provider's search tool, with sources; 25 searches a day; personal data removed from search questions.
-- **Research swarm**: 2 to 5 searches in parallel, combined into one brief with numbered sources and disagreements noted.
-- **Meeting prep**: by name, from your memory and calendar plus professional sources only; private life excluded and filtered; saved to the second brain.
+<details>
+<summary><b>🎯 Goals, automations and workflows</b></summary>
 
-### Goals, automations, workflows
-Goals are planned into 3 to 7 dated milestones (as issues) and checked every Monday. Automations run Chief of Staff jobs, crew tasks or workflows on a schedule (while deck is open). Workflows chain 2 to 6 steps, each seeing earlier results; templates included.
+Goals are planned into 3 to 7 dated milestones (as issues) and checked every Monday. Automations run Chief of Staff jobs, crew tasks or whole workflows on a schedule. Workflows chain 2 to 6 steps where each step sees the results so far; templates included (account research to outreach, weekly review, breach to content).
 
-### Learning
+</details>
+
+<details>
+<summary><b>🧠 Learning without retraining</b></summary>
+
 | Mechanism | What happens |
 |---|---|
-| Memory filter | Rejects vague facts, merges duplicates, keeps history when facts change, sends contradictions to review |
-| Experience recall | Agents see similar past tasks, how they went, and failure lessons |
+| Memory filter | Rejects vague facts, merges duplicates, keeps history when facts change, sends conflicts to review |
+| Experience recall | Agents see similar past tasks, outcomes and lessons before starting |
 | Failure lessons | One sentence per failed task on what to do differently |
-| Playbook (ACE) | Separate lessons per agent with helped and misled counts; added, never reworded; retired when they keep misleading |
-| Skills | Proposed from checked work, used only after you approve; open SKILL.md format for import and export |
-| Nightly learning (02:00) | Facts from events and new documents, rejection review, skill retirement |
-| Prompt tuning (Sundays) | New lessons tested on practice runs of real tasks; adopted only with a clear win and your approval |
-| Model arena | Compares your models on an agent's past tasks; one click gives that agent its own model |
-| Idle-time notes | After 20 idle minutes, short notes per agent from facts and the crew's own history |
+| Playbook (ACE) | Lessons per agent with helped and misled counts; added, never reworded; retired when they mislead |
+| Skills | Proposed from checked work, active only after you approve; open SKILL.md format |
+| Nightly learning | Facts from events and new documents, rejection review, skill retirement |
+| Prompt tuning | New lessons tested on practice runs of real tasks; adopted only with a clear win and your approval |
+| Model arena | Compares your models on an agent's real tasks; one click assigns the winner |
+| Idle-time notes | While you are away, short notes per agent from facts and the crew's own history |
 
-### Command center and setup health
-A score out of 100 from twelve checks (key, fallback, backup, preset, tripwire, budget, learning, stale approvals, success rate, automations, Telegram, web research), each with a fix; daily history and alerts when a check starts failing. Charts for tokens, crew work and performance, brain growth and issues.
+</details>
 
-### Backups
-Encrypted backups (workspace, memory key and settings, sealed with your passphrase using scrypt and AES-256-GCM) to Documents/deck-backups; restore on any computer with the file and the passphrase.
+<details>
+<summary><b>📊 Command center and setup health</b></summary>
 
-## Labs (off until you turn them on)
+A score out of 100 from twelve checks (keys, fallback model, recent backup, approval preset, tripwire, budget, learning, stale approvals, success rate, automations, Telegram, web research), each with a Fix button, a daily history, and alerts when a check starts failing. Charts for tokens, crew work and performance, brain growth and issues.
+
+</details>
+
+<details>
+<summary><b>🧪 Labs (all off by default)</b></summary>
 
 | Feature | What it adds |
 |---|---|
 | Complexity routing | Simple chat to the cheap model, real work to the heavy one |
-| Local models (Ollama) | Free, private models on your computer |
+| Local models | Ollama: free, private, on your machine |
 | Parallel work | 2 to 4 delegated tasks at once |
-| Crew votes | Independent answers, ranked by the crew (Borda count), with dissent |
-| Plugins (MCP) | Outside MCP servers as tools; every call asks unless you trust read-only tools |
-| Agent pull requests | Engineering opens pull requests on a new branch; asks first; never merges |
-| Gmail and Calendar | Read mail and calendar, save drafts with approval; no send permission is ever requested |
-| Federation | Invite-only, signed and encrypted messages with trusted crews; you approve everything outgoing |
+| Crew votes | Independent answers ranked by the crew (Borda count), with dissent |
+| Plugins | Any MCP server as tools; every call asks unless you trust read-only tools |
+| Agent pull requests | New branch and pull request, asks first, never merges |
+| Gmail and Calendar | Read and draft with approval; send permission is never requested |
+| Federation | Invite-only, signed and encrypted messages with trusted crews |
 | Camera tours, 3D power-up | Visual extras |
 
-## Safety and privacy
+</details>
 
-**Locked rules** (in code; no setting, pack, prompt or learning can change them): anything that leaves your machine needs approval; secrets are stripped from prompts and tool results; outside text is wrapped as untrusted data; using the planted tripwire stops every agent; crew members cannot delegate; every run has a step limit.
+<a id="how-it-works"></a>
 
-**Layers**: per-agent permissions you can only narrow; an action gate on every tool call; approvals (on every preset for external actions); the CISO's risk opinion on every approval; an input scanner that flags instruction-like text and strips hidden characters; personal data removed from web searches; the plan lock; the tripwire; budgets; and a stop switch that rejects everything waiting.
+## ⚙️ How it works
 
-**Your data stays local**:
+Every agent runs the same loop. Simple requests skip straight to acting; complex and hard ones plan and reason first.
 
-| What | Where |
+```mermaid
+flowchart LR
+    U["You"] --> CoS["Chief of Staff"]
+    CoS -->|"brief + done when"| A["Crew member"]
+    A -.->|"up to 10"| H["Helpers"]
+    subgraph Loop["Every agent"]
+      O["Observe<br/>situation, memory,<br/>past lessons"] --> T["Think<br/>plan, reasoning<br/>(complex work)"]
+      T --> X["Act<br/>through the<br/>action gate"]
+      X --> R["Reflect<br/>failed step?<br/>revise the plan"]
+      R --> X
+    end
+    A --> Loop
+    Loop --> V{"Checker"}
+    V -->|"missing items"| Loop
+    V -->|"still failing"| E["Escalate to<br/>strong model"]
+    V -->|"checked"| CoS
+    X -->|"leaves the machine"| AP["Approval card<br/>+ CISO opinion"]
+    AP --> U
+```
+
+<details>
+<summary><b>Architecture diagram</b></summary>
+
+```mermaid
+flowchart TB
+    subgraph Desktop["apps/desktop: Tauri 2 (Rust) + React"]
+      UI["Pages, 3D deck, board,<br/>chat, settings"]
+      KC["OS keychain"]
+    end
+    subgraph Engine["apps/engine: Node sidecar (JSON lines over stdio)"]
+      AG["agents: loop, gate,<br/>roles, learning"]
+      MO["models: OpenAI, Claude,<br/>Gemini, OpenRouter, Ollama"]
+      ME["memory: SQLCipher +<br/>sqlite-vec + FTS5"]
+      GA["gate: scanners,<br/>approvals, undo"]
+      CO["connectors: MCP,<br/>GitHub, Google"]
+    end
+    UI <--> Engine
+    KC --- UI
+    AG --> MO
+    AG --> ME
+    AG --> GA
+    AG --> CO
+    MO -->|"HTTPS"| P["Model providers"]
+```
+
+</details>
+
+<a id="safety"></a>
+
+## 🛡️ Safety by design
+
+> Prompts are guidance; code is enforcement. deck assumes the model can be fully hijacked by what it reads, and makes sure that still cannot cause harm.
+
+| Layer | What it does |
 |---|---|
-| Memory, chats, issues, goals, brain (encrypted with SQLCipher) | `workspace.db` in the app data folder (`dev.deck.desktop`) |
-| Memory key and API keys | System keychain (shown only by their last 4 characters) |
-| Backups | Documents/deck-backups |
+| **Locked rules** | External actions always need approval; secrets stripped; outside text wrapped as data; crew cannot delegate; step limits. No setting, pack, prompt or learning can change these |
+| **Permissions** | Per-agent tool scopes you can narrow but never widen |
+| **Action gate** | Every tool call checked for scope, kind, your tool settings and the tripwire |
+| **CISO review** | A low, medium or high risk opinion on every approval card before you decide |
+| **Input scanner** | Flags instruction-like text, strips hidden characters, warns the agent every time |
+| **Plan lock** | Once outside content is in play, only tools named in the plan can run |
+| **Tripwire** | A planted fake secret; using it stops every agent and raises an incident |
+| **Privacy filters** | Personal data removed from web searches; meeting prep limited to professional sources |
+| **Budgets** | Daily tokens, searches, helper budgets, step limits |
+| **Stop switch** | Stops everything and rejects all waiting actions |
 
-What leaves your machine: requests to your model provider (messages, recalled memory, task briefs, pictures you attach), search questions (personal data removed), pages you add, and Telegram messages if you turn Telegram on. Speech never leaves.
+**Your data stays local.** Memory, chats, issues, goals and the second brain live in one encrypted `workspace.db`; keys in the OS keychain; backups in Documents/deck-backups. Only requests to your model provider, search questions (personal data removed), pages you add and Telegram (if on) leave your machine. Speech never does.
 
-## Models
+<a id="models"></a>
+
+## 🤖 Models
 
 | Role | Default |
 |---|---|
-| Heavy (Chief of Staff and crew) | Newest OpenAI reasoning model your key can use (auto-pick, re-checked weekly) |
-| Cheap (checks, summaries, learning, CISO reviews) | Newest OpenAI mini model (auto-pick) |
+| Heavy | Newest OpenAI reasoning model your key can use, re-checked weekly |
+| Cheap | Newest OpenAI mini (checks, summaries, learning, CISO reviews) |
 | Fallback | Optional, ideally another provider |
-| Escalation | When work fails on a smaller model, retried once on the strong model |
+| Escalation | Failed work retried once on the strong model |
 | Per agent | Set by the model arena |
 
-Providers: OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama (Labs). Built-in reasoning is used on hard work with Claude, Gemini 2.5 and OpenAI reasoning models. Memory search runs a local embedding model by default (all-MiniLM-L6-v2, 384 dimensions) or OpenAI embeddings.
+Built-in reasoning is used on hard work with OpenAI reasoning models, Claude and Gemini 2.5. Memory search runs a local embedding model (all-MiniLM-L6-v2) by default.
 
-## Limits
+<a id="limits"></a>
+
+## 📏 Limits
 
 | What | Limit |
 |---|---|
-| Agents | Chief of Staff, 5 built-in crew, up to 8 of yours, plus helpers |
+| Agents | Chief of Staff, 5 built-in, up to 8 of yours, plus helpers |
 | Delegation | One level; only the Chief of Staff delegates |
-| Helpers | Up to 10 per task (setting: 1 to 20), 5 at once, one level, shared token budget (300,000 by default) |
-| Steps per run | 6, plus one checker retry and one escalation |
-| Parallel work (Labs) | 2 to 4 tasks |
-| Workflows | 2 to 6 steps |
-| Daily tokens | 2,000,000 by default (your setting) |
-| Web searches | 25 a day |
-| Never possible | Sending email, paying, merging code, deleting |
-| When deck is closed | Nothing runs |
+| Helpers | 10 per task (1 to 20), 5 at once, shared budget (300,000 tokens) |
+| Steps | 6 per run, plus one checker retry and one escalation |
+| Daily budget | 2,000,000 tokens by default; 25 web searches |
+| Never possible | Sending email, paying, merging, deleting |
 
-## Evals and tests
+<a id="evals"></a>
 
-- **Memory evals** (`evals/`): a realistic history is loaded into a real encrypted store and 5 questions must return the right facts and not outdated ones; also run with the real local embedding model.
-- **Safety evals** (`evals/`): a deliberately compromised model obeys an injected email; 9 cases check that sends wait for approval on every preset, rejected and denied actions never run, secrets never reach the model, the untrusted wrapper cannot be closed, the tripwire stops the run, and prompts are scrubbed.
-- **Baseline gate**: `evals/baseline.json` holds the minimum scores (100% for both); a drop fails the build.
-- **In the app**: the checker on every delegated task, practice runs for tuning and the arena with an adoption rule, and production signals in the Command center.
-- **Tests**: 263 TypeScript tests across all packages and 6 Rust tests; `pnpm check` runs lint, type checks and tests. CI also runs a gitleaks secret scan on every push.
+## 🧪 Evals and tests
 
-## Architecture
+| Suite | What it proves | Score |
+|---|---|---|
+| Memory evals | Recall finds the right facts, follows relationships, prefers current facts over outdated ones (also with the real local embedding model) | 5/5 |
+| Safety evals | With a model that obeys an injected email: sends wait for approval on every preset, rejected and denied actions never run, secrets never reach the model, the wrapper holds, the tripwire stops the run | 9/9 |
+| Baseline gate | Any score drop fails the build (`evals/baseline.json`) | 100% |
+| Unit and contract tests | Every package, plus Rust | 263 TS + 6 Rust |
+
+In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
+
+<a id="development"></a>
+
+## 🛠️ Development
+
+```bash
+mise install          # Node 22, pnpm 9.15, Rust, gitleaks (pinned)
+pnpm install
+pnpm check            # lint, type check, all tests and evals
+pnpm dev              # run in development
+pnpm secrets          # secret scan
+```
+
+<details>
+<summary><b>Repository layout</b></summary>
 
 ```
-apps/desktop          Tauri 2 shell (Rust) + React UI
-apps/engine           Agent engine (Node), JSON lines over stdio, bundled as a sidecar
-packages/agents       Prompts, roles, the agent loop, action gate, crew rules, learning, tuning, routing, SKILL.md
+apps/desktop          Tauri 2 shell + React UI
+apps/engine           Agent engine (Node sidecar)
+packages/agents       Prompts, roles, agent loop, action gate, crew rules, learning, tuning, routing, SKILL.md
 packages/chat         Telegram bot, voice notes
-packages/connectors   MCP client, GitHub, Google (OAuth with PKCE), VaultProof check
+packages/connectors   MCP client, GitHub, Google OAuth (PKCE), VaultProof check
 packages/core         Events, task board, scheduler, startup checks
 packages/embed-local  Local embedding model
-packages/gate         Secret scanner, input scanner, approvals, undo, idempotency
-packages/ingest       Importers: PDF, Word, Markdown, web pages, Obsidian, Notion, Apple Notes
-packages/memory       Encrypted SQLite + sqlite-vec + FTS5, MemoryStore port, documents, graph
-packages/models       OpenAI, Anthropic, Gemini, OpenRouter, Ollama adapters; streaming; reasoning; router; auto-pick
+packages/gate         Secret and input scanners, approvals, undo, idempotency
+packages/ingest       PDF, Word, Markdown, web, Obsidian, Notion, Apple Notes
+packages/memory       Encrypted SQLite, vector + keyword search, documents, graph
+packages/models       Provider adapters, streaming, reasoning, router, auto-pick
 packages/packs        Starting setups
 packages/settings     Settings schema and validation
-packages/tracker      Built-in issue tracker, TrackerStore port
+packages/tracker      Issue tracker
 evals/                Memory and safety evals with a baseline
 docs/                 User manual and course (also inside the app)
-scripts/              Engine packaging, Windows installer script
 ```
 
-Key choices: all storage behind `MemoryStore` and `TrackerStore` interfaces with contract tests; keys only in the OS keychain; one chat interface over every provider; safety enforced in code, not prompts. App identifier `dev.deck.desktop`.
+</details>
 
-## Development
+| Layer | Tech |
+|---|---|
+| Desktop | Tauri 2, Rust, React, TypeScript |
+| 3D | three.js, Kenney Space Station Kit (CC0) |
+| Engine | Node 22, JSON lines over stdio |
+| Storage | SQLCipher, sqlite-vec, FTS5 |
+| Models | OpenAI, Anthropic, Gemini, OpenRouter, Ollama |
+| Integrations | MCP, GitHub REST, Google APIs, Telegram, whisper.cpp |
+| Tooling | pnpm, Turborepo, Vitest, gitleaks, mise |
 
-Toolchain is pinned with [mise](https://mise.jdx.dev): Node 22, pnpm 9.15, Rust stable, gitleaks.
+Read [`AGENTS.md`](AGENTS.md) for contributor and coding-agent rules, [`BUILD_PLAN.md`](BUILD_PLAN.md) for what was built and why, and [`UPDATES.md`](UPDATES.md) for the detailed change log.
 
-```
-mise install
-pnpm install
-pnpm check          # lint, type check and all tests
-pnpm dev            # run in development
-pnpm build          # build every package
-pnpm secrets        # gitleaks scan
-```
+<a id="docs"></a>
 
-A pre-commit hook scans for secrets. `scripts/package-engine.mjs` bundles the engine with its Node runtime for the desktop app. Read `AGENTS.md` (rules for contributors and coding agents), `BUILD_PLAN.md` (what was built and why) and `UPDATES.md` (detailed change log).
+## 📖 Documentation
 
-## Documentation
+Everything is also inside the app under **Help and course** (⌘/Ctrl + 9). Start at [`docs/README.md`](docs/README.md).
 
-Everything is also inside the app under **Help and course** (Cmd/Ctrl + 9), with search and quizzes. Start at [`docs/README.md`](docs/README.md).
+- **[User manual](docs/README.md#user-manual)**: 13 chapters, from install to Labs, with troubleshooting, FAQ and a glossary.
+- **[How AI agents work](docs/README.md#course-how-ai-agents-work-from-high-level-to-low-level)**: a 15-chapter course from first principles to forward deployed engineering. Every chapter has a hands-on lab on deck's code and a quiz.
 
-- **User manual** (13 chapters): getting started, the basics, chat, the deck and Crew chat, the second brain, goals and automations, the command center, models and tools, learning, safety and privacy, settings reference, troubleshooting and FAQ, Labs.
-- **Course: how AI agents work** (15 chapters, each with a lab on deck's code and a quiz): from what an agent is, through language models, context engineering, tools and MCP, the agent loop, memory and retrieval, multi-agent systems, learning, security and evals, to production engineering and forward deployed engineering (discovery, pilots, rollout and security reviews), ending with a capstone.
+<a id="roadmap"></a>
 
-## What deck will not do
+## 🗺️ Roadmap
 
-deck does not identify people from photos or faces, search faces online, or build profiles of people from pictures. Capture reads text from cards, boards and documents only; meeting prep works from a name and professional sources. deck also never sends email, pays, merges code or deletes on its own.
+- [x] Crew with delegation, checker, escalation and helpers
+- [x] Encrypted memory, second brain, capture, board
+- [x] Observe, think, act, reflect with built-in reasoning
+- [x] Playbooks, failure lessons, tuning, arena, idle-time notes
+- [x] CISO, plan lock, input scanner, tripwire, safety evals
+- [x] Labs: Ollama, MCP plugins, Gmail and Calendar, GitHub, federation
+- [ ] Live-model eval mode and score trends in the Command center
+- [ ] Eval cases for plan lock, CISO reviews, helpers and playbooks
+- [ ] Jev model routing
+- [ ] Signed and notarized installers
+- [ ] Automations that run while deck is closed
 
-## Status and known gaps
+<a id="faq"></a>
 
-- Built and tested here with stand-in models and servers; first runs against live providers happen on your machine.
-- Live-model evals and eval cases for the newest features (plan lock, CISO reviews, helpers, playbook) are next.
-- Automations run only while deck is open.
-- The 3D deck shows built-in stations; your own crew members and helpers appear in Crew chat and the list view.
-- Jev routing is waiting on its API docs (the key is already stored).
+## ❓ FAQ
 
-## License, security and contributing
+<details>
+<summary><b>Can the crew send emails or post for me?</b></summary>
+Not without your approval, ever. With Gmail connected it can save drafts after you approve; deck never asks Google for send permission.
+</details>
 
-MIT license (see `LICENSE`; third-party notices in `THIRD_PARTY_NOTICES.md`; 3D models from the Kenney Space Station Kit, CC0). Report vulnerabilities as described in `SECURITY.md`. See `CONTRIBUTING.md` to contribute.
+<details>
+<summary><b>Does deck train models on my data?</b></summary>
+No. Your provider receives the requests deck sends under your account's terms. deck sends nothing anywhere else.
+</details>
+
+<details>
+<summary><b>What does it cost?</b></summary>
+deck is free and MIT licensed. You pay your model provider for tokens, capped by your daily budget. Local models through Ollama cost nothing.
+</details>
+
+<details>
+<summary><b>Can deck identify someone from a photo?</b></summary>
+No, by design. It never identifies people from faces or searches faces online. Capture reads text from cards, boards and documents; meeting prep works from a name and professional sources.
+</details>
+
+<details>
+<summary><b>What happens if I lose my laptop?</b></summary>
+Restore your latest encrypted backup on a new machine with its passphrase. Setup health reminds you when a backup is overdue.
+</details>
+
+## 🙏 Acknowledgments
+
+deck stands on ideas from researchers and open-source projects:
+
+- **Context engineering**: Anthropic's guides on building effective agents and context engineering, and Manus's production lessons (the living to-do list, keeping errors in context).
+- **Learning**: ACE, evolving playbooks (Zhang et al.); GEPA, reflective prompt evolution (Agrawal et al.); Meta-Harness (Lee, Khattab, Finn et al.); sleep-time compute (Letta).
+- **Security**: CaMeL (Google DeepMind) and *Design Patterns for Securing LLM Agents against Prompt Injections* (Beurer-Kellner, Tramèr, Debenedetti et al.); Simon Willison's writing on prompt injection and the lethal trifecta.
+- **Standards**: the [Model Context Protocol](https://modelcontextprotocol.io) and [Agent Skills](https://agentskills.io).
+- **Projects**: Ruflo (agent orchestration ideas) and JARVIS (research swarm and board ideas, without the face recognition).
+- **Assets**: [Kenney](https://kenney.nl) Space Station Kit (CC0), lucide icons, Inter, Chakra Petch and JetBrains Mono fonts.
+
+## 📄 License, security and contributing
+
+[MIT](LICENSE) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+<div align="center"><sub>Built local-first. Your data, your keys, your call.</sub></div>
