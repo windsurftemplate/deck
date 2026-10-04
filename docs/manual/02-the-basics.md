@@ -102,6 +102,7 @@ When you send a message, deck searches memory by meaning and by keywords, follow
 |---|---|
 | **Deck** | The 3D space station. See who is working, approve actions, open stations |
 | **Brain** | Your second brain: add files, notes, links and imports; explore the 3D map |
+| **Board** | An investigation board: people, companies, facts and documents from your second brain, pinned and connected with string |
 | **Goals** | Big goals broken into milestones, with progress |
 | **Command center** | Setup health, spend, crew performance, growth, throughput |
 | **Crew chat** | Watch the crew work step by step; start crew discussions |

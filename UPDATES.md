@@ -17,8 +17,8 @@ This file has two parts:
 | 4. World and research | Started: 3D command deck (Kenney look) and research agent with web research | First agent PR merged after your review |
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
-Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 63 commits.
-Tests (counted): **258 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 66 commits.
+Tests (counted): **260 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -280,10 +280,32 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 61. `feat: escalation controls in settings; docs for research-driven upgrades`
 62. `feat: OpenAI by default, auto-picking the newest reasoning model and mini, re-checked weekly`
 63. `feat: custom crew members (up to 8, safe tools, same rules); docs`
+64. `feat: research swarm (parallel searches, combined brief) and meeting prep (professional sources only)`
+65. `feat: capture business cards, whiteboards and documents into the second brain (text only, never people)`
+66. `feat: investigation board; docs`
 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Research swarm, meeting prep, capture, investigation board (from JARVIS, without the surveillance)
+
+**Decision.** JARVIS identifies people from smart-glasses video and builds dossiers on them. deck does not add facial recognition, face search, or profiling of people from photos: that enables surveillance of people who have not agreed to it and conflicts with deck's privacy stance. The useful, safe parts were adapted instead.
+
+**Changed**
+- `searchOnce`: one shared web search path (daily limit, personal data stripped from questions).
+- Research swarm (`research_swarm` tool, `research.swarm`): a planner splits a question into 2 to 5 angles, searches run in parallel and post to Crew chat, one model writes a combined brief citing sources by number and noting disagreements. Capped by the daily search limit.
+- Meeting prep (`meeting_prep` tool for the Chief of Staff, `meeting.prep`): by name only; needs the company unless the person is already in memory; uses memory, related issues and a professional-only research swarm; private-life content excluded from searches and the brief and filtered again afterwards; saved to the second brain.
+- Capture (`capture.read`, `capture.save`; Brain > Add): business cards, whiteboards and documents read by the heavy model as text only; photos mainly of people are refused; nothing saved until confirmed; cards become a contact note and a role fact.
+- Board page: a corkboard of people, companies, facts and documents from the second brain with string for links; focus, two-hop neighborhoods, drag to arrange (positions remembered), detail panel. Built only from saved data.
+- Status bar shows "OpenAI auto-pick" instead of "auto". Manual: chat, second brain, basics, FAQ.
+
+**Verified**
+- Swarm runs the planned searches in parallel and combines them with numbered sources.
+- Meeting prep refuses without a company for unknown people, rejects non-name input, keeps the professional guard in the search plan, filters a private-life sentence, saves the brief.
+- Capture reads a card and a board, refuses a photo of a person, saves only after confirmation, needs the camera setting.
+- Board renders sample data with strings and the detail panel.
+- 260 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: OpenAI by default (auto-pick) and custom crew members
 

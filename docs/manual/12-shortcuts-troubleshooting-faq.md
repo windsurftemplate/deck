@@ -50,6 +50,8 @@ When asking for help, include the install log or a screenshot.
 
 **Can I change what an agent does?** Yes, in Settings > Crew, or by asking in chat. You can make agents more careful; you cannot give them more power.
 
+**Can deck identify someone from a photo?** No, by design. It never identifies people from pictures or faces. Capture reads text from cards, boards and documents only, and meeting prep works from a name and professional sources.
+
 **Why did the crew not finish a task?** Open Crew chat: the verifier lists exactly what was missing.
 
 ## Glossary

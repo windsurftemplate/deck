@@ -1,10 +1,11 @@
-import { CircleHelp, Flag, Bot, Boxes, BrainCircuit, CalendarClock, ChevronsLeft, ChevronsRight, LayoutDashboard, ListTree, MessagesSquare, OctagonX, Play, Settings, Wrench } from "lucide-react";
+import { CircleHelp, Flag, Pin, Bot, Boxes, BrainCircuit, CalendarClock, ChevronsLeft, ChevronsRight, LayoutDashboard, ListTree, MessagesSquare, OctagonX, Play, Settings, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type View = "3d" | "brain" | "goals" | "center" | "channel" | "automations" | "tools" | "list" | "help";
+export type View = "3d" | "brain" | "board" | "goals" | "center" | "channel" | "automations" | "tools" | "list" | "help";
 export const PAGES: { id: View; label: string; icon: LucideIcon; key: string }[] = [
   { id: "3d", label: "Deck", icon: Boxes, key: "1" },
   { id: "brain", label: "Brain", icon: BrainCircuit, key: "2" },
+  { id: "board", label: "Board", icon: Pin, key: "" },
   { id: "goals", label: "Goals", icon: Flag, key: "3" },
   { id: "center", label: "Command center", icon: LayoutDashboard, key: "4" },
   { id: "channel", label: "Crew chat", icon: MessagesSquare, key: "5" },
@@ -28,7 +29,7 @@ export function Nav({ view, onView, onSettings, settingsOpen, collapsed, onColla
           const on = view === p.id && !settingsOpen;
           return (
             <li key={p.id}>
-              <button type="button" className={on ? "on" : ""} aria-current={on ? "page" : undefined} title={`${p.label} (${mod}${p.key})`} onClick={() => onView(p.id)}>
+              <button type="button" className={on ? "on" : ""} aria-current={on ? "page" : undefined} title={p.key ? `${p.label} (${mod}${p.key})` : p.label} onClick={() => onView(p.id)}>
                 <p.icon size={16} aria-hidden="true" />
                 {!collapsed && <span>{p.label}</span>}
                 {!collapsed && p.id === "3d" && waiting > 0 && <span className="badge" aria-label={`${waiting} waiting for you`}>{waiting}</span>}

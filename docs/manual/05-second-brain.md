@@ -16,6 +16,17 @@ The second brain holds your documents and notes so the crew can use them. Open i
 
 Importing the same folder or export again skips what is already there.
 
+## Capture cards, whiteboards and documents
+
+At the top of the **Add** tab (Camera and pictures must be on in Settings):
+
+1. Choose **Business card**, **Whiteboard** or **Document**.
+2. Take a snapshot or choose a picture.
+3. deck reads the text and shows it to you. Fix anything it got wrong.
+4. **Save contact** turns a card into a contact note plus a fact (name, title, company). **Save to second brain** keeps a board or document as a note.
+
+Only text is read. If the picture shows a person rather than a card or page, deck refuses: it never identifies people.
+
 ## How the crew uses it
 
 Each document is split into passages, and each passage is indexed by meaning and by keywords. When you ask something, matching passages are given to the model alongside facts, marked as **untrusted data**: the crew uses them as information but never follows instructions written inside them.

@@ -20,11 +20,17 @@ Type in the box at the bottom of the chat panel and press **Send** or Return. Th
 | "Create an issue to send the pricing deck to Acme by Thursday" | An issue appears in the tracker |
 | "Have GTM draft a follow-up to Dana" | The Chief of Staff delegates; the draft lands in Drafts |
 | "Research the latest breaches caused by leaked API keys" | Research searches the web and answers with sources |
+| "Do a deep dive on Acme's security team and funding" | A research swarm: 2 to 5 searches in parallel, then one combined brief with sources |
+| "Prep me for my meeting with Dana Wright at Acme on Tuesday" | A meeting brief: who they are professionally, company news, our history, talking points, questions. Saved to the second brain |
 | "Use GPT for heavy work" | A model change is proposed with **Apply** and **Cancel** |
 | "From now on, GTM should never mention pricing" | A crew rule change is proposed for you to apply |
 | "Every Monday at 9, have Operations review stale issues" | An automation is proposed for you to apply |
 
 Nothing in the last three rows changes until you press **Apply**.
+
+## Meeting prep: what it will and will not do
+
+Meeting prep works by name, never from a photo. It uses what you already know (memory, issues, your calendar if connected) plus public professional sources: their role, their company's news, and what they have published professionally. Personal life (home, family, health, personal social accounts) is excluded from the searches and filtered from the brief. If the person is not in your memory, give their company so the research stays professional.
 
 ## Approvals in chat
 

@@ -13,6 +13,7 @@ import { CrewChannel } from "./pages/CrewChannel";
 import { Tools } from "./pages/Tools";
 import { Automations } from "./pages/Automations";
 import { Goals } from "./pages/Goals";
+import { Board } from "./pages/Board";
 import { Help } from "./help/Help";
 import { MicButton } from "./Voice";
 import { HandsFree } from "./HandsFree";
@@ -73,7 +74,7 @@ export function App() {
     setLog(msgs.map((m) => ({ from: m.role === "owner" ? "you" : "agent", text: m.text })));
   };
   const [attachErr, setAttachErr] = useState<string | null>(null);
-  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled), setHandsFree({ on: s.voice.enabled && s.voice.handsFree, word: s.voice.wakeWord }), setNotifications(s.notifications.enabled), setModel(s.models.heavy.model))), [showSettings]);
+  useEffect(() => void loadSettings().then((s) => (setView(s.world.view), setVoiceOn(s.voice.enabled), setSpeak(s.voice.speakReplies), setCameraOn(s.camera.enabled), setHandsFree({ on: s.voice.enabled && s.voice.handsFree, word: s.voice.wakeWord }), setNotifications(s.notifications.enabled), setModel(s.models.heavy.model === "auto" ? "OpenAI auto-pick" : s.models.heavy.model))), [showSettings]);
   /** Sends a message to the Chief of Staff and resolves with the reply (used by the box and by hands-free voice). */
   const sendMessage = async (text: string, speakIt: boolean): Promise<string> => {
     const pics = pictures;
@@ -162,7 +163,7 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       const k = e.key.toLowerCase();
-      const page = PAGES.find((p) => p.key === k);
+      const page = PAGES.find((p) => p.key && p.key === k);
       if (k === "k") (e.preventDefault(), setPaletteOpen((v) => !v));
       else if (page) (e.preventDefault(), setShowSettings(false), void switchViewRef.current(page.id));
       else if (k === "n") (e.preventDefault(), void openThreadRef.current(undefined), setChatOpen(true));
@@ -220,6 +221,8 @@ export function App() {
           <CrewChannel />
         ) : view === "help" ? (
           <Help />
+        ) : view === "board" ? (
+          <Board />
         ) : view === "goals" ? (
           <Goals />
         ) : view === "automations" ? (
