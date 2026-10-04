@@ -71,3 +71,8 @@ const size = (p) => {
 };
 console.log(`done: engine ${(size(out) / 1e6).toFixed(0)} MB, node ${(size(sidecar) / 1e6).toFixed(0)} MB (${triple})`);
 if (!existsSync(join(out, "dist/main.js"))) throw new Error("engine entry missing after deploy");
+// Every crew role must ship with its prompt and tools, or the agents check fails at start-up.
+const agentsDir = join(out, "node_modules/@deck/agents");
+for (const role of ["chief-of-staff", "gtm", "ops", "code", "research", "ciso"])
+  for (const f of ["prompt.md", "tools.json"]) if (!existsSync(join(agentsDir, role, f))) throw new Error(`missing ${role}/${f} in the engine bundle; add "${role}" to packages/agents/package.json files`);
+if (!existsSync(join(agentsDir, "core-rules.md"))) throw new Error("missing core-rules.md in the engine bundle");

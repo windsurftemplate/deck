@@ -71,3 +71,17 @@ describe("untrusted content scanning", () => {
     expect(untrusted("web page", "Acme raised a Series B.")).toBe('<untrusted source="web page">\nAcme raised a Series B.\n</untrusted>');
   });
 });
+
+describe("packaging", () => {
+  it("ships every role folder with the app (each folder with a prompt.md is listed in package.json files)", async () => {
+    const { readdirSync, existsSync, readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const roles = readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(root, d.name, "prompt.md"))).map((d) => d.name);
+    const files: string[] = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).files;
+    expect(roles.length).toBeGreaterThanOrEqual(6);
+    for (const r of roles) expect(files, `${r} is missing from package.json "files", so it would not be in the app`).toContain(r);
+    for (const r of roles) expect(existsSync(join(root, r, "tools.json")), `${r}/tools.json`).toBe(true);
+  });
+});

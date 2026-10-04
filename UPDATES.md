@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **263 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **264 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,19 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Fix: CISO role missing from the installed app
+
+**Problem.** On the installed app, the power-up check failed with "Agents: blocking" and ENOENT for `@deck/agents/ciso/prompt.md`. The `ciso` folder was not listed in `packages/agents/package.json` "files", so `pnpm deploy` left it out of the engine bundle. Tests passed because they read the source tree, not the bundle.
+
+**Changed**
+- `ciso` added to the agents package files.
+- New test: every role folder with a `prompt.md` must be listed in "files" and have a `tools.json`.
+- `scripts/package-engine.mjs` now checks the bundle for every role's `prompt.md` and `tools.json` and `core-rules.md`, and stops the build with a clear message if any is missing.
+
+**Verified**
+- Built the real production bundle and loaded every role and policy from it.
+- 264 TypeScript tests pass (counted); `pnpm check` green.
 
 ## 2026-10-04: CISO
 
