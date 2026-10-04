@@ -7,9 +7,9 @@ type KeyTest = { key: string; ok: boolean; status: string; message: string; at: 
 const LABEL: Record<string, string> = { works: "Works", missing: "Not set", invalid: "Rejected", limited: "Out of credits or limited", unreachable: "Can't connect", "model-missing": "Works, model unavailable" };
 
 /** Runs a key test and returns a message for the row. */
-async function runTest(key: string): Promise<{ ok: boolean; text: string }> {
+async function runTest(key: string, candidate?: string): Promise<{ ok: boolean; text: string }> {
   try {
-    const r = await engineCall<KeyTest>("keys.test", { key });
+    const r = await engineCall<KeyTest>("keys.test", { key, ...(candidate?.trim() ? { candidate: candidate.trim() } : {}) });
     return r ? { ok: r.ok, text: `${LABEL[r.status] ?? r.status}. ${r.message}` } : { ok: false, text: "Testing works inside the desktop app." };
   } catch (e) {
     return { ok: false, text: String(e).replace(/^Error: /, "") };
@@ -68,14 +68,22 @@ function KeyRow({ id, name, hint }: (typeof PROVIDERS)[number]) {
           autoComplete="off"
           spellCheck={false}
         />
+        <button
+          className="btn"
+          type="button"
+          disabled={testing || (!value.trim() && !saved)}
+          title={value.trim() ? "Test the key you pasted, before saving it" : "Test the saved key"}
+          onClick={async () => {
+            setTesting(true);
+            setMsg(await runTest(id, value));
+            setTesting(false);
+          }}
+        >
+          {testing ? "Testing…" : "Test"}
+        </button>
         <button className="btn" type="button" onClick={save} disabled={!value.trim()}>
           Save
         </button>
-        {saved && (
-          <button className="btn" type="button" disabled={testing} onClick={async () => { setTesting(true); setMsg(await runTest(id)); setTesting(false); }}>
-            {testing ? "Testing…" : "Test"}
-          </button>
-        )}
         {saved && (
           <button className="btn" type="button" onClick={remove}>
             Remove

@@ -1102,6 +1102,12 @@ describe("API key tests", () => {
     for (const k of ["anthropic", "gemini", "openrouter"]) expect(keys.fix).toContain(`${k} (`);
     expect(keys.fix).not.toContain("openai (");
     expect((await e.testKey("jev")).status).toBe("works");
+    // A key typed but not saved yet can be tested; its result is not kept.
+    const before = await e.health();
+    const t = await e.testKey("openrouter", "sk-or-" + "d".repeat(40));
+    expect(t.status).toBe("invalid");
+    expect((await e.testKey("jev", "another-jev-key")).message).toMatch(/Press Save to keep this key/);
+    expect((await e.health()).checks.find((c) => c.id === "keys-work")!.fix).toBe(before.checks.find((c) => c.id === "keys-work")!.fix);
     await e.close();
   });
 });

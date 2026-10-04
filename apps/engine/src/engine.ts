@@ -856,12 +856,12 @@ export class Engine {
   }
 
   /** Tools page: checks the key and address with one tiny question. */
-  async jevTest(): Promise<string> {
+  async jevTest(candidate?: string): Promise<string> {
     const j = this.d.settings.tools.jev;
-    const key = await this.d.keychain.get("tool.jev").catch(() => null);
+    const key = candidate?.trim() || (await this.d.keychain.get("tool.jev").catch(() => null));
     if (!key) throw new Error("Add your Jev key first.");
     const r = await new JevClient({ getKey: async () => key, baseUrl: j.baseUrl, fetch: this.d.fetch ?? fetch }).ask("Help! My payouts have been failing for 3 days.", { urgent: { type: "noul", instructions: "Does this convey urgency?" } });
-    return `Jev is connected (${r.model}). Test answer: ${Math.round((noulOf(r, "urgent") ?? 0) * 100)}% urgent.${j.enabled ? "" : " Turn on \"Use Jev\" to start using it."}`;
+    return `Jev is connected (${r.model}). Test answer: ${Math.round((noulOf(r, "urgent") ?? 0) * 100)}% urgent.${candidate ? " Press Save to keep this key." : j.enabled ? "" : " Turn on \"Use Jev\" to start using it."}`;
   }
 
   /* ---------- CISO ---------- */
@@ -2267,10 +2267,11 @@ export class Engine {
    * Tests one saved key without spending tokens: language-model keys by listing the models they can use (and
    * whether the model you chose is among them); Jev with one tiny question. Results are kept for setup health.
    */
-  async testKey(name: "anthropic" | "openai" | "gemini" | "openrouter" | "jev"): Promise<KeyTest> {
+  async testKey(name: "anthropic" | "openai" | "gemini" | "openrouter" | "jev", candidate?: string): Promise<KeyTest> {
     const at = this.clock().toISOString();
     const done = async (r: Omit<KeyTest, "at" | "key">): Promise<KeyTest> => {
       const out = { key: name, at, ...r };
+      if (candidate) return out; // a key you have not saved yet is tested but its result is not kept
       // Saves one at a time, so tests running together do not overwrite each other's results.
       this.keyTestSave = this.keyTestSave.then(async () => {
         const all = JSON.parse((await this.store.getMeta("keys.tests")) ?? "{}") as Record<string, KeyTest>;
@@ -2281,15 +2282,15 @@ export class Engine {
       return out;
     };
     if (name === "jev") {
-      if (!(await this.d.keychain.get("tool.jev").catch(() => null))) return done({ ok: false, status: "missing", message: "No Jev key saved." });
+      if (!candidate && !(await this.d.keychain.get("tool.jev").catch(() => null))) return done({ ok: false, status: "missing", message: "No Jev key saved." });
       try {
-        return done({ ok: true, status: "works", message: await this.jevTest() });
+        return done({ ok: true, status: "works", message: await this.jevTest(candidate) });
       } catch (e) {
         const m = (e as Error).message;
         return done({ ok: false, status: /rejected/.test(m) ? "invalid" : /busy|rate/.test(m) ? "limited" : "unreachable", message: m });
       }
     }
-    const key = await this.d.keychain.get(`provider.${name}`).catch(() => null);
+    const key = candidate?.trim() || (await this.d.keychain.get(`provider.${name}`).catch(() => null));
     if (!key) return done({ ok: false, status: "missing", message: `No ${PROVIDER_LABEL[name]} key saved.` });
     try {
       const ids = await listModels(name, key, this.d.fetch ?? fetch);

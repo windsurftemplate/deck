@@ -73,7 +73,7 @@ export function Tools({ openSettings, openBrain }: { openSettings: () => void; o
                 </label>
                 <div className="row">
                   <button className="primary" type="button" onClick={saveJev}>Save</button>
-                  {hint && <button className="btn" type="button" onClick={async () => { setMsg(null); try { setMsg({ ok: true, text: (await engineCall<string>("jev.test")) ?? "" }); } catch (e) { setMsg({ ok: false, text: String(e).replace(/^Error: /, "") }); } }}>Test</button>}
+                  <button className="btn" type="button" disabled={!jevKey.trim() && !hint} title={jevKey.trim() ? "Test the key you pasted, before saving it" : "Test the saved key"} onClick={async () => { setMsg(null); const r = await engineCall<{ ok: boolean; message: string }>("keys.test", { key: "jev", ...(jevKey.trim() ? { candidate: jevKey.trim() } : {}) }).catch((e) => ({ ok: false, message: String(e).replace(/^Error: /, "") })); setMsg(r ? { ok: r.ok, text: r.message } : { ok: false, text: "Testing works inside the desktop app." }); }}>Test</button>
                   {hint && <button className="btn" type="button" onClick={removeJev}>Remove key</button>}
                 </div>
                 <label className="check">

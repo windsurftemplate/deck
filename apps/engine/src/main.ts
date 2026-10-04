@@ -47,7 +47,7 @@ async function main() {
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
     "jev.test": () => engine.jevTest(),
-    "keys.test": (p) => engine.testKey(String((p as { key?: string })?.key ?? "") as never),
+    "keys.test": (p) => { const q = p as { key?: string; candidate?: string }; return engine.testKey(String(q?.key ?? "") as never, q?.candidate ? String(q.candidate) : undefined); },
     "keys.testAll": () => engine.testAllKeys(),
     "security.status": () => engine.securityStatus(),
     "security.review": () => engine.securityReview(),
