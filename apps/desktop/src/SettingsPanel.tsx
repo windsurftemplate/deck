@@ -14,6 +14,7 @@ import { LabsCard } from "./Labs";
 import { ThinkingCard } from "./Thinking";
 import { CustomCrewCard, HelpersCard } from "./CustomCrew";
 import { SecurityCard } from "./Security";
+import { OpenClawCard, SkillsHubCard } from "./SkillsHub";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [s, setS] = useState<Settings | null>(null);
@@ -70,6 +71,8 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <BackupCard />
       <LabsCard s={s} onSaved={setS} />
       <LearningCard />
+      <SkillsHubCard s={s} onSaved={setS} />
+      <OpenClawCard />
       <RecoveryCard />
       <div className="card">
         <h3>VaultProof</h3>

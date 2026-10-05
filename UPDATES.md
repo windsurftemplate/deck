@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **267 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **272 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,24 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-05: Verified skills hub and OpenClaw import
+
+**Changed**
+- `verifySkill` (`packages/agents/src/skill-verify.ts`): format, injection, secrets, dangerous steps (piped installers, download-and-run "prerequisites", payload decoding, encoded PowerShell, quarantine removal, keychain, SSH and cloud credentials, wallets and seed phrases, paste-site and webhook exfiltration, raw IPs, switching off safety, startup persistence), encoded blobs, script files (warned, never copied), links, and Ed25519 signatures. Verdict: verified (trusted signature), scanned, or blocked.
+- Signing: your publisher key is made on first use and kept in the keychain; your own key is always trusted; trusted publishers and hubs in settings.
+- Hub (`apps/engine/src/skillhub.ts`): reads `index.json` over https only (private addresses refused, size limits), previews with verification, blocks files that differ from the listed hash, installs through the approval gate; `hubPublish` signs a folder and writes its index.
+- Every skill import now goes through the verifier, and the approval card says verified, scanned and who signed it.
+- First-party starter hub in `skills-hub/` (weekly review, meeting prep, follow-up email, PR review, incident write-up, investor update) and `scripts/skills-hub.mjs` to rebuild its index. Default hub: this repository's `skills-hub/index.json`.
+- OpenClaw import: scan shows what comes over; USER.md, MEMORY.md and daily logs into the second brain; persona files become at most 8 owner rules for the Chief of Staff after approval, with anything about tools, approvals or safety left out; HEARTBEAT.md becomes a switched-off weekday automation; skills through the verifier. auth-profiles.json, openclaw.json, .env and session databases are never read.
+- Fix: the second brain now strips keys and tokens from every document before saving (found by the import test) and says how many were removed.
+- Settings: Skills hub card (search, check and preview, install, hubs, trusted publishers, sign and publish) and Import from OpenClaw card. Manual, FAQ and README (Coming from OpenClaw) updated.
+
+**Verified**
+- Verifier: 13 real attack patterns blocked; clean skills scanned; trusted signatures verified; tampering after signing blocked.
+- Import from a fake OpenClaw install with a planted key, an unsafe persona line, a malicious skill and a credentials file: memory imported without the key, 2 safe rules proposed and 1 left out, heartbeat added switched off, the malicious skill blocked, the good one waiting for approval, credentials never read.
+- Hub: search, verified preview, blocked malware, blocked file swapped after listing, install waits for approval, publishing signs good skills and refuses bad ones.
+- Packaged engine answers the new calls. 272 TypeScript tests pass (counted); `pnpm check` green.
 
 ## 2026-10-05: Undo window, duplicate protection, PRs in the brief, eval-gated tuning
 

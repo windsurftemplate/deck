@@ -11,7 +11,7 @@ with encrypted memory on your machine and your approval on anything that leaves 
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-12151c?style=flat-square)](#install)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](#development)
-[![Tests](https://img.shields.io/badge/tests-267%20passing-5fd39a?style=flat-square)](#evals)
+[![Tests](https://img.shields.io/badge/tests-272%20passing-5fd39a?style=flat-square)](#evals)
 [![Safety evals](https://img.shields.io/badge/safety%20evals-13%2F13-5fd39a?style=flat-square)](#evals)
 [![Models](https://img.shields.io/badge/models-OpenAI%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Ollama-79a8ff?style=flat-square)](#models)
 [![MCP](https://img.shields.io/badge/MCP-ready-c59bff?style=flat-square)](https://modelcontextprotocol.io)
@@ -41,7 +41,7 @@ with encrypted memory on your machine and your approval on anything that leaves 
 <tr>
 <td valign="top"><b>📚 A second brain</b><br>Files, web pages, Obsidian, Notion, Apple Notes, notes with links, and camera capture of cards, whiteboards and documents. Explore it in 3D or on a corkboard.</td>
 <td valign="top"><b>🎯 Goals and automations</b><br>Goals become milestones with weekly check-ins. Jobs run on a schedule. Workflows chain agents step by step.</td>
-<td valign="top"><b>⚡ Jev decisions</b><br>Optional TypeSafe AI integration: fast, calibrated yes/no and pick-one answers for routing, first-pass checks, approval risk and injection scanning, each falling back when unsure.<br><br><b>🧪 Labs</b><br>Local models with Ollama, MCP plugins, Gmail and Calendar, GitHub pull requests, crew votes, federation with trusted crews. All off until you turn them on.</td>
+<td valign="top"><b>✅ Verified skills hub</b><br>Signed, checked skills: no download-and-run steps, hidden payloads, credential theft or planted keys. Instructions only; scripts never run.<br><br><b>📦 OpenClaw import</b><br>Bring over memory, persona, heartbeat and skills. Credentials are never read.<br><br><b>⚡ Jev decisions</b><br>Optional TypeSafe AI integration: fast, calibrated yes/no and pick-one answers for routing, first-pass checks, approval risk and injection scanning, each falling back when unsure.<br><br><b>🧪 Labs</b><br>Local models with Ollama, MCP plugins, Gmail and Calendar, GitHub pull requests, crew votes, federation with trusted crews. All off until you turn them on.</td>
 </tr>
 </table>
 
@@ -155,7 +155,7 @@ Goals are planned into 3 to 7 dated milestones (as issues) and checked every Mon
 | Experience recall | Agents see similar past tasks, outcomes and lessons before starting |
 | Failure lessons | One sentence per failed task on what to do differently |
 | Playbook (ACE) | Lessons per agent with helped and misled counts; added, never reworded; retired when they mislead |
-| Skills | Proposed from checked work, active only after you approve; open SKILL.md format |
+| Skills | Proposed from checked work, active only after you approve; open SKILL.md format; a hub of signed, verified skills; publish and sign your own |
 | Nightly learning | Facts from events and new documents, rejection review, skill retirement |
 | Prompt tuning | New lessons tested on practice runs of real tasks, then gated on the evals (offline must pass; live must not get worse); adopted only with your approval |
 | Model arena | Compares your models on an agent's real tasks; one click assigns the winner |
@@ -303,7 +303,7 @@ Built-in reasoning is used on hard work with OpenAI reasoning models, Claude and
 | Behavior evals | A sandboxed copy of deck: unfinished work caught, escalation once after failure, failure lessons recalled, helpers capped and narrowed, safe custom tools, advice-only CISO | 6/6 |
 | Live evals (opt-in) | Real tasks on your models and Jev: tool calling, resisting injected instructions, JSON output, checker accuracy, routing | Tracked over time |
 | Baseline gate | Any score drop fails the build (`evals/baseline.json`) | 100% |
-| Unit and contract tests | Every package, plus Rust | 267 TS + 6 Rust |
+| Unit and contract tests | Every package, plus Rust | 272 TS + 6 Rust |
 
 All suites also run inside the app (offline suites nightly, live suite on demand or weekly) and appear in the Command center with scores, trends, per-case details and alerts when a score drops. In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
 
@@ -377,8 +377,27 @@ Everything is also inside the app under **Help and course** (⌘/Ctrl + 9). Star
 - [x] Live-model eval mode and score trends in the Command center
 - [x] Eval cases for plan lock, CISO reviews, helpers and playbooks
 - [x] Jev (TypeSafe AI) for routing, checks, approval risk and injection scanning, with fallbacks
+- [x] Verified skills hub and OpenClaw import
+- [ ] More channels: WhatsApp, iMessage, Slack, Signal
+- [ ] Safe computer use: isolated browser and sandboxed shell
+- [ ] Always-on engine
 - [ ] Signed and notarized installers
 - [ ] Automations that run while deck is closed
+
+<a id="openclaw"></a>
+
+## 🦞 Coming from OpenClaw
+
+deck reads the same SKILL.md format and imports an OpenClaw workspace in one step (Settings > Learning > Import from OpenClaw): memory and daily logs into the second brain, persona as owner rules you approve, the heartbeat checklist as an automation, and skills through the verifier. Credentials, config and sessions are never read.
+
+| | OpenClaw | deck |
+|---|---|---|
+| Runs | Always-on gateway service | Desktop app (always-on engine on the roadmap) |
+| Channels | Many (WhatsApp, iMessage, Slack, Signal, Discord, Telegram and more) | Telegram today; more on the roadmap |
+| Network exposure | Gateway listens on a port | No network port: the app talks to the engine privately |
+| Skills | Open marketplace; skills can run code | Verified hub: checked and signed; instructions only; each approved |
+| Keys | Config and auth files on disk | OS keychain only; stripped from prompts and stored documents |
+| Outside actions | Tool policies you configure | Always approved by you, CISO risk opinion, undo window, no duplicates, tripwire |
 
 <a id="faq"></a>
 

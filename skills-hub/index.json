@@ -1,0 +1,42 @@
+{
+  "name": "deck",
+  "updated": "2026-10-05T06:30:37.801Z",
+  "skills": [
+    {
+      "name": "follow-up-email",
+      "description": "Use after a call or meeting to draft a follow-up email that recaps decisions and asks for one clear next step.",
+      "path": "follow-up-email/SKILL.md",
+      "sha256": "290c96e12d0beb541ffd828f4283c3b01b89c6bbf7b5bd4434af4c738417f4d2"
+    },
+    {
+      "name": "incident-writeup",
+      "description": "Use after something broke to write a blameless incident summary: timeline, impact, cause, and follow-ups.",
+      "path": "incident-writeup/SKILL.md",
+      "sha256": "043c05e9c0ef74d9eb8cde9441337c53dd5638fad3b1be88ec7bad0994a8125e"
+    },
+    {
+      "name": "investor-update",
+      "description": "Use monthly to draft an investor update from closed issues, goals, metrics the owner shared, and asks.",
+      "path": "investor-update/SKILL.md",
+      "sha256": "fd0a4e775c2ce81bd61eaa9e418c0ef395b89bd8cbad654d6a6cbf1ec197bf32"
+    },
+    {
+      "name": "meeting-prep",
+      "description": "Use before an external meeting to prepare a one-page brief: who they are professionally, history with them, talking points and questions.",
+      "path": "meeting-prep/SKILL.md",
+      "sha256": "4925d305bb43ac7afd23693f15a3be94167fd2d4b771d1875323a1b0a50e06b4"
+    },
+    {
+      "name": "pr-review",
+      "description": "Use to review a pull request: what changed, risks, missing tests, and a clear verdict.",
+      "path": "pr-review/SKILL.md",
+      "sha256": "ca645c374736947bb82362f5105b45c133147026fa80d9fb645a1972fff82a79"
+    },
+    {
+      "name": "weekly-review",
+      "description": "Use on Friday afternoon or Monday morning to review the week: closed work, goal progress, slipped commitments and next week's top three priorities.",
+      "path": "weekly-review/SKILL.md",
+      "sha256": "22190500948fc66df30a90edbc1cd5dc7a6134e3f3331fd550bb31e2bf5c2ea7"
+    }
+  ]
+}

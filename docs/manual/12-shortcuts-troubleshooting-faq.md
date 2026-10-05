@@ -52,6 +52,8 @@ When asking for help, include the install log or a screenshot.
 
 **Can I change what an agent does?** Yes, in Settings > Crew, or by asking in chat. You can make agents more careful; you cannot give them more power.
 
+**I use OpenClaw. Can I switch?** Yes: Settings > Learning > Import from OpenClaw brings over your memory, persona, heartbeat and skills, after a scan that shows exactly what comes over. Your OpenClaw credentials are never read; add your model key in deck instead.
+
 **Can deck identify someone from a photo?** No, by design. It never identifies people from pictures or faces. Capture reads text from cards, boards and documents only, and meeting prep works from a name and professional sources.
 
 **Why did the crew not finish a task?** Open Crew chat: the verifier lists exactly what was missing.

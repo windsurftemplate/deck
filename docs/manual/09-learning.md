@@ -82,3 +82,35 @@ Packs add rules, tool limits, approved skills, first issues and a preset for a k
 ## The eval gate
 
 Before deck asks you to add new playbook lessons, they must pass an eval gate: the offline evals must all still pass, and if the live suite is on, the agent's prompt with the new lessons must do at least as well on live tasks as the last live run. The approval card shows the gate result.
+
+## Skills hub
+
+Settings > Learning > **Skills hub** lists skills from the hubs you add (deck's own hub is there by default). Press **Check and preview** to see every check and the instructions before installing.
+
+Every skill from outside is checked, and blocked if it:
+
+- pipes a download into a shell, or asks for a "prerequisite" to be downloaded and run
+- decodes hidden payloads or contains long encoded blocks
+- reads the keychain, SSH or cloud credentials, or crypto wallets and seed phrases
+- sends data to paste sites, webhooks or raw IP addresses
+- switches off macOS download protection or installs itself to run at startup
+- contains keys or tokens, or tries to instruct the agent
+- was changed after it was signed, or differs from what the hub lists
+
+Only the instructions are installed; scripts in a skill folder are never copied or run. Every skill waits for your approval. **Verified** means it is signed by a publisher you trust; **Scanned** means it passed the checks but is unsigned or from a publisher you have not trusted.
+
+**Publishing your own:** deck makes a signing key for you (kept in your keychain). **Sign and publish a folder** signs every skill in it and writes `index.json`; commit and push the folder, and others can add its address as a hub and trust your public key (**Copy public key**).
+
+## Import from OpenClaw
+
+Settings > Learning > **Import from OpenClaw**. Point it at `~/.openclaw` (or a workspace folder) and press **Scan** to see exactly what will come over:
+
+| OpenClaw | In deck |
+|---|---|
+| USER.md, MEMORY.md, memory/ daily logs | Notes in your second brain; facts are learned from them overnight |
+| SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md | Up to 8 owner rules for the Chief of Staff about tone, name and style, after your approval; anything about tools, approvals or safety is left out |
+| HEARTBEAT.md | A weekday 09:00 automation, switched off until you review it |
+| skills/ (workspace, ~/.openclaw/skills, ~/.agents/skills) | Through the skill checks; instructions only; each waits for approval |
+| auth-profiles.json, openclaw.json, .env, session databases | Never read |
+
+Every file is scanned for injected instructions, and keys or tokens are removed before anything is saved.

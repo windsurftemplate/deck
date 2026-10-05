@@ -593,3 +593,16 @@ input, textarea, select { font-family: var(--font); }
 .undo-bar { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 60; display: grid; gap: 6px; width: min(560px, calc(100vw - 32px)); }
 .undo-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 10px 14px; background: var(--hull-2); border: 1px solid var(--accent); border-radius: var(--r-lg); box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 13.5px; }
 .undo-item .primary { display: inline-flex; align-items: center; gap: 6px; }
+.skills-hub .grow, .oc-scan .grow, .card .row .grow { flex: 1; }
+.hub-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.hub-list li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--seam); border-radius: var(--r); }
+.hub-list p { margin: 2px 0 0; font-size: 13px; }
+.hub-preview { border: 1px solid var(--accent); border-radius: var(--r-lg); padding: 12px; display: grid; gap: 8px; background: var(--void); }
+.hub-preview header { display: flex; gap: 8px; align-items: center; }
+.skill-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; width: 100%; }
+.skill-checks li.pass b { color: var(--ok); } .skill-checks li.warn b { color: var(--warn); } .skill-checks li.fail b { color: var(--fail); }
+.hub-mini { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 4px; font-size: 13px; }
+.hub-mini li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.warn-line { color: var(--warn); font-size: 13px; margin: 0; }
+.pill { display: inline-flex; align-items: center; gap: 4px; }
+.btn.small { padding: 3px 8px; font-size: 12px; }
