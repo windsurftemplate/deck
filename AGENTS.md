@@ -13,7 +13,7 @@ Codename `deck` until the product name is chosen. VaultProof is the first worksp
 1. **No secrets in the repo.** No API keys, tokens, `.env` files, memory exports or real customer data. Fixtures are fake.
 2. **Keys live only in the OS keychain.** Until VaultProof brokers credentials (MCP server, almost ready), developer API keys are entered in Settings and stored in the keychain. Never put a key in code, settings files, memory, logs or prompts; the UI only ever shows the last 4 characters.
 3. **Locked-on safety stays locked on.** Keychain-only keys, intent gate on external actions, secret scanner, kill switches, mic and camera indicators, observe-only for unsigned skills, DB encryption. Do not add settings that disable them.
-4. **External actions need approval.** Anything that sends, posts, merges, pays or deletes goes through the approval queue and the undo window.
+4. **External actions need approval.** Anything that sends, posts, merges, pays or deletes goes through the approval queue.
 5. **Evals gate changes.** A change to prompts, skills or memory policy must not lower any eval score.
 
 ## Layout
@@ -30,7 +30,7 @@ packages/embed-local  local embedding model (free, private)
 packages/ingest       second brain importers (PDF, Word, Markdown, web pages, Obsidian, Notion, Apple Notes)
 packages/packs        workspace packs (starting setups: founder, freelancer, student, VaultProof, blank)
 packages/agents       prompt layers and one folder per agent
-packages/gate         secret scan, approvals, undo, idempotency
+packages/gate         secret and input scanners, approvals
 packages/connectors   MCP integrations
 packages/chat         Telegram and Slack
 evals/                memory, task and safety suites (fake fixtures only)

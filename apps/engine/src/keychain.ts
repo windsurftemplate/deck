@@ -1,5 +1,5 @@
 /** Same service name as the desktop shell's Rust keychain commands, so both read the same entries. */
-export const KEYCHAIN_SERVICE = "dev.deck.app";
+const KEYCHAIN_SERVICE = "dev.deck.app";
 
 export interface Keychain {
   get(name: string): Promise<string | null>;

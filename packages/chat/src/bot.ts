@@ -7,7 +7,6 @@ export interface BotActions {
   status(): string;
   approve(id: string): string;
   reject(id: string): string;
-  undo(id: string): string;
   kill(agent: string): string;
   /** Free text goes to the Chief of Staff. */
   message(text: string): Promise<string>;
@@ -17,7 +16,7 @@ export interface BotActions {
   transcribe?(audio: Uint8Array): Promise<string>;
 }
 
-const HELP = ["/brief  morning briefing now", "/tasks  open tasks", "/status  crew and systems", "/approve <id>  /reject <id>", "/undo <id>  take back a sent action", "/kill <agent|all>  emergency stop"].join("\n");
+const HELP = ["/brief  morning briefing now", "/tasks  open tasks", "/status  crew and systems", "/approve <id>  /reject <id>", "/kill <agent|all>  emergency stop"].join("\n");
 
 /** Telegram front door. Only the owner's chat ids are served; everyone else is ignored. */
 export class ChatBot {
@@ -52,7 +51,7 @@ export class ChatBot {
       const q = u.callback_query;
       if (!this.owners.includes(q.from.id)) return void this.log(`ignored button from ${q.from.id}`);
       const [verb, id] = (q.data ?? "").split(":");
-      const reply = verb === "approve" && id ? this.actions.approve(id) : verb === "reject" && id ? this.actions.reject(id) : verb === "undo" && id ? this.actions.undo(id) : "Unknown button.";
+      const reply = verb === "approve" && id ? this.actions.approve(id) : verb === "reject" && id ? this.actions.reject(id) : "Unknown button.";
       await this.tg.answerCallback(q.id, reply.slice(0, 190));
       if (q.message) await this.tg.editMessage(q.message.chat.id, q.message.message_id, reply);
       return;
@@ -95,9 +94,6 @@ export class ChatBot {
         break;
       case "/reject":
         reply = arg ? this.actions.reject(arg) : "Which one? /reject <id>";
-        break;
-      case "/undo":
-        reply = arg ? this.actions.undo(arg) : "Which one? /undo <id>";
         break;
       case "/apply":
         reply = arg && this.actions.apply ? await this.actions.apply(arg) : "Which one? /apply <id>";

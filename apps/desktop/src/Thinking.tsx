@@ -7,7 +7,7 @@ import { toast } from "./ui/toast";
 export function ThinkingCard({ s, onSaved }: { s: Settings; onSaved: (s: Settings) => void }) {
   const t = s.thinking ?? { mode: "auto", reasoning: "medium", idlePrep: true };
   const [notes, setNotes] = useState<{ at: string; owner: string; agents: Record<string, string>; anticipate: string[] } | null>(null);
-  useEffect(() => void engineCall<typeof notes>("notes.get").then(setNotes).catch(() => {}), []);
+  useEffect(() => void engineCall<typeof notes>("notes.get").then((n) => setNotes(n && typeof n === "object" && !Array.isArray(n) && typeof n.at === "string" ? n : null)).catch(() => {}), []);
   const save = async (patch: Partial<Settings["thinking"]>) => {
     try {
       onSaved(await saveSettings({ thinking: patch }));
@@ -49,7 +49,7 @@ export function ThinkingCard({ s, onSaved }: { s: Settings; onSaved: (s: Setting
       </div>
       {notes && (
         <details>
-          <summary className="muted">Prepared notes from {notes.at.slice(0, 16).replace("T", " ")}</summary>
+          <summary className="muted">Prepared notes from {String(notes.at).slice(0, 16).replace("T", " ")}</summary>
           <p>{notes.owner}</p>
           {Object.entries(notes.agents).filter(([, v]) => v).map(([a, v]) => <p key={a}><b>{a}:</b> {v}</p>)}
           {notes.anticipate.length > 0 && <p className="muted">Likely next: {notes.anticipate.join(" | ")}</p>}

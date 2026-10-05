@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **273 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **261 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,28 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-04: Code audit and cleanup
+
+**Removed (never used or never wired)**
+- `packages/core/src/agent-loop.ts`: the phase-1 agent loop, replaced long ago by `packages/agents/act.ts`.
+- `packages/connectors/src/google.ts` and its test: MCP-based Gmail and Calendar sources, replaced by the direct Google API connector.
+- `packages/models/src/gateway.ts` and its tests: the VaultProof Gateway client, never connected (returns when VaultProof brokers keys).
+- `packages/gate/src/undo.ts` and `idempotency.ts` and their tests: written and tested but never connected to approvals. The manual's claim of an undo window after approval, AGENTS.md and the README were corrected.
+- The Telegram `/undo` command, which only ever answered "Nothing to undo."
+- `export` from helpers used only in their own file; the unused `@types/better-sqlite3` dev dependency.
+
+**Fixed**
+- The power-up "decision" check still said Jev was not set up; it now reports Jev's real state.
+- The Brain page, Board and the Thinking card now tolerate unexpected data instead of crashing.
+- Plan statuses brought up to date.
+
+**Verified**
+- Unused-code scan (knip) clean apart from exported types that document engine interfaces.
+- No TODO, FIXME or stray console.log in source.
+- The production engine bundle starts and answers 17 calls (crew, tools, health, analytics, brain, goals, workflows, automations, custom crew, helpers, security, key tests, evals, issues, power-up checks); evals inside it: memory 5/5, safety 13/13, behavior 6/6; power-up Agents check ok.
+- Every page and Settings (19 cards) open without errors.
+- 261 TypeScript tests pass (counted); `pnpm check` green; no secrets in the repo.
 
 ## 2026-10-04: Evals finished, with a dashboard; test keys before saving
 

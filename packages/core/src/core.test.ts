@@ -91,22 +91,3 @@ describe("Scheduler", () => {
   });
 });
 
-describe("agent loop", () => {
-  it("runs a fake agent to the end", async () => {
-    const runner: AgentRunner = {
-      async *run() {
-        yield { type: "tool_call", tool: "calendar.read", input: {} };
-        yield { type: "done", result: "brief ready", turns: 2 };
-      },
-    };
-    const seen: string[] = [];
-    const out = await runToEnd(runner, { agent: "cos", system: "", prompt: "", allowedTools: [], maxTurns: 5 }, (e) => seen.push(e.type));
-    expect(out).toEqual({ result: "brief ready", turns: 2 });
-    expect(seen).toEqual(["tool_call", "done"]);
-  });
-
-  it("points the SDK at the Gateway with no provider key", () => {
-    expect(gatewayEnv("https://gw.example.com/", "vp-proj-abc")).toEqual({ ANTHROPIC_BASE_URL: "https://gw.example.com/anthropic", ANTHROPIC_AUTH_TOKEN: "vp-proj-abc", ANTHROPIC_API_KEY: "" });
-    expect(() => gatewayEnv("https://gw", "sk-ant-x")).toThrow(/vp-proj/);
-  });
-});

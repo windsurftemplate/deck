@@ -4,7 +4,7 @@ import { layout3d } from "./layout";
 export interface BrainNode { id: string; label: string; type: "subject" | "doc" | "owner"; kind?: string; size: number }
 export interface BrainLink { source: string; target: string; label: string }
 
-export const NODE_COLOR = (n: BrainNode) =>
+const NODE_COLOR = (n: BrainNode) =>
   n.type === "owner" ? 0xff9a3d : n.type === "subject" ? 0xc59bff : n.kind === "note" ? 0x7cf5b0 : n.kind === "page" ? 0xff9dd2 : n.kind === "obsidian" || n.kind === "notion" || n.kind === "apple-notes" ? 0xffd27a : 0x6fd6ff;
 
 /** The second brain as a constellation: facts' subjects and documents as stars, links as faint lines. */

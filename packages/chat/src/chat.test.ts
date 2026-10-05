@@ -20,7 +20,6 @@ function setup(overrides: Partial<BotActions> = {}) {
     status: () => "All systems up",
     approve: (id) => `Approved ${id}`,
     reject: (id) => `Rejected ${id}`,
-    undo: (id) => `Undone ${id}`,
     kill: (a) => `Stopped ${a}`,
     message: async (t) => `CoS: ${t}`,
     ...overrides,

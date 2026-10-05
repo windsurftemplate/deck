@@ -88,7 +88,7 @@ export async function saveSettings(patch: DeepPartial<Settings>): Promise<Settin
 
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 /** Tell the engine settings or keys changed. Batched so several saves cause one reload. */
-export function reloadEngine() {
+function reloadEngine() {
   if (!inTauri) return;
   if (reloadTimer) clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => void invoke("engine_call", { method: "reload" }).catch(() => {}), 800);

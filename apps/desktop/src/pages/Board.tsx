@@ -30,7 +30,7 @@ export function Board() {
   const [open, setOpen] = useState<string | null>(null);
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
   const board = useRef<HTMLDivElement>(null);
-  useEffect(() => void engineCall<Graph>("brain.graph").then((x) => x && setG(x)).catch(() => {}), []);
+  useEffect(() => void engineCall<Graph>("brain.graph").then((x) => setG(x && Array.isArray(x.nodes) && Array.isArray(x.links) ? { ...x, facts: x.facts ?? {} } : { nodes: [], links: [], facts: {} })).catch(() => setG({ nodes: [], links: [], facts: {} })), []);
 
   // What is on the board: the focus and everything within two links of it, or the most connected items.
   const shown = useMemo(() => {

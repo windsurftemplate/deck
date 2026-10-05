@@ -13,7 +13,7 @@ export const refId = (r: ModelRef) => `${r.provider}:${r.model}`;
 const joinText = (m: ChatMessage) => blocksOf(m.content).flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n\n");
 
 /** OpenAI chat messages: tool results become role "tool" messages right after the assistant turn that asked for them. */
-export function openaiMessages(req: ChatRequest) {
+function openaiMessages(req: ChatRequest) {
   const out: Record<string, unknown>[] = [];
   if (req.system?.length) out.push({ role: "system", content: req.system.map((b) => b.text).join("\n\n") });
   for (const m of req.messages) {
@@ -33,7 +33,7 @@ export function openaiMessages(req: ChatRequest) {
 }
 
 /** Gemini contents: assistant is "model"; tool calls are replayed exactly as received (keeps thought signatures). */
-export function geminiContents(req: ChatRequest) {
+function geminiContents(req: ChatRequest) {
   return req.messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: blocksOf(m.content).map((b) => {
@@ -213,7 +213,7 @@ export class GeminiDirect implements ChatModel {
 
 export const BASE_URLS = { openai: "https://api.openai.com/v1", openrouter: "https://openrouter.ai/api/v1" } as const;
 /** Where a local Ollama listens unless settings say otherwise. Ollama speaks the OpenAI chat format under /v1. */
-export const OLLAMA_DEFAULT = "http://localhost:11434";
+const OLLAMA_DEFAULT = "http://localhost:11434";
 
 /** One factory for every provider, so the engine and settings never special-case. */
 export function makeChatModel(ref: ModelRef, getKey: () => Promise<string>, f?: Fetch, o: { ollamaUrl?: string } = {}): ChatModel {

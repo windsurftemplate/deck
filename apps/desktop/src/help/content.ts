@@ -34,7 +34,7 @@ export function parseQuiz(src: string): Quiz | null {
   return q && options.length >= 2 && options.some((o) => o.correct) ? { question: q, options, explain } : null;
 }
 
-export const plain = (md: string) =>
+const plain = (md: string) =>
   md
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/[#>*_`|[\]()-]/g, " ")

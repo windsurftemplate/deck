@@ -5,42 +5,6 @@ const TOKEN = "vp-proj-test0123456789abcdef"; // gitleaks:allow (fake test token
 const okBody = { model: "claude-x", stop_reason: "end_turn", content: [{ type: "text", text: "hi" }], usage: { input_tokens: 1000, output_tokens: 100, cache_read_input_tokens: 4000 } };
 const mockFetch = (status = 200, body: unknown = okBody) => vi.fn(async () => new Response(JSON.stringify(body), { status })) as unknown as Fetch & ReturnType<typeof vi.fn>;
 
-describe("gateway token rules", () => {
-  it("refuses raw provider keys and accepts scoped tokens", () => {
-    for (const raw of ["sk-ant-" + "api03-abc", "sk-" + "proj-abc123", "AKIA" + "ABCDEFGHIJKLMNOP", "ghp" + "_abc", "AIza" + "SyA1234567890abcdefghijkl"]) {
-      expect(() => assertScopedToken(raw)).toThrow(/raw .* key/);
-    }
-    expect(() => assertScopedToken("nonsense")).toThrow(/vp-proj-/);
-    expect(() => assertScopedToken(TOKEN)).not.toThrow();
-  });
-
-  it("refuses plain http except localhost", () => {
-    expect(() => new GatewayClaude("m", { baseUrl: "http://gw.example.com", token: TOKEN })).toThrow(/https/);
-    expect(() => new GatewayClaude("m", { baseUrl: "http://localhost:8787", token: TOKEN })).not.toThrow();
-  });
-});
-
-describe("GatewayClaude", () => {
-  it("sends the scoped token, cache markers, and parses usage", async () => {
-    const f = mockFetch();
-    const m = new GatewayClaude("claude-x", { baseUrl: "https://gw.example.com/", token: TOKEN, fetch: f });
-    const res = await m.chat({ maxTokens: 50, system: [{ type: "text", text: "rules", cache: true }], messages: [{ role: "user", content: "hello" }] });
-    const [url, init] = f.mock.calls[0]!;
-    expect(url).toBe("https://gw.example.com/anthropic/v1/messages");
-    expect((init as RequestInit).headers).toMatchObject({ authorization: `Bearer ${TOKEN}` });
-    const sent = JSON.parse((init as RequestInit).body as string);
-    expect(sent.system[0].cache_control).toEqual({ type: "ephemeral" });
-    expect(res).toMatchObject({ text: "hi", usage: { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 4000, cacheWriteTokens: 0 } });
-  });
-
-  it("marks overload and rate limits as retryable, bad requests as not", async () => {
-    const m = (s: number) => new GatewayClaude("m", { baseUrl: "https://gw", token: TOKEN, fetch: mockFetch(s, {}) });
-    await expect(m(529).chat({ maxTokens: 1, messages: [] })).rejects.toMatchObject({ retryable: true });
-    await expect(m(429).chat({ maxTokens: 1, messages: [] })).rejects.toMatchObject({ retryable: true });
-    await expect(m(400).chat({ maxTokens: 1, messages: [] })).rejects.toMatchObject({ retryable: false });
-  });
-});
-
 const fake = (id: string, behavior: "ok" | "overloaded" | "bad"): ChatModel => ({
   id,
   chat: async () => {

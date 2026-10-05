@@ -478,7 +478,12 @@ export class Engine {
           return { status: "degraded", message: e.message, fix: e instanceof ModelError && e.status === 401 ? "Replace the key in Settings > Models." : "Try again in a minute." };
         }
       },
-      decision: async () => ({ status: "off", message: "Jev and Laya are not set up yet; built-in rules decide for now." }),
+      decision: async () => {
+        const j = s.tools.jev;
+        if (!j.enabled) return { status: "off", message: "Jev is off; built-in rules decide." };
+        if (!(await this.d.keychain.get("tool.jev").catch(() => null))) return { status: "degraded", message: "Jev is on but has no key.", fix: "Add the Jev key on the Tools page, or turn Jev off." };
+        return { status: "ok", message: `Jev on for ${(["routing", "checks", "security", "scanner"] as const).filter((k) => j.uses?.[k] !== false).join(", ")}; falls back when unsure.` };
+      },
       voice: async () => {
         const v = s.voice;
         if (!v.enabled) return { status: "off", message: "Voice is off." };
@@ -2863,7 +2868,6 @@ export class Engine {
       status: () => this.status(),
       approve: (id) => this.decide(id, true),
       reject: (id) => this.decide(id, false),
-      undo: () => "Nothing to undo.",
       kill: (a) => this.kill(a),
       ...(this.d.settings.voice.enabled ? { transcribe: (audio: Uint8Array) => this.transcribe(Buffer.from(audio).toString("base64")) } : {}),
       message: async (text) => {

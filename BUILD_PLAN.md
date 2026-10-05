@@ -23,8 +23,8 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 0.2 | `turbo.json` | Build, test, lint pipelines across packages | `pnpm turbo build` runs | done |
 | 0.3 | `mise.toml` | Pinned Node, pnpm, Rust versions | Same versions on every machine | done (verify with `mise install`) |
 | 0.4 | `.gitignore`, `.gitleaks.toml` | Keeps DB, `.env`, keys, memory exports out | Gitleaks pre-commit blocks a fake key | done |
-| 0.5 | `AGENTS.md` | Conventions for humans and coding agents | Claude Code follows it on a test task | doing |
-| 0.6 | `.github/workflows/ci.yml` | Lint, typecheck, tests, gitleaks on every PR | A PR shows green checks | doing |
+| 0.5 | `AGENTS.md` | Conventions for humans and coding agents | Claude Code follows it on a test task | done |
+| 0.6 | `.github/workflows/ci.yml` | Lint, typecheck, tests, gitleaks on every PR | A PR shows green checks | done (first green run on GitHub after you push) |
 
 ### Step 1: Desktop shell
 
@@ -53,7 +53,7 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | # | File | What it does | Done when | Status |
 |---|------|--------------|-----------|--------|
 | 3.1 | `packages/models/adapter.ts` | One interface: chat, vision, embed, decide | Claude call works through the adapter | done |
-| 3.2 | `packages/models/gateway.ts` | All calls through VaultProof Gateway with a scoped token | No raw key anywhere in the app | on hold (Gateway API paused; client kept) |
+| 3.2 | `packages/models/gateway.ts` | All calls through VaultProof Gateway with a scoped token | No raw key anywhere in the app | removed in the audit (never wired; returns with VaultProof brokering) |
 | 3.3 | `packages/models/roles.ts` | Heavy and cheap roles, spend caps, fallbacks | Cap stops calls when hit | done |
 | 3.4 | `packages/settings/src/schema.ts` | Settings file (no secrets): VaultProof MCP URL and on/off, boot options; validation | Unsafe URLs refused; cannot turn on without a URL | done |
 | 3.5 | `packages/connectors/src/vaultproof.ts` | VaultProof MCP check: handshake, session id, tools list, sign-in needed, not live yet | Each state reported; never blocks boot | done (needs the live server) |
@@ -75,7 +75,7 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 4.1 | `packages/core/taskboard.ts` | Tasks: create, claim, update, hand off, emit events | Task moves through every state | done |
 | 4.2 | `packages/core/events.ts` | Event bus feeding chat, UI and logs | UI updates live from events | done |
 | 4.3 | `packages/core/scheduler.ts` | Daily brief time, nightly jobs | Brief fires at set time | done |
-| 4.4 | `packages/core/agent-loop.ts` | Claude Agent SDK loop with hooks | Agent runs a tool and stops | done (fake runner tested; real SDK run pending) |
+| 4.4 | `packages/core/agent-loop.ts` | Claude Agent SDK loop with hooks | Agent runs a tool and stops | superseded by the agent loop in `packages/agents/act.ts`; removed in the audit |
 | 4.5 | `apps/engine/src/main.ts` | Agent engine sidecar: opens memory, routes models, runs the Chief of Staff, talks to the UI over stdio | Boot checks come from the engine; chat gets a real reply | done (real process tested over stdio) |
 ### Step 5: Chief of Staff agent
 
@@ -93,15 +93,15 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 6.1 | `packages/connectors/gmail.ts` | Read inbox, draft (no send yet) | Brief lists today's important emails | done (needs Gmail OAuth to run) |
 | 6.2 | `packages/connectors/calendar.ts` | Read today and tomorrow | Brief lists meetings | done (needs Calendar OAuth to run) |
 | 6.3 | `packages/tracker/src/tracker.ts` | Built-in issue tracker (replaces Linear): keys, priority, labels, history, search | Brief lists open issues | done |
-| 6.4 | `packages/connectors/github.ts` | Read PRs and checks | Brief lists PRs waiting on review | skipped for now |
+| 6.4 | `packages/connectors/github.ts` | Read PRs and checks | Brief lists PRs waiting on review | not built (the GitHub Labs connector reads files and opens PRs, but the brief does not list PRs yet) |
 ### Step 7: Safety basics
 
 | # | File | What it does | Done when | Status |
 |---|------|--------------|-----------|--------|
 | 7.1 | `packages/gate/secret-scan.ts` | Scans every outbound prompt for keys and secrets | Planted key is redacted | done |
 | 7.2 | `packages/gate/approvals.ts` | Approval queue for external actions | Draft needs approval before send | done |
-| 7.3 | `packages/gate/undo.ts` | 60-second undo window on external actions | Undo cancels a send | done |
-| 7.4 | `packages/gate/idempotency.ts` | Keys on side-effect tools | Retry never double-sends | done |
+| 7.3 | `packages/gate/undo.ts` | 60-second undo window on external actions | Undo cancels a send | not built: code existed but was never wired; removed in the audit |
+| 7.4 | `packages/gate/idempotency.ts` | Keys on side-effect tools | Retry never double-sends | not built: code existed but was never wired; removed in the audit |
 
 ### Step 8: Chat front door
 
@@ -122,7 +122,7 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | # | File | What it does | Done when | Status |
 |---|------|--------------|-----------|--------|
 | 10.1 | `evals/memory/questions.json` | 5 starter questions with fixture answers | Runs in CI | done (5/5) |
-| 10.2 | `evals/runner.ts` | Scores evals, posts diff on PRs | Regression blocks a PR | doing (score gate in CI done; PR comment todo) |
+| 10.2 | `evals/runner.ts` | Scores evals, posts diff on PRs | Regression blocks a PR | partly built: score gate in CI and in-app history with drop alerts; PR comment not built |
 
 ## Phase 2: Swarm and safety (in progress)
 
@@ -133,9 +133,9 @@ Gate to leave Phase 2: no raw key anywhere in the app or logs, and every externa
 | P2.1 | `packages/models` tool calling | Tools on Claude, OpenAI and Gemini (Gemini thought signatures replayed) | Each provider maps tool calls and results | done |
 | P2.2 | `packages/agents/src/act.ts` | Agent loop with the action gate: reads run, writes follow the preset, external always waits for approval | Approved actions run later; rejected never run; secrets stripped from results | done |
 | P2.3 | Chief of Staff tools | Issues (list, create, update, comment) and memory (search, remember) | Works from the chat box and Telegram, with approval cards | done |
-| P2.4 | Email drafts and calendar holds | Draft replies and hold times, both behind approval | Approve in the app sends the draft | blocked: Google sign-in |
+| P2.4 | Email drafts and calendar holds | Draft replies and hold times, both behind approval | Approve in the app sends the draft | partly built: Gmail drafts with approval (Labs, needs your Google OAuth client); calendar holds not built |
 | P2.5 | GTM, Code and Ops agents | Role files, tools, handoffs from the Chief of Staff | A delegated task finishes with a report | done (GTM, Ops, Engineering; Engineering plans only until repo tools exist) |
-| P2.6 | Jev routing and Laya intent check | Decide which agent and check each action matches the task | Off-task actions are stopped | blocked: needs your Jev access (API key) and a decision on Laya |
+| P2.6 | Jev routing and Laya intent check | Decide which agent and check each action matches the task | Off-task actions are stopped | Jev done (routing, checks, approval risk, scanner); Laya intent check not built (needs a decision) |
 | P2.8 | Crew rules you can change | Settings > Crew (instructions, your rules, each tool Allowed / Ask me / Off, history, undo) and from chat (proposal, then Apply); tool-list ask-first now honored | Changes can only make agents more careful; locked rules shown read-only | done |
 | P2.8 | Crew rules | Settings > Crew (instructions, your rules, tools Allowed, Ask me or Off; locked rules shown), chat proposals with Apply, history and undo; tool lists' ask-first honored | Changes only narrow an agent; nothing changes before you confirm | done |
 | P2.7 | Verifier | Check work against done-when before reporting done | Unfinished work is not reported done | done |
@@ -148,10 +148,10 @@ Gate to leave Phase 3: eval scores rise two weeks running.
 | P3.1 | Skills in memory: versions, draft until approved, success and failure counts, in every prompt's index, `load_skill` tool | A skill is used only after approval | done |
 | P3.2 | Reflection after checked work proposes a skill (approval card) | Passing work can teach a skill; failing work never does | done |
 | P3.3 | Nightly pass at 02:00 (and Run learning now): facts from recent work through the write gate, feedback review, retire failing skills, report to the owner | Runs once per episode; conflicts go to the owner | done |
-| P3.4 | Quarantined reader for untrusted content (email, web) | Injected instructions never reach a tool call | blocked: needs the email connector (Google sign-in) |
+| P3.4 | Quarantined reader for untrusted content (email, web) | Injected instructions never reach a tool call | partly built: plan lock, input scanner and untrusted wrapper; a separate quarantined reader model not built |
 | P3.5 | Honeytokens | A planted fake secret used anywhere stops the crew and alerts the owner | done |
-| P3.6 | Prompt evolution with evals | A prompt change ships only if every eval suite holds or improves | blocked: needs task evals on real models |
-| P3.7 | Task and safety eval suites | Replayed tasks and injection attempts scored in CI | safety done (9 cases); task evals need real models |
+| P3.6 | Prompt evolution with evals | A prompt change ships only if every eval suite holds or improves | partly built: tuning adopts only on practice-run wins; not yet gated on the live eval suite |
+| P3.7 | Task and safety eval suites | Replayed tasks and injection attempts scored in CI | done: safety 13, behavior 6, live suite on real models (opt-in) |
 
 ## Phase 4: World and research (in progress)
 
@@ -162,8 +162,8 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P4.1 | 3D command deck from the Kenney Space Station Kit (CC0): 8 stations, crew astronauts, live status rings and tags, station panel with Approve and Reject, vault beams on approvals, archive lights when the crew learns, core dims when stopped; List view toggle | Stations follow live engine events | done |
 | P4.2 | Research agent: web research through Claude, OpenAI or Gemini search with sources (untrusted, 25 a day), crew track-record review, weekly self-review on Mondays | A delegated research task returns sourced findings | done |
 | P4.3 | Crew walk to Command when they take a task and when they report back | Motion follows real handoffs | done (camera tours and 3D power-up later) |
-| P4.4 | Voice push-to-talk in the app (local whisper.cpp) and camera snapshots | Off by default; indicators always on | voice done; camera todo (needs image input in the model layer) |
-| P4.5 | Research agent builds and tests changes in a sandbox and opens PRs | Needs repository access | blocked: GitHub skipped |
+| P4.4 | Voice push-to-talk in the app (local whisper.cpp) and camera snapshots | Off by default; indicators always on | done (voice needs whisper.cpp on your Mac) |
+| P4.5 | Research agent builds and tests changes in a sandbox and opens PRs | Needs repository access | partly built: Engineering proposes PRs (Labs, never merges); building and testing in a sandbox not built |
 
 ## Code signing
 

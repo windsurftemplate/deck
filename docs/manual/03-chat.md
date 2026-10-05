@@ -34,7 +34,7 @@ Meeting prep works by name, never from a photo. It uses what you already know (m
 
 ## Approvals in chat
 
-When an agent wants to do something that needs you, a card shows the action and its details. **Approve** lets it happen. **Reject** cancels it and teaches the crew (rejections are reviewed during nightly learning). After you approve some actions there is a short undo window.
+When an agent wants to do something that needs you, a card shows the action and its details. **Approve** lets it happen. **Reject** cancels it and teaches the crew (rejections are reviewed during nightly learning).
 
 ## Pictures
 

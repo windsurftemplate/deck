@@ -66,7 +66,7 @@ export class AnthropicDirect implements ChatModel {
 }
 
 /** Rebuilds a full Anthropic response from its event stream, passing text deltas on as they arrive. */
-export async function anthropicStream(res: Response, model: string, onText: (d: string) => void): Promise<ChatResponse> {
+async function anthropicStream(res: Response, model: string, onText: (d: string) => void): Promise<ChatResponse> {
   const blocks: { type: string; text?: string; id?: string; name?: string; json?: string; thinking?: string; signature?: string; data?: string }[] = [];
   let stop: string | null = null;
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };

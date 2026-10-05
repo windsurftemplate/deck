@@ -32,7 +32,7 @@ export interface Plain {
 
 const raw = (k: KeyObject) => Buffer.from(k.export({ format: "jwk" }).x as string, "base64url");
 const fromRaw = (type: "ed25519" | "x25519", b: Buffer) => createPublicKey({ key: { kty: "OKP", crv: type === "ed25519" ? "Ed25519" : "X25519", x: b.toString("base64url") }, format: "jwk" });
-export const fingerprint = (signPub: Buffer) => createHash("sha256").update(signPub).digest("hex").slice(0, 16);
+const fingerprint = (signPub: Buffer) => createHash("sha256").update(signPub).digest("hex").slice(0, 16);
 
 export function newIdentity(): { identity: Identity; secret: string } {
   const s = generateKeyPairSync("ed25519"), b = generateKeyPairSync("x25519");

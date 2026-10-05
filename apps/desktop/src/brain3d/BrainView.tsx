@@ -36,8 +36,8 @@ export function BrainView() {
 
   const refresh = async () => {
     const [g, d] = await Promise.all([engineCall<Graph>("brain.graph").catch(() => null), engineCall<Doc[]>("brain.documents").catch(() => null)]);
-    setGraph(g ?? { nodes: [], links: [], facts: {} });
-    setDocs(d ?? []);
+    setGraph(g && Array.isArray(g.nodes) && Array.isArray(g.links) ? { ...g, facts: g.facts ?? {} } : { nodes: [], links: [], facts: {} });
+    setDocs(Array.isArray(d) ? d : []);
   };
   useEffect(() => {
     if (!canvas.current || !overlay.current) return;
