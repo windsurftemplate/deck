@@ -47,6 +47,8 @@ async function main() {
     "tools.list": () => engine.toolsList(),
     "health.get": () => engine.health(),
     "jev.test": () => engine.jevTest(),
+    "actions.undo": async (p) => engine.undo(String((p as { id?: string })?.id ?? "")),
+    "actions.undos": async () => engine.pendingUndos(),
     "evals.run": (p) => engine.runEvals({ live: !!(p as { live?: boolean })?.live }),
     "evals.overview": async () => engine.evalsOverview(),
     "keys.test": (p) => { const q = p as { key?: string; candidate?: string }; return engine.testKey(String(q?.key ?? "") as never, q?.candidate ? String(q.candidate) : undefined); },

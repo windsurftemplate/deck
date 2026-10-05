@@ -34,6 +34,11 @@ export class ApprovalQueue {
     return { approval: { ...approval }, decision };
   }
 
+  get(id: string): Approval | undefined {
+    const a = this.items.get(id);
+    return a ? { ...a } : undefined;
+  }
+
   /** Attaches an advisory review to a pending request. It changes nothing about whether the action runs. */
   setReview(id: string, review: { risk: "low" | "medium" | "high"; text: string; by: string }): boolean {
     const a = this.items.get(id);

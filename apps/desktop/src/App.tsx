@@ -15,6 +15,7 @@ import { Automations } from "./pages/Automations";
 import { Goals } from "./pages/Goals";
 import { Board } from "./pages/Board";
 import { ReviewNote, type Review } from "./ui/Review";
+import { UndoBar } from "./ui/UndoBar";
 import { Help } from "./help/Help";
 import { MicButton } from "./Voice";
 import { HandsFree } from "./HandsFree";
@@ -443,6 +444,7 @@ export function App() {
           openDoc: () => (setShowSettings(false), void switchView("brain")),
         }}
       />
+      <UndoBar />
       <Toaster />
     </div>
   );

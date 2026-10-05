@@ -49,6 +49,16 @@ export interface RunAgentInput {
   approvals: ApprovalQueue;
   /** Called when an approved action finishes later. */
   onLater?: (r: ActionRecord) => void;
+  /**
+   * Called after the owner approves an action that leaves the machine. Resolves true if the owner pressed Undo
+   * during the undo window, in which case the action never runs.
+   */
+  undoWindow?: (a: { approvalId: string; tool: string; summary: string }) => Promise<boolean>;
+  /**
+   * Duplicate protection for actions that leave the machine: the same tool with the same details is never run
+   * twice, and never queued for approval twice.
+   */
+  once?: { seen: (key: string) => Promise<"done" | "waiting" | null>; mark: (key: string, state: "waiting" | "done" | "clear", summary: string) => Promise<void> };
   maxTurns?: number;
   maxTokens?: number;
   /**
@@ -241,6 +251,15 @@ function logAction(log: ActionRecord[], i: RunAgentInput, a: ActionRecord) {
   i.onAction?.(a);
 }
 
+/** The same tool with the same details (keys sorted, whitespace and case ignored in text) gives the same key. */
+export function actionKey(tool: string, input: Record<string, unknown>): string {
+  const norm = (v: unknown): unknown => (Array.isArray(v) ? v.map(norm) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, norm((v as Record<string, unknown>)[k])])) : typeof v === "string" ? v.trim().replace(/\s+/g, " ").toLowerCase() : v);
+  const text = `${tool}:${JSON.stringify(norm(input))}`;
+  let h = 5381;
+  for (let k = 0; k < text.length; k++) h = ((h << 5) + h + text.charCodeAt(k)) >>> 0;
+  return `${tool}:${h.toString(36)}:${text.length}`;
+}
+
 async function handle(call: ToolCallBlock, i: RunAgentInput, allowed: AgentTool[], log: ActionRecord[]): Promise<Block> {
   const reply = (content: string, isError = false): Block => ({ type: "tool_result", id: call.id, name: call.name, content, ...(isError ? { isError } : {}) });
   const tool = allowed.find((t) => t.spec.name === call.name);
@@ -251,11 +270,22 @@ async function handle(call: ToolCallBlock, i: RunAgentInput, allowed: AgentTool[
   const gaps = missing(tool.spec, call.input);
   if (gaps.length) return reply(`Missing ${gaps.join(", ")}. Call again with ${gaps.length > 1 ? "them" : "it"}.`, true);
   const summary = tool.describe(call.input);
+  const key = tool.kind === "external" && i.once ? actionKey(call.name, call.input) : null;
+  if (key) {
+    const seen = await i.once!.seen(key);
+    if (seen === "done") {
+      logAction(log, i, { tool: call.name, summary, status: "denied", result: "already done" });
+      return reply(`Already done: the same ${call.name} with the same details ran earlier. It was not repeated.`, true);
+    }
+    if (seen === "waiting") return reply(`Already waiting for the owner's approval: the same ${call.name} with the same details. Do not ask again.`, true);
+  }
   const execute = async (): Promise<ActionRecord> => {
     try {
       const out = redactSecrets(await tool.run(call.input)).clean.slice(0, 6000);
+      if (key) await i.once!.mark(key, "done", summary);
       return { tool: call.name, summary, status: "done", result: out };
     } catch (err) {
+      if (key) await i.once!.mark(key, "clear", summary); // a failed attempt may be retried
       return { tool: call.name, summary, status: "failed", result: (err as Error).message };
     }
   };
@@ -267,10 +297,21 @@ async function handle(call: ToolCallBlock, i: RunAgentInput, allowed: AgentTool[
     return reply(r.status === "done" ? r.result! : `Failed: ${r.result}`, r.status === "failed");
   }
   const { approval, decision } = i.approvals.request({ agent: i.agent, summary, detail: JSON.stringify(call.input, null, 2), scope: tool.scope });
+  if (key) await i.once!.mark(key, "waiting", summary);
   logAction(log, i, { tool: call.name, summary, status: "waiting", approvalId: approval.id });
   void decision.then(async (a) => {
-    if (a.status === "approved") i.onLater?.(await execute());
-    else i.onLater?.({ tool: call.name, summary, status: "denied", approvalId: a.id, result: a.status === "expired" ? "approval expired" : "rejected by the owner" });
+    if (a.status === "approved") {
+      // Actions that leave the machine wait out the undo window first.
+      if (tool.kind === "external" && i.undoWindow && (await i.undoWindow({ approvalId: a.id, tool: call.name, summary }).catch(() => false))) {
+        if (key) await i.once!.mark(key, "clear", summary);
+        i.onLater?.({ tool: call.name, summary, status: "denied", approvalId: a.id, result: "undone by the owner" });
+        return;
+      }
+      i.onLater?.(await execute());
+    } else {
+      if (key) await i.once!.mark(key, "clear", summary);
+      i.onLater?.({ tool: call.name, summary, status: "denied", approvalId: a.id, result: a.status === "expired" ? "approval expired" : "rejected by the owner" });
+    }
   });
   return reply(`Queued for the owner's approval (id ${approval.id}). Do not call it again; tell the owner it is waiting for them.`);
 }

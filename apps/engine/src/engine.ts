@@ -1060,6 +1060,7 @@ export class Engine {
           preset: this.d.settings.preset,
           approvals: this.approvals,
           onLater: (r) => this.later(r),
+          ...this.guards(),
           tripwire: this.tripwire,
           onTripwire: (t) => this.onTripwire(id, t),
           verify: { goal: h.task, doneWhen, chat: (req) => this.router.chat("cheap", "verifier", req), judge: this.jevJudge() },
@@ -1768,6 +1769,7 @@ export class Engine {
         preset: this.d.settings.preset,
         approvals: this.approvals,
         onLater: (r) => this.later(r),
+          ...this.guards(),
         tripwire: this.tripwire,
         onTripwire: (t) => this.onTripwire(agent, t),
         verify: { goal, doneWhen, chat: (req) => this.router.chat("cheap", "verifier", req), judge: this.jevJudge() },
@@ -2296,6 +2298,7 @@ export class Engine {
         preset: this.d.settings.preset,
         approvals: this.approvals,
         onLater: (r) => this.later(r),
+          ...this.guards(),
         tripwire: this.tripwire,
         onTripwire: (t) => this.onTripwire(AGENT, t),
       });
@@ -2446,7 +2449,54 @@ export class Engine {
     this.stopped = agent === "all" ? true : this.stopped;
     const t = this.board.cancelAgent(agent);
     const a = this.approvals.rejectAll(agent);
-    return `Stopped ${agent === "all" ? "all agents" : agent}: ${t} tasks cancelled, ${a} approvals rejected.`;
+    // Approved actions still inside their undo window are cancelled too.
+    let u = 0;
+    for (const [id, w] of this.undos) if (agent === "all" || w.agent === agent) (w.resolve(true), this.undos.delete(id), u++, this.emit("undo.end", { id, undone: true }));
+    return `Stopped ${agent === "all" ? "all agents" : agent}: ${t} tasks cancelled, ${a} approvals rejected${u ? `, ${u} approved action${u > 1 ? "s" : ""} undone` : ""}.`;
+  }
+
+  /* ---------- undo window and duplicate protection ---------- */
+  private undos = new Map<string, { agent: string; summary: string; deadline: number; resolve: (undone: boolean) => void }>();
+  /** Hooks every real agent run gets: the undo window for approved external actions, and duplicate protection. */
+  private guards() {
+    return {
+      undoWindow: (a: { approvalId: string; tool: string; summary: string }) => this.undoWindow(a),
+      once: {
+        seen: async (key: string) => this.activity?.actionKeySeen(key, this.clock().getTime()) ?? null,
+        mark: async (key: string, state: "waiting" | "done" | "clear", summary: string) => this.activity?.actionKeyMark(key, state, summary, this.clock().toISOString()),
+      },
+    };
+  }
+  private undoWindow(a: { approvalId: string; tool: string; summary: string }): Promise<boolean> {
+    const secs = this.d.settings.undo?.seconds ?? 60;
+    if (secs <= 0) return Promise.resolve(false);
+    const agent = this.approvals.get(a.approvalId)?.agent ?? "";
+    return new Promise<boolean>((resolve) => {
+      const deadline = this.clock().getTime() + secs * 1000;
+      const timer = setTimeout(() => {
+        if (!this.undos.has(a.approvalId)) return;
+        this.undos.delete(a.approvalId);
+        this.emit("undo.end", { id: a.approvalId, undone: false });
+        resolve(false);
+      }, secs * 1000);
+      this.undos.set(a.approvalId, { agent, summary: a.summary, deadline, resolve: (u) => (clearTimeout(timer), resolve(u)) });
+      this.emit("undo", { id: a.approvalId, summary: a.summary, deadline: new Date(deadline).toISOString(), seconds: secs });
+      this.say({ sender: "owner", recipient: agent || "crew", kind: "approval", text: `Approved: ${a.summary}. Runs in ${secs} s unless you press Undo.` });
+      for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, `Approved: ${a.summary}\nRuns in ${secs} s. Send /undo ${a.approvalId} to stop it.`).catch(() => {});
+    });
+  }
+  /** Stops an approved action during its undo window. */
+  undo(id: string): string {
+    const w = this.undos.get(id);
+    if (!w) return "Too late to undo, or there is nothing with that id waiting.";
+    this.undos.delete(id);
+    w.resolve(true);
+    this.emit("undo.end", { id, undone: true });
+    this.say({ sender: "owner", recipient: w.agent || "crew", kind: "approval", text: `Undone: ${w.summary}. It did not run.` });
+    return `Undone: ${w.summary}. It did not run.`;
+  }
+  pendingUndos() {
+    return [...this.undos.entries()].map(([id, w]) => ({ id, summary: w.summary, deadline: new Date(w.deadline).toISOString() }));
   }
 
   resume(): string {
@@ -2867,6 +2917,7 @@ export class Engine {
       tasks: () => this.board.list().filter((x) => !["done", "cancelled"].includes(x.status)).map((x) => `- ${x.title} (${x.status})`).join("\n") || "No open tasks.",
       status: () => this.status(),
       approve: (id) => this.decide(id, true),
+      undo: (id) => this.undo(id),
       reject: (id) => this.decide(id, false),
       kill: (a) => this.kill(a),
       ...(this.d.settings.voice.enabled ? { transcribe: (audio: Uint8Array) => this.transcribe(Buffer.from(audio).toString("base64")) } : {}),

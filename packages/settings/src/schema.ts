@@ -94,6 +94,8 @@ export interface Settings {
   notifications: { enabled: boolean };
   /** How agents think: a plan step for complex work, built-in model reasoning for hard work. */
   thinking: { mode: "auto" | "always" | "off"; reasoning: "low" | "medium" | "high"; idlePrep: boolean };
+  /** Seconds an approved action that leaves the machine waits before it runs, so it can be undone (0 turns it off). */
+  undo: { seconds: number };
   /** Evals: offline suites daily (no tokens); the live suite weekly only if turned on (uses tokens). */
   evals: { daily: boolean; live: boolean };
   /** The CISO gives a security opinion on every approval card (advice only). */
@@ -127,6 +129,7 @@ export const DEFAULTS: Settings = {
   helpers: { enabled: true, max: 10, tokenBudget: 300_000 },
   ciso: { reviews: true },
   evals: { daily: true, live: false },
+  undo: { seconds: 60 },
   labs: {
     routing: false,
     ollama: { enabled: false, baseUrl: "http://localhost:11434" },
@@ -312,6 +315,11 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
   if (patch.notifications?.enabled !== undefined) next.notifications.enabled = !!patch.notifications.enabled;
   if (patch.labs) next.labs = applyLabs(next.labs, patch.labs as DeepPartial<Labs>);
   if (patch.ciso?.reviews !== undefined) next.ciso.reviews = !!patch.ciso.reviews;
+  if (patch.undo?.seconds !== undefined) {
+    const n = patch.undo.seconds;
+    if (!Number.isInteger(n) || n < 0 || n > 300) throw new SettingsError("undo.seconds", "Choose 0 to 300 seconds.");
+    next.undo.seconds = n;
+  }
   if (patch.evals?.daily !== undefined) next.evals.daily = !!patch.evals.daily;
   if (patch.evals?.live !== undefined) next.evals.live = !!patch.evals.live;
   if (patch.helpers) {
@@ -374,7 +382,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "helpers", "ciso", "evals", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "helpers", "ciso", "evals", "undo", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

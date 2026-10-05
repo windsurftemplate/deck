@@ -6,6 +6,8 @@ export interface BotActions {
   tasks(): string;
   status(): string;
   approve(id: string): string;
+  /** Stops an approved action during its undo window. */
+  undo(id: string): string;
   reject(id: string): string;
   kill(agent: string): string;
   /** Free text goes to the Chief of Staff. */
@@ -16,7 +18,7 @@ export interface BotActions {
   transcribe?(audio: Uint8Array): Promise<string>;
 }
 
-const HELP = ["/brief  morning briefing now", "/tasks  open tasks", "/status  crew and systems", "/approve <id>  /reject <id>", "/kill <agent|all>  emergency stop"].join("\n");
+const HELP = ["/brief  morning briefing now", "/tasks  open tasks", "/status  crew and systems", "/approve <id>  /reject <id>", "/undo <id>  stop an approved action before it runs", "/kill <agent|all>  emergency stop"].join("\n");
 
 /** Telegram front door. Only the owner's chat ids are served; everyone else is ignored. */
 export class ChatBot {
@@ -97,6 +99,9 @@ export class ChatBot {
         break;
       case "/apply":
         reply = arg && this.actions.apply ? await this.actions.apply(arg) : "Which one? /apply <id>";
+        break;
+      case "/undo":
+        reply = arg ? this.actions.undo(arg) : "Which one? /undo <id>";
         break;
       case "/kill":
         reply = this.actions.kill(arg || "all");

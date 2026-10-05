@@ -19,6 +19,7 @@ function setup(overrides: Partial<BotActions> = {}) {
     tasks: () => "2 open tasks",
     status: () => "All systems up",
     approve: (id) => `Approved ${id}`,
+    undo: (id) => `Undone ${id}`,
     reject: (id) => `Rejected ${id}`,
     kill: (a) => `Stopped ${a}`,
     message: async (t) => `CoS: ${t}`,

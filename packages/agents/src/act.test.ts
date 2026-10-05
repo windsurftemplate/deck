@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApprovalQueue } from "@deck/gate";
 import type { ChatRequest, ChatResponse, ToolCallBlock } from "@deck/models";
-import { runAgent, needsApproval, verifyWork, type ActionRecord, type AgentTool } from "./index.js";
+import { actionKey, runAgent, needsApproval, verifyWork, type ActionRecord, type AgentTool } from "./index.js";
 
 const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
 const say = (text: string): ChatResponse => ({ text, model: "m", stopReason: "end_turn", usage });
@@ -214,5 +214,51 @@ describe("structured judge before the checker", () => {
     expect(llm.n).toBe(1);
     const v = await verifyWork({ ...base, actions: [{ tool: "x", summary: "Send", status: "failed" }], judge: async () => ({ passed: true, missing: [], checked: true }) });
     expect(v.passed).toBe(false);
+  });
+});
+
+describe("undo window and duplicate protection", () => {
+  const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const call = (id: string, to: string): ChatResponse => ({ text: "", toolCalls: [{ type: "tool_call", id, name: "send", input: { to, body: "Hi" } }], model: "m", stopReason: "tool_use", usage: U });
+  const end: ChatResponse = { text: "ok", model: "m", stopReason: "end_turn", usage: U };
+  const setup = () => {
+    const sent: string[] = [];
+    const keys = new Map<string, string>();
+    const tools: AgentTool[] = [{ spec: { name: "send", description: "Send", parameters: { type: "object", properties: { to: { type: "string" }, body: { type: "string" } }, required: ["to", "body"] } }, scope: "gmail.send", kind: "external", describe: (x) => `Send to ${String(x.to)}`, run: async (x) => (sent.push(String(x.to)), "sent") }];
+    const once = { seen: async (k: string) => (keys.get(k) as "done" | "waiting" | undefined) ?? null, mark: async (k: string, st: string) => void (st === "clear" ? keys.delete(k) : keys.set(k, st)) };
+    return { sent, keys, tools, once };
+  };
+  const policy = { agent: "a", allow: ["gmail.send"], requiresApproval: [], deny: [] };
+  it("an approved send waits for the undo window, and Undo stops it", async () => {
+    const { sent, tools, once } = setup();
+    const approvals = new ApprovalQueue();
+    let undo: (v: boolean) => void = () => {};
+    const later: ActionRecord[] = [];
+    const turns = [call("1", "dana@acme.com"), end];
+    const out = await runAgent({ agent: "a", chat: async () => turns.shift() ?? end, system: [{ type: "text", text: "s" }], messages: [{ role: "user", content: "go" }], tools, policy, taskScopes: policy.allow, preset: "balanced", approvals, once, onLater: (r) => later.push(r), undoWindow: () => new Promise<boolean>((r) => (undo = r)) });
+    approvals.decide(out.actions[0]!.approvalId!, true);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sent).toEqual([]); // still inside the window
+    undo(true);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sent).toEqual([]);
+    expect(later[0]).toMatchObject({ status: "denied", result: "undone by the owner" });
+  });
+  it("never sends the same thing twice, and never asks twice", async () => {
+    const { sent, tools, once } = setup();
+    const approvals = new ApprovalQueue();
+    const turns = [call("1", "dana@acme.com"), call("2", " Dana@Acme.com "), end];
+    let finished: (r: ActionRecord) => void = () => {};
+    const done = new Promise<ActionRecord>((r) => (finished = r));
+    const out = await runAgent({ agent: "a", chat: async () => turns.shift() ?? end, system: [{ type: "text", text: "s" }], messages: [{ role: "user", content: "go" }], tools, policy, taskScopes: policy.allow, preset: "balanced", approvals, once, undoWindow: async () => false, onLater: (r) => finished(r) });
+    expect(approvals.pending()).toHaveLength(1); // the second identical request was not queued
+    approvals.decide(out.actions[0]!.approvalId!, true);
+    expect((await done).status).toBe("done");
+    expect(sent).toEqual(["dana@acme.com"]);
+    const turns2 = [call("3", "dana@acme.com"), end];
+    const out2 = await runAgent({ agent: "a", chat: async () => turns2.shift() ?? end, system: [{ type: "text", text: "s" }], messages: [{ role: "user", content: "go" }], tools, policy, taskScopes: policy.allow, preset: "autonomous", approvals, once });
+    expect(out2.actions[0]).toMatchObject({ status: "denied", result: "already done" });
+    expect(actionKey("send", { to: "A", body: "x" })).toBe(actionKey("send", { body: "x ", to: "a" }));
+    expect(actionKey("send", { to: "a", body: "x" })).not.toBe(actionKey("send", { to: "b", body: "x" }));
   });
 });

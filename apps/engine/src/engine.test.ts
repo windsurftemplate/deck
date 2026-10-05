@@ -1159,6 +1159,36 @@ describe("evals in the app", () => {
   });
 });
 
+describe("undo window and duplicate protection (engine)", () => {
+  it("holds approved external actions for the undo window, Undo and Stop cancel them, and identical actions never repeat", async () => {
+    const events: string[] = [];
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: { ...DEFAULTS, undo: { seconds: 1 } }, fetch: offline, makeEmbedder: () => new HashEmbedder(64), makeModel: (ref) => fakeModel(ref.model), emit: (ev: string) => void events.push(ev) });
+    await e.open();
+    const g = (e as unknown as { guards: () => { undoWindow: (a: { approvalId: string; tool: string; summary: string }) => Promise<boolean>; once: { seen: (k: string) => Promise<string | null>; mark: (k: string, s: "waiting" | "done" | "clear", sum: string) => Promise<void> } } }).guards();
+    // Undo during the window.
+    const w1 = g.undoWindow({ approvalId: "a1", tool: "send", summary: "Send to Dana" });
+    expect(e.pendingUndos().map((u) => u.id)).toEqual(["a1"]);
+    expect(e.undo("a1")).toBe("Undone: Send to Dana. It did not run.");
+    expect(await w1).toBe(true);
+    expect(e.undo("a1")).toMatch(/Too late/);
+    // Nobody presses Undo: it runs after the window.
+    const t0 = Date.now();
+    expect(await g.undoWindow({ approvalId: "a2", tool: "send", summary: "Send to Sam" })).toBe(false);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
+    // Stop cancels anything still waiting.
+    const w3 = g.undoWindow({ approvalId: "a3", tool: "send", summary: "Send to Lee" });
+    expect(e.kill("all")).toMatch(/1 approved action undone/);
+    expect(await w3).toBe(true);
+    expect(events).toEqual(expect.arrayContaining(["undo", "undo.end"]));
+    // Duplicate protection survives in the database.
+    await g.once.mark("send:abc", "done", "Send to Dana");
+    expect(await g.once.seen("send:abc")).toBe("done");
+    await g.once.mark("send:abc", "clear", "Send to Dana");
+    expect(await g.once.seen("send:abc")).toBeNull();
+    await e.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");

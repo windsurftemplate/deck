@@ -17,6 +17,7 @@ export interface CrewMessage {
 export class Activity {
   constructor(private db: DB, private clock: () => Date = () => new Date()) {
     db.exec(`
+      CREATE TABLE IF NOT EXISTS action_keys (key TEXT PRIMARY KEY, state TEXT NOT NULL, ts TEXT NOT NULL, summary TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS eval_runs (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, suite TEXT NOT NULL, title TEXT NOT NULL, score REAL NOT NULL, passed INTEGER NOT NULL, total INTEGER NOT NULL, ms INTEGER NOT NULL, tokens INTEGER NOT NULL, cases TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS usage_log (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, agent TEXT NOT NULL, model TEXT NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, tokens INTEGER NOT NULL, cost REAL);
       CREATE TABLE IF NOT EXISTS task_log (id INTEGER PRIMARY KEY, ts TEXT NOT NULL, task_id TEXT NOT NULL, agent TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL, checked INTEGER NOT NULL DEFAULT 0, note TEXT);
@@ -35,6 +36,18 @@ export class Activity {
   }
   private now() {
     return this.clock().toISOString();
+  }
+
+  /** Duplicate protection: "done" counts for 24 hours, "waiting" until the approval is decided. */
+  actionKeySeen(key: string, now: number): "done" | "waiting" | null {
+    const r = this.db.prepare("SELECT state, ts FROM action_keys WHERE key = ?").get(key) as { state: string; ts: string } | undefined;
+    if (!r) return null;
+    if (r.state === "done" && now - Date.parse(r.ts) > 24 * 3_600_000) return null;
+    return r.state as "done" | "waiting";
+  }
+  actionKeyMark(key: string, state: "waiting" | "done" | "clear", summary: string, ts: string) {
+    if (state === "clear") this.db.prepare("DELETE FROM action_keys WHERE key = ?").run(key);
+    else this.db.prepare("INSERT INTO action_keys (key, state, ts, summary) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET state = excluded.state, ts = excluded.ts, summary = excluded.summary").run(key, state, ts, summary);
   }
 
   /** Saves one eval suite run. */
