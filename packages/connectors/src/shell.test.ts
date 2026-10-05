@@ -1,7 +1,7 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { classifyCommand, runSandboxed, sandboxAvailable, sandboxProfile } from "./index.js";
 
 describe("shell command risk", () => {
@@ -43,9 +43,13 @@ describe("shell command risk", () => {
 
 describe.runIf(sandboxAvailable() === "linux")("sandboxed run (Linux, bubblewrap)", () => {
   const ws = mkdtempSync(join(tmpdir(), "deck-ws-"));
+  const made = [ws];
+  afterAll(() => made.forEach((d) => rmSync(d, { recursive: true, force: true })));
   it("writes inside the workspace only, cannot see home or keys, and has no network", async () => {
     process.env.DECK_FAKE_SECRET_TOKEN = "sk-test-should-not-leak";
-    const secret = join(mkdtempSync(join(tmpdir(), "outside-")), "secret.txt");
+    const outside = mkdtempSync(join(tmpdir(), "outside-"));
+    made.push(outside);
+    const secret = join(outside, "secret.txt");
     writeFileSync(secret, "outside");
     const r1 = await runSandboxed({ command: "echo hello > a.txt && cat a.txt && pwd", workspace: ws });
     expect(r1.code).toBe(0);
