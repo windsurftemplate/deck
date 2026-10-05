@@ -8,7 +8,8 @@
     "skills.read",
     "repo.read",
     "repo.propose",
-    "crew.helpers"
+    "crew.helpers",
+    "shell.run"
   ],
   "requiresApproval": [
     "repo.propose"

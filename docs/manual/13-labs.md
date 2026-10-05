@@ -79,3 +79,31 @@ A **Tour** button on the deck flies through every station, pausing at each. Pres
 ## 3D power-up screen
 
 The start-up check as a 3D reactor that lights segment by segment and glows when models are online.
+
+## Sandboxed shell
+
+Engineering can run commands inside your operating system's sandbox: `sandbox-exec` on macOS, bubblewrap on Linux. Not available on Windows; without a sandbox, nothing runs.
+
+| Command kind | Examples | What happens |
+|---|---|---|
+| Read only | ls, cat, rg, git status, git log, git diff | Runs |
+| Changes files in the workspace | editing, building, tests, git commit | Follows your approval preset |
+| Uses the network | npm install, pip install, git clone, git push | Always asks you; undo window; network allowed for that command only |
+| Blocked | sudo, keychain or SSH access, remote shells, piped installers, startup persistence, commands built at run time | Never runs |
+
+Inside the sandbox, commands can change files only in the workspace folder (default `~/deck-workspace`; deck refuses your home, Desktop, Documents or system folders), cannot read the rest of your home folder, get a clean environment with no keys or tokens, and stop after 2 minutes (5 for network commands). Output is treated as untrusted and keys are removed from it.
+
+## Isolated browser
+
+Research and the Chief of Staff can browse using Chrome, Chromium, Edge or Brave with a separate, empty profile: none of your cookies, logins or saved passwords, no extensions or sync, downloads off. Every request to this computer or your local network is blocked, including images and scripts on a page.
+
+The agent reads each page as text plus numbered links, buttons and fields:
+
+| Action | What happens |
+|---|---|
+| Open a page, read it, follow links | Runs |
+| Type into a field, press an ordinary button | Follows your approval preset |
+| Press a button that buys, pays, sends, posts, submits, signs up or deletes | Always asks you; undo window; refused if the page changed since you approved |
+| Password, card, PIN or ID fields | Never filled; hidden from the agent |
+
+The browser closes after 10 idle minutes and whenever you press Stop all agents. Turn on "Show the browser window" to watch it work.

@@ -216,7 +216,7 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P6.1 | Verified skills hub and OpenClaw import: skill verifier (malware patterns, secrets, obfuscation, injection, signatures, index hash), Ed25519 publisher signing with your key in the keychain, hub client and catalog UI, first-party starter hub (6 skills), OpenClaw workspace scan and import (memory, persona as approved owner rules, heartbeat, skills), never reading credentials; second brain strips keys before saving | Tested | done |
 | P6.2 | Slack (Socket Mode) and Discord (Gateway) channels; shared command core with Telegram; approvals sent once to every channel with the CISO opinion; Undo buttons | Tested with fake servers | done |
 | P6.2b | iMessage, Signal, WhatsApp | | next |
-| P6.3 | Safe computer use: isolated browser profile and sandboxed shell | | planned |
+| P6.3 | Safe computer use: OS-sandboxed shell (sandbox-exec, bubblewrap) sorted by risk; isolated browser over Chrome DevTools with an empty profile, private-network blocking, numbered elements, approvals for buying and submitting, secret fields refused | Tested with real bubblewrap and real Chromium; macOS sandbox profile untested here | done |
 | P6.4 | Always-on engine (background service, no network port) | | planned |
 | P5.13 | Automations: recurring jobs for any agent, set on a page or proposed from chat; results to chat, Crew chat, notifications and Telegram | Runs on schedule while the app is open | done |
 | P5.14 | Learning: your documents become facts nightly; prompt tuning drafts guidance from misses, tests it on practice tasks (nothing changed or sent), adopts only a clear win with your approval | Tuned guidance shows in Settings, Crew, and can be removed | done |

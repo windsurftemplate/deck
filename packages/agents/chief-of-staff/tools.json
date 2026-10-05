@@ -18,7 +18,8 @@
     "google.read",
     "google.draft",
     "federation.message",
-    "crew.helpers"
+    "crew.helpers",
+    "browser.use"
   ],
   "requiresApproval": [
     "google.draft"

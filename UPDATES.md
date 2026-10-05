@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **277 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **284 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,23 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-05: Safe computer use (Labs): sandboxed shell and isolated browser
+
+**Changed**
+- `packages/connectors/src/shell.ts`: `classifyCommand` (read, write, network, blocked; pipes and chains checked part by part; allowlist of commands; blocks sudo, piped installers, keychain and system tools, remote shells, special permissions, app launches, commands built at run time, credential and system paths), `sandboxProfile` (macOS: deny by default, home unreadable except the workspace and tool folders, writes only to the workspace and temp, no network unless allowed), `bwrapArgs` (Linux: read-only system, private /tmp, empty /home, workspace bound, new namespaces, no network unless allowed), `cleanEnv` (no keys or tokens), `runSandboxed` (refuses without a sandbox, keeps the working folder inside the workspace, time and output limits).
+- `packages/connectors/src/browser.ts`: `IsolatedBrowser` over the Chrome DevTools Protocol with a separate profile (no extensions, sync, password store or keychain), downloads denied, every request filtered so local and private addresses fail, pages read as text plus numbered elements, `elementRisk` (links read; typing and ordinary buttons write; buy, pay, send, post, submit, delete and form submits external; password, card, PIN and ID fields refused), clicks that check the page has not changed since approval, process-group shutdown.
+- Engine: `shell_read`, `shell_run`, `shell_network` for Engineering and `browser_open`, `browser_read`, `browser_click`, `browser_type`, `browser_press` for Research and the Chief of Staff, mapped to read, write and external so approvals, the undo window, duplicate protection and the plan lock apply; outputs treated as untrusted with keys removed; browser closes after 10 idle minutes and on Stop.
+- Settings: Labs switches with a dedicated workspace folder (home, Desktop, Documents and system folders refused), browser path and a show-window option. Manual (Labs, safety), README and plan updated.
+- Tests no longer time out on the eval-heavy cases (realistic limits).
+
+**Verified**
+- 21 command classifications; macOS profile contents.
+- Real bubblewrap: writes inside the workspace, outside files untouched, home empty, no keys in the environment, network blocked, timeout, output cap, working folder cannot escape.
+- Real Chromium: page text and numbered elements, risk per element, password field refused, typing, link click, changed-page refusal, a private-network image blocked, private URLs refused; no leftover processes.
+- Engine end to end: read and write commands run, sudo refused, npm install waits for approval; "Buy now" waits for approval, then runs after approval and the undo window, reaching the order page.
+- Packaged engine and power-up checks pass. 284 TypeScript tests pass (counted); `pnpm check` green.
+- Not verified here: the macOS sandbox-exec profile in a real Mac sandbox (Linux build machine).
 
 ## 2026-10-05: Slack and Discord channels
 

@@ -8,7 +8,8 @@
     "issues.read",
     "issues.write",
     "skills.read",
-    "crew.helpers"
+    "crew.helpers",
+    "browser.use"
   ],
   "requiresApproval": [],
   "deny": [

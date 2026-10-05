@@ -42,6 +42,10 @@ export interface Labs {
   consensus: boolean;
   /** Outside MCP servers as tools. */
   plugins: { enabled: boolean; servers: PluginServer[] };
+  /** Sandboxed shell for Engineering: one workspace folder, no network unless a command is approved for it. */
+  shell: { enabled: boolean; workspace: string };
+  /** Isolated browser for Research and the Chief of Staff: its own empty profile, public pages only. */
+  browser: { enabled: boolean; chromePath: string; visible: boolean };
   /** Engineering can open pull requests (never merge) in one repository. */
   github: { enabled: boolean; repo: string };
   /** Gmail and Calendar, read only, plus Gmail drafts. */
@@ -144,6 +148,8 @@ export const DEFAULTS: Settings = {
     federation: { enabled: false, port: 7787, name: "" },
     tours: false,
     powerUp3d: false,
+    shell: { enabled: false, workspace: "~/deck-workspace" },
+    browser: { enabled: false, chromePath: "", visible: false },
   },
   camera: { enabled: false },
   tools: { jev: { enabled: false, baseUrl: "", uses: { routing: true, checks: true, security: true, scanner: true } } },
@@ -168,6 +174,21 @@ const LOCAL_HTTP = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/.*)?$/;
 function applyLabs(cur: Labs, p: DeepPartial<Labs>): Labs {
   const n: Labs = JSON.parse(JSON.stringify(cur));
   for (const k of ["routing", "fanout", "consensus", "tours", "powerUp3d"] as const) if (p[k] !== undefined) n[k] = !!p[k];
+  if (p.shell) {
+    n.shell = { ...(n.shell ?? { enabled: false, workspace: "~/deck-workspace" }) };
+    if (p.shell.enabled !== undefined) n.shell.enabled = !!p.shell.enabled;
+    if (p.shell.workspace !== undefined) {
+      const w = String(p.shell.workspace).trim();
+      if (!/^(~\/|\/)[^\0]{1,200}$/.test(w) || /(^|\/)\.\.(\/|$)/.test(w) || /^(~|\/|\/Users\/[^/]+|\/home\/[^/]+|~\/(Documents|Desktop|Downloads|Library|\.ssh))\/?$/.test(w)) throw new SettingsError("labs.shell.workspace", "Pick a dedicated folder, like ~/deck-workspace (not your home, Documents, Desktop or system folders).");
+      n.shell.workspace = w;
+    }
+  }
+  if (p.browser) {
+    n.browser = { ...(n.browser ?? { enabled: false, chromePath: "", visible: false }) };
+    if (p.browser.enabled !== undefined) n.browser.enabled = !!p.browser.enabled;
+    if (p.browser.visible !== undefined) n.browser.visible = !!p.browser.visible;
+    if (p.browser.chromePath !== undefined) n.browser.chromePath = String(p.browser.chromePath).trim().slice(0, 400);
+  }
   if (p.ollama) {
     if (p.ollama.baseUrl !== undefined) {
       const u = String(p.ollama.baseUrl).trim().replace(/\/+$/, "");

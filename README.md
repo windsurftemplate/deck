@@ -11,7 +11,7 @@ with encrypted memory on your machine and your approval on anything that leaves 
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-12151c?style=flat-square)](#install)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](#development)
-[![Tests](https://img.shields.io/badge/tests-277%20passing-5fd39a?style=flat-square)](#evals)
+[![Tests](https://img.shields.io/badge/tests-284%20passing-5fd39a?style=flat-square)](#evals)
 [![Safety evals](https://img.shields.io/badge/safety%20evals-13%2F13-5fd39a?style=flat-square)](#evals)
 [![Models](https://img.shields.io/badge/models-OpenAI%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Ollama-79a8ff?style=flat-square)](#models)
 [![MCP](https://img.shields.io/badge/MCP-ready-c59bff?style=flat-square)](https://modelcontextprotocol.io)
@@ -180,6 +180,8 @@ A score out of 100 from thirteen checks (keys and whether they pass their tests,
 | Parallel work | 2 to 4 delegated tasks at once |
 | Crew votes | Independent answers ranked by the crew (Borda count), with dissent |
 | Plugins | Any MCP server as tools; every call asks unless you trust read-only tools |
+| Sandboxed shell | Engineering runs commands in the OS sandbox (macOS sandbox-exec, Linux bubblewrap): workspace folder only, no network, no keys; installs and clones always ask; dangerous commands blocked |
+| Isolated browser | Research and the Chief of Staff browse with a separate empty profile; local network blocked; buying, sending and submitting always ask; password and card fields never filled |
 | Agent pull requests | New branch and pull request, asks first, never merges |
 | Gmail and Calendar | Read and draft with approval; send permission is never requested |
 | Federation | Invite-only, signed and encrypted messages with trusted crews |
@@ -303,7 +305,7 @@ Built-in reasoning is used on hard work with OpenAI reasoning models, Claude and
 | Behavior evals | A sandboxed copy of deck: unfinished work caught, escalation once after failure, failure lessons recalled, helpers capped and narrowed, safe custom tools, advice-only CISO | 6/6 |
 | Live evals (opt-in) | Real tasks on your models and Jev: tool calling, resisting injected instructions, JSON output, checker accuracy, routing | Tracked over time |
 | Baseline gate | Any score drop fails the build (`evals/baseline.json`) | 100% |
-| Unit and contract tests | Every package, plus Rust | 277 TS + 6 Rust |
+| Unit and contract tests | Every package, plus Rust | 284 TS + 6 Rust |
 
 All suites also run inside the app (offline suites nightly, live suite on demand or weekly) and appear in the Command center with scores, trends, per-case details and alerts when a score drops. In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
 
@@ -380,7 +382,7 @@ Everything is also inside the app under **Help and course** (⌘/Ctrl + 9). Star
 - [x] Verified skills hub and OpenClaw import
 - [x] Slack and Discord channels
 - [ ] More channels: iMessage, Signal, WhatsApp
-- [ ] Safe computer use: isolated browser and sandboxed shell
+- [x] Safe computer use: isolated browser and sandboxed shell (Labs)
 - [ ] Always-on engine
 - [ ] Signed and notarized installers
 - [ ] Automations that run while deck is closed
@@ -394,6 +396,7 @@ deck reads the same SKILL.md format and imports an OpenClaw workspace in one ste
 | | OpenClaw | deck |
 |---|---|---|
 | Runs | Always-on gateway service | Desktop app (always-on engine on the roadmap) |
+| Computer use | Browser automation and shell commands | Isolated browser profile and OS-sandboxed shell, sorted by risk; outside actions always approved (Labs) |
 | Channels | Many (WhatsApp, iMessage, Slack, Signal, Discord, Telegram and more) | Telegram, Slack and Discord (direct messages from you only); iMessage, Signal and WhatsApp on the roadmap |
 | Network exposure | Gateway listens on a port | No network port: the app talks to the engine privately |
 | Skills | Open marketplace; skills can run code | Verified hub: checked and signed; instructions only; each approved |

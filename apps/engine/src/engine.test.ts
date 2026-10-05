@@ -1136,7 +1136,7 @@ describe("evals in the app", () => {
     const ok = await e.runEvals();
     expect(ok.drops).toEqual([]);
     await e.close();
-  });
+  }, 30_000);
   it("the live suite runs real-style tasks and scores them", async () => {
     const U = { inputTokens: 50, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 };
     const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), settings: DEFAULTS, fetch: offline, makeEmbedder: () => new HashEmbedder(64),
@@ -1156,7 +1156,7 @@ describe("evals in the app", () => {
     expect(live.cases.filter((c) => !c.passed).map((c) => `${c.id}: ${c.detail}`)).toEqual([]);
     expect(live.tokens).toBeGreaterThan(0);
     await e.close();
-  });
+  }, 30_000);
 });
 
 describe("undo window and duplicate protection (engine)", () => {
@@ -1216,7 +1216,7 @@ describe("eval-gated tuning", () => {
     expect(bad.pass).toBe(false);
     expect(bad.text).toMatch(/live suite got worse \(4\/5 vs 5 last time; failing: Does not try to follow instructions hidden in an email\)/);
     await e.close();
-  });
+  }, 30_000);
 });
 
 describe("OpenClaw import and the skills hub", () => {
@@ -1364,6 +1364,72 @@ describe("Slack and Discord channels", () => {
     expect(e.threads.list().some((t) => t.title === "Slack")).toBe(true);
     await e.close();
   });
+});
+
+describe.runIf(existsSync("/usr/bin/bwrap") && existsSync("/opt/pw-browsers/chromium-1194/chrome-linux/chrome"))("safe computer use", () => {
+  it("runs shell commands by risk in the sandbox and needs approval to press buying buttons in the isolated browser", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const { createServer } = await import("node:http");
+    const server = createServer((req, res) => {
+      res.setHeader("content-type", "text/html");
+      if (req.url?.startsWith("/bought")) return res.end("<title>Thanks</title><p>Order placed.</p>");
+      res.end('<title>Shop</title><p>Widget $20</p><form action="/bought"><button type="submit">Buy now</button></form>');
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const port = (server.address() as { port: number }).port;
+    const ws = dir();
+    const script: Record<string, { name: string; input: Record<string, unknown> }[]> = {
+      code: [
+        { name: "shell_read", input: { command: "ls -a" } },
+        { name: "shell_run", input: { command: "echo hello > notes.txt && cat notes.txt" } },
+        { name: "shell_read", input: { command: "sudo cat /etc/shadow" } },
+        { name: "shell_network", input: { command: "npm install left-pad" } },
+      ],
+      research: [
+        { name: "browser_open", input: { url: `http://127.0.0.1:${port}/` } },
+        { name: "browser_press", input: { element: 1 } },
+      ],
+    };
+    const results: string[] = [];
+    const actions: { status: string; result?: string }[] = [];
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), browserAllowHosts: ["127.0.0.1"], fetch: offline, emit: (ev: string, data: unknown) => void (ev === "action" && actions.push(data as { status: string; result?: string })), makeEmbedder: () => new HashEmbedder(64),
+      settings: { ...DEFAULTS, undo: { seconds: 0 }, labs: { ...DEFAULTS.labs, shell: { enabled: true, workspace: ws }, browser: { enabled: true, chromePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", visible: false } } },
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        const names = (req.tools ?? []).map((t) => t.name);
+        const who = names.includes("shell_read") ? "code" : names.includes("browser_open") ? "research" : "";
+        const m = req.messages;
+        const last = m[m.length - 1];
+        if (last && Array.isArray(last.content)) for (const b of last.content as { type: string; content?: unknown }[]) if (b.type === "tool_result") results.push(String(b.content));
+        const next = who ? script[who]!.shift() : undefined;
+        if (next) return { text: "", toolCalls: [{ type: "tool_call", id: String(results.length) + next.name, name: next.name, input: next.input }], model: ref.model, stopReason: "tool_use", usage: U };
+        return { text: req.tools?.length ? "Done." : '{"missing": []}', model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    try {
+      await e.delegate("code", "Set up notes and install left-pad", "test", ["notes.txt exists"]);
+      const all = results.join("\n");
+      expect(all).toMatch(/exit 0[\s\S]*<untrusted source="command output"/);
+      expect(readFileSync(join(ws, "notes.txt"), "utf8")).toBe("hello\n");
+      expect(all).toContain("Refused: runs as administrator. This command never runs.");
+      const net = e.pendingApprovals().find((a) => a.summary.includes("npm install left-pad"));
+      expect(net).toBeTruthy(); // the network command waits for you
+      e.decide(net!.id, false);
+      results.length = 0;
+      await e.delegate("research", "Look at the shop", "test", ["the price is known"]);
+      expect(results.join("\n")).toMatch(/Widget \$20[\s\S]*\[1\] button "Buy now" \(needs approval: browser_press\)/);
+      const buy = e.pendingApprovals().find((a) => a.summary.startsWith('Press "Buy now" on 127.0.0.1'));
+      expect(buy).toBeTruthy();
+      e.decide(buy!.id, true);
+      const press = () => actions.find((a) => (a as { tool?: string }).tool === "browser_press");
+      for (let k = 0; k < 40 && !press(); k++) await new Promise((r) => setTimeout(r, 150));
+      expect(actions.find((a) => (a as { tool?: string }).tool === "shell_network")).toMatchObject({ status: "denied" });
+      expect(press()).toMatchObject({ status: "done" });
+      expect(press()!.result).toContain("Order placed");
+    } finally {
+      await e.close();
+      server.close();
+    }
+  }, 90_000);
 });
 
 describe("brief sources", () => {

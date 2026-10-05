@@ -5,7 +5,7 @@ import { statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, verifySkill, keyFingerprint, checkLearned, type Judge, type SkillSignature, routeComplexity, parseSkillMd, toSkillMd, skillSlug, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode, type ToolPolicy } from "@deck/agents";
 import { ChatBot, DiscordChannel, SlackChannel, TelegramChannel, TelegramClient, WhisperCppTranscriber, approvalButtons, approvalText, type BotActions, type Channel, type ChannelButton, type WebSocketCtor } from "@deck/chat";
-import { GitHubRepo, GoogleApi, McpHttpClient, googleSignIn, type BriefSources, type McpTool } from "@deck/connectors";
+import { GitHubRepo, GoogleApi, IsolatedBrowser, McpHttpClient, classifyCommand, googleSignIn, runSandboxed, sandboxAvailable, type BriefSources, type McpTool, type PageSnapshot } from "@deck/connectors";
 import { JevClient, choiceOf, noulOf, type JevQuestion, type JevResult } from "@deck/models";
 import { execFile } from "node:child_process";
 import { vaultProofProbe } from "@deck/connectors";
@@ -60,6 +60,8 @@ const SCOPE_LABEL: Record<string, string> = {
   "plugins.use": "Use plugins (Labs)",
   "crew.helpers": "Create helper agents",
   "security.read": "Read security status",
+  "shell.run": "Run commands in the sandbox (Labs)",
+  "browser.use": "Use the isolated browser (Labs)",
   "repo.read": "Read the repository (Labs)",
   "repo.propose": "Open pull requests (Labs)",
   "google.read": "Read Gmail and Calendar (Labs)",
@@ -79,6 +81,8 @@ export interface EngineDeps {
   makeEmbedder?: (s: Settings) => Embedder;
   makeModel?: (ref: ModelRef, getKey: () => Promise<string>) => ChatModel;
   webResearch?: typeof webResearch;
+  /** Tests only: hosts the isolated browser may load even though they are local. */
+  browserAllowHosts?: string[];
   /** WebSocket implementation for Slack and Discord (tests pass a fake). */
   webSocket?: WebSocketCtor;
   transcriber?: { transcribe(audio: Uint8Array): Promise<string> };
@@ -760,6 +764,8 @@ export class Engine {
         run: async (i) => (await this.meetingPrep({ name: String(i.name ?? ""), ...(i.company ? { company: String(i.company) } : {}), ...(i.when ? { when: String(i.when) } : {}), ...(i.context ? { context: String(i.context) } : {}) })).brief,
       });
     if (agent === AGENT && this.d.settings.labs.google.enabled) extra.push(...this.googleTools());
+    if (this.d.settings.labs.shell?.enabled && agent === "code") extra.push(...this.shellTools());
+    if (this.d.settings.labs.browser?.enabled && (agent === AGENT || agent === "research")) extra.push(...this.browserTools());
     if (agent === AGENT && this.d.settings.labs.federation.enabled && this.fed)
       extra.push({
         spec: { name: "message_crew", description: `Labs: ask a trusted crew on another computer a question. Trusted crews: ${this.federationPeers().map((p) => `${p.name} (${p.id})`).join(", ") || "none yet"}. The owner approves every message.`, parameters: { type: "object", properties: { crew_id: { type: "string" }, text: { type: "string" } }, required: ["crew_id", "text"] } },
@@ -2635,6 +2641,7 @@ export class Engine {
     this.stopped = agent === "all" ? true : this.stopped;
     const t = this.board.cancelAgent(agent);
     const a = this.approvals.rejectAll(agent);
+    if (agent === "all") void this.closeBrowser();
     // Approved actions still inside their undo window are cancelled too.
     let u = 0;
     for (const [id, w] of this.undos) if (agent === "all" || w.agent === agent) (w.resolve(true), this.undos.delete(id), u++, this.emit("undo.end", { id, undone: true }));
@@ -3095,6 +3102,109 @@ export class Engine {
     return [`Agents: ${this.stopped ? "stopped" : "running"}`, `Tokens today: ${sp.tokens.toLocaleString("en-US")} of ${this.d.settings.models.dailyTokenCap.toLocaleString("en-US")}`, `Waiting for you: ${this.approvals.pending().length}`].join("\n");
   }
 
+  /* ---------- safe computer use: sandboxed shell and isolated browser ---------- */
+  private workspaceDir(): string {
+    return (this.d.settings.labs.shell?.workspace ?? "~/deck-workspace").replace(/^~(?=$|\/)/, homedir());
+  }
+  /**
+   * Engineering's shell, split by risk so the approval rules apply: read-only commands run, workspace changes
+   * follow your preset, and anything using the network always asks. Blocked commands never run. Output is
+   * treated as untrusted (it can contain instructions) and keys are removed from it.
+   */
+  private shellTools(): AgentTool[] {
+    const str = (v: unknown) => String(v ?? "").trim();
+    const make = (name: string, risk: "read" | "write" | "network", kind: "read" | "write" | "external", what: string): AgentTool => ({
+      spec: { name, description: `${what} Runs in a sandbox limited to the workspace folder${risk === "network" ? "; network allowed for this command only" : "; no network"}.`, parameters: { type: "object", properties: { command: { type: "string" }, cwd: { type: "string", description: "Folder inside the workspace (optional)" } }, required: ["command"] } },
+      scope: "shell.run",
+      kind,
+      describe: (i) => `Run in the sandbox: ${str(i.command).slice(0, 160)}`,
+      run: async (i) => {
+        const cmd = str(i.command);
+        const c = classifyCommand(cmd);
+        if (c.risk === "blocked") return `Refused: ${c.reason}. This command never runs.`;
+        if (c.risk !== risk) return `Use ${c.risk === "read" ? "shell_read" : c.risk === "write" ? "shell_run" : "shell_network"} for this command (${c.reason}).`;
+        const r = await runSandboxed({ command: cmd, workspace: this.workspaceDir(), ...(i.cwd ? { cwd: str(i.cwd) } : {}), allowNetwork: risk === "network", timeoutMs: risk === "network" ? 300_000 : 120_000 });
+        const out = redactSecrets(r.output).clean;
+        const head = `exit ${r.code ?? "none"}${r.timedOut ? " (timed out)" : ""}${r.truncated ? " (output cut)" : ""}, ${r.ms} ms`;
+        return `${head}\n${untrusted("command output", out.slice(-12_000))}`;
+      },
+    });
+    return [
+      make("shell_read", "read", "read", "Run a read-only command (ls, cat, rg, git status, git log, git diff and similar)."),
+      make("shell_run", "write", "write", "Run a command that changes files in the workspace (edit, build, test, git commit)."),
+      make("shell_network", "network", "external", "Run a command that needs the network (npm install, pip install, git clone, git push)."),
+    ];
+  }
+
+  private browser: IsolatedBrowser | null = null;
+  private browserIdle: ReturnType<typeof setTimeout> | null = null;
+  private pressExpect = new Map<number, { url: string; label: string }>();
+  private async page(): Promise<IsolatedBrowser> {
+    const b = this.d.settings.labs.browser;
+    if (!this.browser) this.browser = new IsolatedBrowser({ ...(b?.chromePath ? { chromePath: b.chromePath } : {}), profileDir: join(this.d.dataDir, "browser-profile"), headless: !b?.visible, ...(this.d.browserAllowHosts ? { allowHosts: this.d.browserAllowHosts } : {}) });
+    if (this.browserIdle) clearTimeout(this.browserIdle);
+    // Closed after 10 idle minutes.
+    this.browserIdle = setTimeout(() => void this.closeBrowser(), 10 * 60_000);
+    this.browserIdle.unref?.();
+    return this.browser;
+  }
+  private async closeBrowser() {
+    const b = this.browser;
+    this.browser = null;
+    this.pressExpect.clear();
+    await b?.close().catch(() => {});
+  }
+  private describePage(p: PageSnapshot): string {
+    const els = p.elements.filter((e) => e.risk !== "refused").map((e) => `[${e.id}] ${e.role} "${e.label}"${e.href ? ` -> ${e.href.slice(0, 80)}` : ""}${e.risk === "external" ? " (needs approval: browser_press)" : ""}`).join("\n");
+    const refused = p.elements.filter((e) => e.risk === "refused").length;
+    return `${p.title} (${p.url})\n${untrusted(`web page ${new URL(p.url).hostname}`, `${p.text}\n\nElements:\n${els}${refused ? `\n(${refused} password or payment field${refused > 1 ? "s" : ""} hidden; deck never fills them)` : ""}`)}`;
+  }
+  /** Browser tools for Research and the Chief of Staff, split by risk like the shell. */
+  private browserTools(): AgentTool[] {
+    const str = (v: unknown) => String(v ?? "").trim();
+    const num = { type: "number", description: "Element number from the page" };
+    return [
+      { spec: { name: "browser_open", description: "Open a public web page in the isolated browser and read it.", parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } }, scope: "browser.use", kind: "read", describe: (i) => `Open ${str(i.url).slice(0, 120)}`, run: async (i) => this.describePage(await (await this.page()).open(str(i.url))) },
+      { spec: { name: "browser_read", description: "Read the current page again.", parameters: { type: "object", properties: {} } }, scope: "browser.use", kind: "read", describe: () => "Read the current page", run: async () => this.describePage(await (await this.page()).snapshot()) },
+      {
+        spec: { name: "browser_click", description: "Click a link or an ordinary button (not one that buys, sends, posts, submits or deletes: use browser_press for those).", parameters: { type: "object", properties: { element: num }, required: ["element"] } },
+        scope: "browser.use",
+        kind: "write",
+        describe: (i) => `Click element ${Number(i.element)}`,
+        run: async (i) => {
+          const b = await this.page();
+          const el = b.element(Number(i.element));
+          if (!el) return "No such element. Read the page again.";
+          if (el.risk === "external") return `"${el.label}" needs approval. Use browser_press.`;
+          if (el.risk === "refused") return "That element is refused.";
+          return this.describePage(await b.click(el.id));
+        },
+      },
+      { spec: { name: "browser_type", description: "Type text into a field on the page (never passwords, card numbers or ID numbers).", parameters: { type: "object", properties: { element: num, text: { type: "string" } }, required: ["element", "text"] } }, scope: "browser.use", kind: "write", describe: (i) => `Type "${str(i.text).slice(0, 60)}" into element ${Number(i.element)}`, run: async (i) => this.describePage(await (await this.page()).type(Number(i.element), redactSecrets(str(i.text)).clean)) },
+      {
+        spec: { name: "browser_press", description: "Press a button that buys, sends, posts, submits, signs up or deletes. Always waits for the owner's approval.", parameters: { type: "object", properties: { element: num }, required: ["element"] } },
+        scope: "browser.use",
+        kind: "external",
+        describe: (i) => {
+          const b = this.browser;
+          const id = Number(i.element);
+          const el = b?.element(id);
+          const url = (b as unknown as { lastSnapshot?: PageSnapshot } | null)?.lastSnapshot?.url ?? "";
+          if (el) this.pressExpect.set(id, { url, label: el.label });
+          return el ? `Press "${el.label}" on ${url ? new URL(url).hostname : "the page"}` : `Press element ${id}`;
+        },
+        run: async (i) => {
+          const b = await this.page();
+          const id = Number(i.element);
+          const el = b.element(id);
+          if (!el) return "No such element. Read the page again.";
+          if (el.risk === "refused") return "That element is refused.";
+          return this.describePage(await b.click(id, this.pressExpect.get(id)));
+        },
+      },
+    ];
+  }
+
   /* ---------- chat channels: Telegram, Slack, Discord ---------- */
   private channels: Channel[] = [];
   private announced = new Set<string>();
@@ -3156,6 +3266,7 @@ export class Engine {
     await this.stopFederation().catch(() => {});
     for (const c of this.channels) c.stop();
     this.channels = [];
+    await this.closeBrowser();
     this.scheduler.stop();
     if (this.idleTimer) clearInterval(this.idleTimer);
     await this.store?.close();

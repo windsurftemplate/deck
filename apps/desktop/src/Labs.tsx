@@ -122,6 +122,25 @@ export function LabsCard({ s, onSaved }: { s: Settings; onSaved: (s: Settings) =
         </div>
       </Lab>
 
+      <Lab title="Sandboxed shell" about="Engineering can run commands inside your operating system's sandbox (macOS sandbox-exec, Linux bubblewrap). They can only change files in the workspace folder, cannot read the rest of your home folder, keys or keychain, and have no network. Read-only commands run; commands that change files follow your approval preset; installs, clones and downloads always ask and get the undo window. sudo, keychain access, remote shells, piped installers and similar are blocked. Not available on Windows." on={!!L.shell?.enabled} onToggle={(v) => save({ shell: { ...(draft.shell ?? { workspace: "~/deck-workspace" }), enabled: v } })}>
+        <label className="field">
+          Workspace folder (a dedicated folder; created if missing)
+          <input value={draft.shell?.workspace ?? "~/deck-workspace"} onChange={(e) => set("shell", { ...(draft.shell ?? { enabled: false }), workspace: e.target.value } as Labs["shell"])} spellCheck={false} />
+        </label>
+        <button className="btn" type="button" onClick={() => save({ shell: draft.shell }, "Workspace saved")}>Save</button>
+      </Lab>
+
+      <Lab title="Isolated browser" about="Research and the Chief of Staff can browse with Chrome, Chromium, Edge or Brave using a separate, empty profile: none of your cookies, logins or passwords, no extensions, downloads off. Pages on this computer or your local network are blocked, including their images and scripts. Reading and following links run freely; typing follows your approval preset; anything that buys, sends, posts, submits or deletes always asks and gets the undo window, and is refused if the page changed since you approved. Password and payment fields are never filled." on={!!L.browser?.enabled} onToggle={(v) => save({ browser: { ...(draft.browser ?? { chromePath: "", visible: false }), enabled: v } })}>
+        <label className="field">
+          Browser path (leave empty to find Chrome, Chromium, Edge or Brave)
+          <input value={draft.browser?.chromePath ?? ""} onChange={(e) => set("browser", { ...(draft.browser ?? { enabled: false, visible: false }), chromePath: e.target.value } as Labs["browser"])} placeholder="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" spellCheck={false} />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={!!draft.browser?.visible} onChange={(e) => save({ browser: { ...(draft.browser ?? { enabled: false, chromePath: "" }), visible: e.target.checked } })} /> Show the browser window while it works
+        </label>
+        <button className="btn" type="button" onClick={() => save({ browser: draft.browser }, "Browser saved")}>Save</button>
+      </Lab>
+
       <Lab title="Agent pull requests (GitHub)" about="Engineering can read one repository and propose changes as pull requests on a new branch, labelled agent-proposal. Opening one always asks you first. It can never merge. Use a fine-grained token limited to that repository with contents and pull requests access." on={L.github.enabled} onToggle={(v) => save({ github: { ...draft.github, enabled: v } })}>
         <label className="field">
           Repository

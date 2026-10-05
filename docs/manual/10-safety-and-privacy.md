@@ -14,6 +14,10 @@ These are in code, not settings. No preset, pack, crew rule, chat request or lea
 
 Every approved action that leaves your machine waits out an undo window (60 seconds by default, 0 to 300 in Settings > CISO) before it runs. Press **Undo** in the bar at the bottom of the screen, send `/undo <id>` in Telegram, or press **Stop all agents**, and it never runs. Separately, deck remembers every outside action it has run for 24 hours: the same tool with the same details (ignoring case and spacing) is refused as "already done", and an identical request already waiting for you is not queued again.
 
+## Computer use (Labs)
+
+The sandboxed shell and isolated browser are off until you turn them on. Both are confined by the operating system or by a separate browser profile, sorted by risk so anything that leaves your machine always asks, and treated as untrusted input so the plan lock applies. See the Labs chapter.
+
 ## Keys never stored
 
 Anything added to your second brain (files, pasted text, web pages, imports) has keys and tokens removed before it is saved, and you are told how many were removed.
