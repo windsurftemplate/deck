@@ -221,6 +221,20 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P5.13 | Automations: recurring jobs for any agent, set on a page or proposed from chat; results to chat, Crew chat, notifications and Telegram | Runs on schedule while the app is open | done |
 | P5.14 | Learning: your documents become facts nightly; prompt tuning drafts guidance from misses, tests it on practice tasks (nothing changed or sent), adopts only a clear win with your approval | Tuned guidance shows in Settings, Crew, and can be removed | done |
 
+## Phase 7: Code memory (planned, not started)
+
+Memory today is built for slow-changing facts about your world. Code changes every commit, is found by exact names and structure, and is a dense graph of imports and calls. Rule for this phase: never memorize code; index it, read it fresh, and prove claims with tests. Memory keeps pointers and lessons, each tied to the commit it describes. Order is by value for effort: P7.1 and P7.2 give most of the benefit.
+
+| # | What | Done when | Status |
+|---|------|-----------|--------|
+| P7.1 | Project knowledge from the repo: read the repository's own AGENTS.md, CLAUDE.md, README and decision records (build and test commands, conventions, architecture decisions) as the source of truth; deck's facts only add to them | Engineering states the repo's test command and conventions without being told, and follows them | planned |
+| P7.2 | Tests as ground truth: run the repo's tests in the sandboxed shell; a coding task counts as done only when the checker sees passing test output, not the agent's report | A change that breaks a test is marked not finished even when the agent says it is done | planned (needs P6.3, done) |
+| P7.3 | Live code index: split code at real boundaries (functions, classes, types) with tree-sitter; search by exact name (keyword) and by meaning (embeddings); every entry carries the file hash and commit; changed files re-indexed incrementally; stale entries never served | Searching a renamed function finds the new name after one re-index; the old location is not returned | planned |
+| P7.4 | Fix memory: "this error came from X; this change fixed it", tied to the commit and the files involved; marked stale when those files change; re-checked before use | A repeat of a fixed error recalls the earlier fix; after the files change, the entry is flagged as possibly stale | planned |
+| P7.5 | Code graph: imports, calls, types and which tests cover which code, rebuilt for changed files; recall follows it ("what depends on this?") | Asking what breaks if a function changes lists its callers and covering tests | planned |
+| P7.6 | Working memory for long coding tasks: plan, to-do list and notes kept in a file in the workspace, restated every step and re-read after the conversation is compacted | A task longer than the context window finishes without losing its plan | planned |
+| P7.7 | Option: orchestrate an external coding agent (for example Claude Code) inside the sandbox, with deck's approvals, no merging, and test-based checks around it | A coding task runs end to end through the external agent and lands as a pull request waiting for approval | idea, decide later |
+
 ## How to use this file
 
 1. Pick the row marked as the next file. Set it to `doing`.

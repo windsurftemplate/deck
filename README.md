@@ -384,6 +384,7 @@ Everything is also inside the app under **Help and course** (⌘/Ctrl + 9). Star
 - [ ] More channels: iMessage, Signal, WhatsApp
 - [x] Safe computer use: isolated browser and sandboxed shell (Labs)
 - [ ] Always-on engine
+- [ ] Code memory: repo knowledge, tests as ground truth, live code index, fix memory, code graph
 - [ ] Signed and notarized installers
 - [ ] Automations that run while deck is closed
 
