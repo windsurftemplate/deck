@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **272 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **277 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,25 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-05: Slack and Discord channels
+
+**Changed**
+- `packages/chat/src/commands.ts`: one command core for every channel (`runCommand`, `runButton`, `Channel`, buttons for approve, reject and undo, message splitting). Telegram uses it and becomes a `TelegramChannel`.
+- `SlackChannel`: Socket Mode over an outbound WebSocket (`apps.connections.open`), acknowledges every envelope, direct messages from owner user ids only, ignores bots and channels, Block Kit buttons, updates the card after a button press, reconnects with backoff.
+- `DiscordChannel`: Gateway over an outbound WebSocket, heartbeat, identify with the direct-messages intent only, owner DMs only (servers and bots ignored), button components, in-place update for the owner and a private refusal for anyone else, reconnects with backoff.
+- Engine: starts every enabled channel; one `notifyAll` path replaces eight Telegram-only loops; approvals go out once per channel with the CISO's opinion (waits up to 8 seconds for it), Undo buttons during the undo window, morning brief to every channel; each channel has its own chat thread; power-up and setup-health checks for Slack and Discord.
+- Fix: the CISO review re-fired the approval event, so Telegram and Crew chat got each approval twice; now once.
+- Secret scanner: Slack app tokens and Discord bot tokens.
+- Settings: Slack and Discord card with guided setup, a copyable Slack app manifest, a Discord invite link built from the token, owner ids and on switches. Settings are validated (Slack and Discord id formats; an id is required before turning a channel on).
+- Manual (chat, settings), README and plan updated.
+
+**Verified**
+- Slack against a fake server: handshake with the app token, envelopes acknowledged, owner DM answered, stranger and channel messages ignored, !brief, approval buttons, stranger's button ignored, card updated.
+- Discord against a fake gateway: identify with intent 4096, owner DM answered, stranger, server and bot messages ignored, Undo button works, stranger gets a private refusal.
+- Engine with both on: one approval card per channel including the CISO opinion, one Crew chat entry, reject from Discord decides it, Slack text reaches the Chief of Staff in a Slack thread.
+- Every page and Settings (22 cards) open without errors; packaged engine and power-up checks pass.
+- 277 TypeScript tests pass (counted); `pnpm check` green.
 
 ## 2026-10-05: Verified skills hub and OpenClaw import
 

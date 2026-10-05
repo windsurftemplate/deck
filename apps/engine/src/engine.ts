@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, verifySkill, keyFingerprint, checkLearned, type Judge, type SkillSignature, routeComplexity, parseSkillMd, toSkillMd, skillSlug, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode, type ToolPolicy } from "@deck/agents";
-import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
+import { ChatBot, DiscordChannel, SlackChannel, TelegramChannel, TelegramClient, WhisperCppTranscriber, approvalButtons, approvalText, type BotActions, type Channel, type ChannelButton, type WebSocketCtor } from "@deck/chat";
 import { GitHubRepo, GoogleApi, McpHttpClient, googleSignIn, type BriefSources, type McpTool } from "@deck/connectors";
 import { JevClient, choiceOf, noulOf, type JevQuestion, type JevResult } from "@deck/models";
 import { execFile } from "node:child_process";
@@ -79,6 +79,8 @@ export interface EngineDeps {
   makeEmbedder?: (s: Settings) => Embedder;
   makeModel?: (ref: ModelRef, getKey: () => Promise<string>) => ChatModel;
   webResearch?: typeof webResearch;
+  /** WebSocket implementation for Slack and Discord (tests pass a fake). */
+  webSocket?: WebSocketCtor;
   transcriber?: { transcribe(audio: Uint8Array): Promise<string> };
   osascript?: (script: string) => Promise<string>;
   /** Opens a link in the default browser (Google sign-in). */
@@ -145,10 +147,20 @@ export class Engine {
     this.board = new TaskBoard(this.bus, this.clock);
     this.approvals = new ApprovalQueue((a) => {
       this.emit("approval", a);
-      if (a.status === "pending") this.say({ sender: a.agent, recipient: "owner", kind: "approval", text: `Needs your approval: ${a.summary}` });
-      else this.say({ sender: "owner", recipient: a.agent, kind: "decision", text: `${a.status === "approved" ? "Approved" : a.status === "expired" ? "Expired" : "Rejected"}: ${a.summary}` });
-      if (a.status === "pending") for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notifyApproval(id, a).catch(() => {});
-      if (a.status === "pending" && !a.review && this.d.settings.ciso?.reviews !== false) void this.reviewApproval(a).catch(() => {});
+      const first = a.status === "pending" && !this.announced.has(a.id);
+      if (first) this.say({ sender: a.agent, recipient: "owner", kind: "approval", text: `Needs your approval: ${a.summary}` });
+      else if (a.status !== "pending") this.say({ sender: "owner", recipient: a.agent, kind: "decision", text: `${a.status === "approved" ? "Approved" : a.status === "expired" ? "Expired" : "Rejected"}: ${a.summary}` });
+      if (first) this.announced.add(a.id);
+      // Chat channels get each approval once: with the CISO's opinion when it arrives, or after 8 seconds without it.
+      if (a.status === "pending" && !this.sentToChannels.has(a.id)) {
+        const reviewing = this.d.settings.ciso?.reviews !== false && !a.review;
+        if (!reviewing) this.sendApproval(a);
+        else setTimeout(() => {
+          const cur = this.approvals.get(a.id);
+          if (cur?.status === "pending") this.sendApproval(cur);
+        }, 8000).unref?.();
+      }
+      if (a.status === "pending" && !a.review && this.d.settings.ciso?.reviews !== false && first) void this.reviewApproval(a).catch(() => {});
     });
     this.scheduler = new Scheduler(this.bus, this.clock);
     this.bus.on("*", (e) => {
@@ -247,7 +259,7 @@ export class Engine {
         const notes: string[] = [];
         for (const g of this.goals?.list().filter((x) => x.status === "active") ?? []) notes.push(`${g.title}: ${await this.goalCheck(g.id).catch((e) => (e as Error).message)}`);
         if (notes.length) this.emit("notify", { title: "Weekly goal check", body: notes.join("\n").slice(0, 240) });
-        for (const chat of this.d.settings.chat.telegram.ownerChatIds) if (notes.length) void this.bot?.notify(chat, `Weekly goal check:\n${notes.join("\n\n")}`).catch(() => {});
+        if (notes.length) this.notifyAll(`Weekly goal check:\n${notes.join("\n\n")}`);
       },
     });
     this.scheduler.add({
@@ -267,7 +279,7 @@ export class Engine {
       run: async () => {
         const report = await this.delegate("research", "Review the crew's last week and propose fixes", "Weekly self-review", ["each problem has evidence", "each problem has one concrete fix as an issue or a proposed crew rule"]);
         this.emit("learning", { report });
-        for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, report).catch(() => {});
+        this.notifyAll(report);
       },
     });
   }
@@ -387,7 +399,7 @@ export class Engine {
     this.emit("security", { message: msg });
     void this.writer.logEpisode({ agent: "security", kind: "alert", summary: msg }).catch(() => {});
     this.say({ sender: "ciso", recipient: "owner", kind: "check", text: `Incident: ${agent} tried to use the planted secret in ${tool}. Agents are stopped. Before resuming, look at the latest documents, pages and mail the crew read; the CISO's weekly report will include this.` });
-    for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, msg).catch(() => {});
+    this.notifyAll(msg);
   }
 
   /** One line per approved skill, for the prompt. Full steps load on demand with load_skill. */
@@ -461,10 +473,13 @@ export class Engine {
       },
       scheduler: async () => ({ status: "ok", message: this.bot ? "Morning briefing scheduled for 08:00." : "Running. Morning briefing goes out once chat is on." }),
       chat: async () => {
-        if (!s.chat.telegram.enabled) return { status: "off", message: "Telegram is off." };
-        const token = await this.d.keychain.get("chat.telegram");
-        if (!token) return { status: "degraded", message: "Telegram is on but no bot token is saved.", fix: "Add the bot token in Settings > Chat." };
-        return { status: "ok", message: "Telegram bot ready." };
+        const on = [["Telegram", s.chat.telegram.enabled, ["chat.telegram"]], ["Slack", s.chat.slack?.enabled, ["chat.slack.bot", "chat.slack.app"]], ["Discord", s.chat.discord?.enabled, ["chat.discord"]]] as const;
+        const active = on.filter(([, e]) => e);
+        if (!active.length) return { status: "off", message: "Chat channels are off." };
+        const missing: string[] = [];
+        for (const [name, , keys] of active) for (const k of keys) if (!(await this.d.keychain.get(k).catch(() => null))) missing.push(name);
+        if (missing.length) return { status: "degraded", message: `On but missing a token: ${[...new Set(missing)].join(", ")}.`, fix: "Add the tokens in Settings > Chat channels." };
+        return { status: "ok", message: `${active.map(([n]) => n).join(", ")} ready (your messages only).` };
       },
       models: async () => {
         for (const p of new Set([s.models.heavy.provider, s.models.cheap.provider])) {
@@ -1008,7 +1023,7 @@ export class Engine {
   async securityReview(): Promise<string> {
     const out = await this.delegate("ciso", "Weekly security review of deck: rate each finding low, medium or high, and open an issue labelled security for every high finding", "Keep the owner's data, keys and crew safe", ["uses security_status", "lists findings rated low, medium or high, or says there are none", "opens an issue for each high finding"]);
     this.emit("notify", { title: "Weekly security review", body: out.replace(/^CISO report:\n/, "").slice(0, 220) });
-    for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, out.slice(0, 3500)).catch(() => {});
+    this.notifyAll(out.slice(0, 3500));
     return out;
   }
 
@@ -2084,7 +2099,7 @@ export class Engine {
     await this.store.setMeta("learn.lastRun", this.clock().toISOString());
     await this.writer.logEpisode({ agent: "learning", kind: "learning", summary: report.slice(0, 500) });
     this.emit("learning", { report });
-    for (const id of this.d.settings.chat.telegram.ownerChatIds) if (lines.length) void this.bot?.notify(id, `Overnight learning:\n${report}`).catch(() => {});
+    if (lines.length) this.notifyAll(`Overnight learning:\n${report}`);
     return report;
   }
 
@@ -2284,7 +2299,7 @@ export class Engine {
     this.emit("action", r);
     void this.writer.logEpisode({ agent: AGENT, kind: "action", summary: `${r.summary}: ${r.status}${r.result ? ` (${r.result.slice(0, 200)})` : ""}` }).catch(() => {});
     const msg = r.status === "done" ? `Done: ${r.summary}${r.result ? `\n${r.result.slice(0, 500)}` : ""}` : r.status === "failed" ? `Failed: ${r.summary}\n${r.result ?? ""}` : `Not done: ${r.summary} (${r.result ?? "rejected"})`;
-    for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, msg).catch(() => {});
+    this.notifyAll(msg);
   }
 
   /** Model requests in chat ("switch heavy work to Gemini") become a proposal the owner confirms. */
@@ -2653,7 +2668,7 @@ export class Engine {
       this.undos.set(a.approvalId, { agent, summary: a.summary, deadline, resolve: (u) => (clearTimeout(timer), resolve(u)) });
       this.emit("undo", { id: a.approvalId, summary: a.summary, deadline: new Date(deadline).toISOString(), seconds: secs });
       this.say({ sender: "owner", recipient: agent || "crew", kind: "approval", text: `Approved: ${a.summary}. Runs in ${secs} s unless you press Undo.` });
-      for (const id of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(id, `Approved: ${a.summary}\nRuns in ${secs} s. Send /undo ${a.approvalId} to stop it.`).catch(() => {});
+      this.notifyAll(`Approved: ${a.summary}\nRuns in ${secs} s unless you press Undo.`, [{ label: "Undo", verb: "undo", id: a.approvalId }]);
     });
   }
   /** Stops an approved action during its undo window. */
@@ -2804,7 +2819,7 @@ export class Engine {
     const note = `${a.name}: ${result.slice(0, 600)}`;
     this.emit("automation", { id, name: a.name, result });
     this.emit("notify", { title: `Automation: ${a.name}`, body: result.slice(0, 200) });
-    for (const chat of this.d.settings.chat.telegram.ownerChatIds) void this.bot?.notify(chat, note).catch(() => {});
+    this.notifyAll(note);
     return result;
   }
 
@@ -2844,6 +2859,8 @@ export class Engine {
       { id: "approvals", label: "Nothing waiting for you over a day", ok: stale === 0, weight: 6, fix: `${stale} approval${stale === 1 ? "" : "s"} waiting more than a day. Approve or reject on the deck.`, go: "3d" },
       { id: "success", label: "Crew finishes at least 70% of tasks (30 days)", ok: finished < 5 ? null : done / finished >= 0.7, weight: 10, fix: "Check Crew chat for what failed, then Tune prompts or run the model arena.", go: "channel" },
       { id: "automations", label: "Automations running without errors", ok: (this.automations?.list().length ?? 0) === 0 ? null : failing.length === 0, weight: 5, fix: `Failing: ${failing.map((x) => x.name).join(", ")}.`, go: "automations" },
+      { id: "slack", label: "Slack limited to your user id", ok: !s.chat.slack?.enabled ? null : s.chat.slack.ownerUserIds.length > 0 && (await has("chat.slack.bot")) && (await has("chat.slack.app")), weight: 4, fix: "Add your Slack user id and both tokens, or turn Slack off.", go: "settings" },
+      { id: "discord", label: "Discord limited to your user id", ok: !s.chat.discord?.enabled ? null : s.chat.discord.ownerUserIds.length > 0 && (await has("chat.discord")), weight: 4, fix: "Add your Discord user id and bot token, or turn Discord off.", go: "settings" },
       { id: "telegram", label: "Telegram limited to your chat", ok: !s.chat.telegram.enabled ? null : s.chat.telegram.ownerChatIds.length > 0 && (await has("chat.telegram")), weight: 6, fix: "Add your chat id and bot token, or turn Telegram off.", go: "settings" },
       { id: "research", label: "Web research available", ok: ["anthropic", "openai", "gemini"].includes(s.models.heavy.provider), weight: 4, fix: "Use Claude, OpenAI or Gemini as the main model.", go: "settings" },
     ];
@@ -3078,11 +3095,23 @@ export class Engine {
     return [`Agents: ${this.stopped ? "stopped" : "running"}`, `Tokens today: ${sp.tokens.toLocaleString("en-US")} of ${this.d.settings.models.dailyTokenCap.toLocaleString("en-US")}`, `Waiting for you: ${this.approvals.pending().length}`].join("\n");
   }
 
-  /** Starts the Telegram bot and the morning briefing when chat is turned on and a token is saved. */
+  /* ---------- chat channels: Telegram, Slack, Discord ---------- */
+  private channels: Channel[] = [];
+  private announced = new Set<string>();
+  private sentToChannels = new Set<string>();
+  /** Sends a message (with optional buttons) to every chat channel that is on. */
+  private notifyAll(text: string, buttons?: ChannelButton[]) {
+    for (const c of this.channels) void c.notify(text, buttons).catch(() => {});
+  }
+  private sendApproval(a: { id: string; agent: string; summary: string; detail: string; review?: { risk: string; text: string } }) {
+    if (this.sentToChannels.has(a.id)) return;
+    this.sentToChannels.add(a.id);
+    this.notifyAll(approvalText(a), approvalButtons(a.id));
+  }
+  /** Starts every chat channel that is turned on and has its tokens, plus the morning briefing. */
   async startChat(): Promise<boolean> {
-    const t = this.d.settings.chat.telegram;
-    const token = await this.d.keychain.get("chat.telegram");
-    if (!t.enabled || !token || this.bot) return false;
+    if (this.channels.length) return false;
+    const s = this.d.settings;
     const actions: BotActions = {
       brief: () => this.brief(),
       tasks: () => this.board.list().filter((x) => !["done", "cancelled"].includes(x.status)).map((x) => `- ${x.title} (${x.status})`).join("\n") || "No open tasks.",
@@ -3091,25 +3120,42 @@ export class Engine {
       undo: (id) => this.undo(id),
       reject: (id) => this.decide(id, false),
       kill: (a) => this.kill(a),
-      ...(this.d.settings.voice.enabled ? { transcribe: (audio: Uint8Array) => this.transcribe(Buffer.from(audio).toString("base64")) } : {}),
-      message: async (text) => {
-        // Telegram is one ongoing chat in the sidebar.
-        let tid = (await this.store.getMeta("telegram.thread")) ?? undefined;
-        if (!tid || !this.threads.exists(tid)) await this.store.setMeta("telegram.thread", (tid = this.threads.create("Telegram").id));
+      ...(s.voice.enabled ? { transcribe: (audio: Uint8Array) => this.transcribe(Buffer.from(audio).toString("base64")) } : {}),
+      message: async (text, channel = "telegram") => {
+        // Each channel is one ongoing chat in the sidebar.
+        const title = channel.charAt(0).toUpperCase() + channel.slice(1);
+        let tid = (await this.store.getMeta(`${channel}.thread`)) ?? undefined;
+        if (!tid || !this.threads.exists(tid)) await this.store.setMeta(`${channel}.thread`, (tid = this.threads.create(title).id));
         const r = await this.chat(text, [], tid);
-        return r.proposal ? `${r.reply}\nReply /apply ${r.proposal.id} to confirm.` : r.reply;
+        const p = channel === "telegram" ? "/" : "!";
+        return r.proposal ? `${r.reply}\nReply ${p}apply ${r.proposal.id} to confirm.` : r.reply;
       },
       apply: async (id) => (await this.applyProposal(id)).summary,
     };
-    this.bot = new ChatBot(new TelegramClient(token, this.d.fetch ?? fetch), t.ownerChatIds, actions, (m) => this.emit("log", { source: "telegram", message: m }));
-    void this.bot.start();
-    this.scheduler.add({ name: "morning-brief", at: "08:00", run: async () => { for (const id of t.ownerChatIds) await this.bot?.handle({ update_id: 0, message: { message_id: 0, chat: { id }, from: { id }, text: "/brief" } }); } });
-    return true;
+    const log = (source: string) => (m: string) => this.emit("log", { source, message: m });
+    const f = this.d.fetch ?? fetch;
+    const tgToken = s.chat.telegram.enabled ? await this.d.keychain.get("chat.telegram").catch(() => null) : null;
+    if (tgToken && s.chat.telegram.ownerChatIds.length) {
+      this.bot = new ChatBot(new TelegramClient(tgToken, f), s.chat.telegram.ownerChatIds, actions, log("telegram"));
+      this.channels.push(new TelegramChannel(this.bot, s.chat.telegram.ownerChatIds));
+    }
+    if (s.chat.slack?.enabled && s.chat.slack.ownerUserIds.length) {
+      const [bot, app] = await Promise.all([this.d.keychain.get("chat.slack.bot").catch(() => null), this.d.keychain.get("chat.slack.app").catch(() => null)]);
+      if (bot && app) this.channels.push(new SlackChannel({ botToken: bot, appToken: app, owners: s.chat.slack.ownerUserIds, actions, fetch: f, log: log("slack"), ...(this.d.webSocket ? { WebSocket: this.d.webSocket } : {}) }));
+    }
+    if (s.chat.discord?.enabled && s.chat.discord.ownerUserIds.length) {
+      const token = await this.d.keychain.get("chat.discord").catch(() => null);
+      if (token) this.channels.push(new DiscordChannel({ token, owners: s.chat.discord.ownerUserIds, actions, fetch: f, log: log("discord"), ...(this.d.webSocket ? { WebSocket: this.d.webSocket } : {}) }));
+    }
+    for (const c of this.channels) void Promise.resolve(c.start()).catch((e) => this.emit("log", { source: c.name, message: (e as Error).message }));
+    if (this.channels.length) this.scheduler.add({ name: "morning-brief", at: "08:00", run: async () => this.notifyAll(await this.brief()) });
+    return this.channels.length > 0;
   }
 
   async close(): Promise<void> {
     await this.stopFederation().catch(() => {});
-    this.bot?.stop();
+    for (const c of this.channels) c.stop();
+    this.channels = [];
     this.scheduler.stop();
     if (this.idleTimer) clearInterval(this.idleTimer);
     await this.store?.close();

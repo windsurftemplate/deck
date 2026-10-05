@@ -214,7 +214,8 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P5.25 | Jev (TypeSafe AI) wired in: routing, first-pass checks, approval risk for the CISO, injection second opinion; confidence-gated with fallbacks; Tools card with test and per-use switches | Tested with a stand-in Jev server | done |
 | P5.26 | Evals finished: library usable in the app; safety suite extended (plan lock, advice-only CISO, learning limits, playbook) to 13 cases; behavior suite on a sandboxed engine (6 cases); opt-in live suite on real models and Jev; stored history, drop alerts, nightly and weekly schedules, setup health check; Command center Evals section with per-case details. Test buttons next to every key input | Tested; evals run from the production bundle | done |
 | P6.1 | Verified skills hub and OpenClaw import: skill verifier (malware patterns, secrets, obfuscation, injection, signatures, index hash), Ed25519 publisher signing with your key in the keychain, hub client and catalog UI, first-party starter hub (6 skills), OpenClaw workspace scan and import (memory, persona as approved owner rules, heartbeat, skills), never reading credentials; second brain strips keys before saving | Tested | done |
-| P6.2 | More channels: WhatsApp, iMessage, Slack, Signal | | next |
+| P6.2 | Slack (Socket Mode) and Discord (Gateway) channels; shared command core with Telegram; approvals sent once to every channel with the CISO opinion; Undo buttons | Tested with fake servers | done |
+| P6.2b | iMessage, Signal, WhatsApp | | next |
 | P6.3 | Safe computer use: isolated browser profile and sandboxed shell | | planned |
 | P6.4 | Always-on engine (background service, no network port) | | planned |
 | P5.13 | Automations: recurring jobs for any agent, set on a page or proposed from chat; results to chat, Crew chat, notifications and Telegram | Runs on schedule while the app is open | done |

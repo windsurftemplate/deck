@@ -54,3 +54,15 @@ describe("approvals", () => {
   });
 });
 
+
+describe("chat platform tokens", () => {
+  it("removes Slack app tokens and Discord bot tokens", async () => {
+    const { redactSecrets } = await import("./index.js");
+    const slack = "xapp-1-A0123456789-1234567890123-" + "a".repeat(40);
+    const discord = "MTA" + "x".repeat(23) + ".GaBcDe." + "y".repeat(38);
+    const r = redactSecrets(`app ${slack} bot ${discord}`);
+    expect(r.clean).not.toContain(slack);
+    expect(r.clean).not.toContain(discord);
+    expect(r.findings.map((f) => f.name)).toEqual(expect.arrayContaining(["Slack app token", "Discord bot token"]));
+  });
+});

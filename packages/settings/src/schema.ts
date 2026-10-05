@@ -111,7 +111,7 @@ export interface Settings {
   /** Outside tools the crew can use. Keys live in the OS keychain, never here. */
   tools: { jev: { enabled: boolean; baseUrl: string; uses: { routing: boolean; checks: boolean; security: boolean; scanner: boolean } } };
   /** Telegram front door. The bot token lives in the keychain as "chat.telegram". */
-  chat: { telegram: { enabled: boolean; ownerChatIds: number[] } };
+  chat: { telegram: { enabled: boolean; ownerChatIds: number[] }; slack: { enabled: boolean; ownerUserIds: string[] }; discord: { enabled: boolean; ownerUserIds: string[] } };
   general: { startAtLogin: boolean; runInBackground: boolean };
   vaultproof: VaultProofSettings;
   boot: { animation: "full" | "quick" | "off"; sound: boolean; narration: boolean };
@@ -147,7 +147,7 @@ export const DEFAULTS: Settings = {
   },
   camera: { enabled: false },
   tools: { jev: { enabled: false, baseUrl: "", uses: { routing: true, checks: true, security: true, scanner: true } } },
-  chat: { telegram: { enabled: false, ownerChatIds: [] } },
+  chat: { telegram: { enabled: false, ownerChatIds: [] }, slack: { enabled: false, ownerUserIds: [] }, discord: { enabled: false, ownerUserIds: [] } },
   general: { startAtLogin: true, runInBackground: true },
   vaultproof: { enabled: false, mcpUrl: "", sessionSecret: "vaultproof.session" },
   boot: { animation: "full", sound: false, narration: false },
@@ -295,6 +295,19 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
     }
     if (t.enabled !== undefined) next.chat.telegram.enabled = !!t.enabled;
     if (next.chat.telegram.enabled && !next.chat.telegram.ownerChatIds.length) throw new SettingsError("chat.telegram.ownerChatIds", "Add your Telegram chat id before turning the bot on.");
+  }
+  for (const [k, re, example] of [["slack", /^[UW][A-Z0-9]{6,15}$/, "U0123ABCD"], ["discord", /^\d{15,21}$/, "123456789012345678"]] as const) {
+    const c = patch.chat?.[k];
+    if (!c) continue;
+    const cur = next.chat[k] ?? { enabled: false, ownerUserIds: [] };
+    if (c.ownerUserIds !== undefined) {
+      const ids = [...new Set((c.ownerUserIds as unknown[]).map((x) => String(x).trim()).filter(Boolean))];
+      if (ids.some((x) => !re.test(x))) throw new SettingsError(`chat.${k}.ownerUserIds`, `${k === "slack" ? "Slack" : "Discord"} user ids look like ${example}.`);
+      cur.ownerUserIds = ids.slice(0, 10);
+    }
+    if (c.enabled !== undefined) cur.enabled = !!c.enabled;
+    if (cur.enabled && !cur.ownerUserIds.length) throw new SettingsError(`chat.${k}.ownerUserIds`, `Add your ${k === "slack" ? "Slack" : "Discord"} user id before turning it on.`);
+    next.chat = { ...next.chat, [k]: cur };
   }
   if (patch.preset !== undefined) {
     if (!["cautious", "balanced", "autonomous"].includes(patch.preset)) throw new SettingsError("preset", "Choose cautious, balanced or autonomous.");

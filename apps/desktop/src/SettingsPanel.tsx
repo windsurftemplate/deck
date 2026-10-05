@@ -14,6 +14,7 @@ import { LabsCard } from "./Labs";
 import { ThinkingCard } from "./Thinking";
 import { CustomCrewCard, HelpersCard } from "./CustomCrew";
 import { SecurityCard } from "./Security";
+import { ChannelsCard } from "./Channels";
 import { OpenClawCard, SkillsHubCard } from "./SkillsHub";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
@@ -60,6 +61,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <ModelRoles s={s} onSaved={setS} />
       <EmbeddingsCard s={s} onSaved={setS} />
       <TelegramCard s={s} onSaved={setS} />
+      <ChannelsCard s={s} onSaved={setS} />
       <CrewCard />
       <SecurityCard s={s} onSaved={setS} />
       <CustomCrewCard />

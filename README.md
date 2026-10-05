@@ -11,7 +11,7 @@ with encrypted memory on your machine and your approval on anything that leaves 
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-12151c?style=flat-square)](#install)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](#development)
-[![Tests](https://img.shields.io/badge/tests-272%20passing-5fd39a?style=flat-square)](#evals)
+[![Tests](https://img.shields.io/badge/tests-277%20passing-5fd39a?style=flat-square)](#evals)
 [![Safety evals](https://img.shields.io/badge/safety%20evals-13%2F13-5fd39a?style=flat-square)](#evals)
 [![Models](https://img.shields.io/badge/models-OpenAI%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Ollama-79a8ff?style=flat-square)](#models)
 [![MCP](https://img.shields.io/badge/MCP-ready-c59bff?style=flat-square)](https://modelcontextprotocol.io)
@@ -118,7 +118,7 @@ Installers keep their own Node and Rust in `~/.deck-tools` (Windows: `%LOCALAPPD
 <details>
 <summary><b>💬 Chat and voice</b></summary>
 
-Streaming replies, saved chats, picture snapshots and attachments (never stored), push-to-talk and hands-free voice with a wake word (transcribed locally with whisper.cpp), spoken replies, desktop notifications, Telegram (only your chat id), and a ⌘K command menu.
+Streaming replies, saved chats, picture snapshots and attachments (never stored), push-to-talk and hands-free voice with a wake word (transcribed locally with whisper.cpp), spoken replies, desktop notifications, a ⌘K command menu, and chat channels: Telegram, Slack and Discord. Channels connect outward (no open port), answer only your own direct messages, and carry approval cards with Approve, Reject and Undo buttons.
 
 </details>
 
@@ -303,7 +303,7 @@ Built-in reasoning is used on hard work with OpenAI reasoning models, Claude and
 | Behavior evals | A sandboxed copy of deck: unfinished work caught, escalation once after failure, failure lessons recalled, helpers capped and narrowed, safe custom tools, advice-only CISO | 6/6 |
 | Live evals (opt-in) | Real tasks on your models and Jev: tool calling, resisting injected instructions, JSON output, checker accuracy, routing | Tracked over time |
 | Baseline gate | Any score drop fails the build (`evals/baseline.json`) | 100% |
-| Unit and contract tests | Every package, plus Rust | 272 TS + 6 Rust |
+| Unit and contract tests | Every package, plus Rust | 277 TS + 6 Rust |
 
 All suites also run inside the app (offline suites nightly, live suite on demand or weekly) and appear in the Command center with scores, trends, per-case details and alerts when a score drops. In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
 
@@ -350,7 +350,7 @@ docs/                 User manual and course (also inside the app)
 | Engine | Node 22, JSON lines over stdio |
 | Storage | SQLCipher, sqlite-vec, FTS5 |
 | Models | OpenAI, Anthropic, Gemini, OpenRouter, Ollama |
-| Integrations | MCP, GitHub REST, Google APIs, Telegram, whisper.cpp, Jev (TypeSafe AI) |
+| Integrations | MCP, GitHub REST, Google APIs, Telegram, Slack (Socket Mode), Discord (Gateway), whisper.cpp, Jev (TypeSafe AI) |
 | Tooling | pnpm, Turborepo, Vitest, gitleaks, mise |
 
 Read [`AGENTS.md`](AGENTS.md) for contributor and coding-agent rules, [`BUILD_PLAN.md`](BUILD_PLAN.md) for what was built and why, and [`UPDATES.md`](UPDATES.md) for the detailed change log.
@@ -378,7 +378,8 @@ Everything is also inside the app under **Help and course** (⌘/Ctrl + 9). Star
 - [x] Eval cases for plan lock, CISO reviews, helpers and playbooks
 - [x] Jev (TypeSafe AI) for routing, checks, approval risk and injection scanning, with fallbacks
 - [x] Verified skills hub and OpenClaw import
-- [ ] More channels: WhatsApp, iMessage, Slack, Signal
+- [x] Slack and Discord channels
+- [ ] More channels: iMessage, Signal, WhatsApp
 - [ ] Safe computer use: isolated browser and sandboxed shell
 - [ ] Always-on engine
 - [ ] Signed and notarized installers
@@ -393,7 +394,7 @@ deck reads the same SKILL.md format and imports an OpenClaw workspace in one ste
 | | OpenClaw | deck |
 |---|---|---|
 | Runs | Always-on gateway service | Desktop app (always-on engine on the roadmap) |
-| Channels | Many (WhatsApp, iMessage, Slack, Signal, Discord, Telegram and more) | Telegram today; more on the roadmap |
+| Channels | Many (WhatsApp, iMessage, Slack, Signal, Discord, Telegram and more) | Telegram, Slack and Discord (direct messages from you only); iMessage, Signal and WhatsApp on the roadmap |
 | Network exposure | Gateway listens on a port | No network port: the app talks to the engine privately |
 | Skills | Open marketplace; skills can run code | Verified hub: checked and signed; instructions only; each approved |
 | Keys | Config and auth files on disk | OS keychain only; stripped from prompts and stored documents |

@@ -37,10 +37,13 @@ export function SkillsHubCard({ s, onSaved }: { s: Settings; onSaved: (s: Settin
   const [pubName, setPubName] = useState("");
   const [pubKey, setPubKey] = useState("");
   const [folder, setFolder] = useState("~/Desktop/deck/skills-hub");
-  const search = async () => setRes((await engineCall<{ entries: Entry[]; errors: string[] }>("skills.hub.search", { query: q }).catch((e) => ({ entries: [], errors: [err(e)] }))) ?? { entries: [], errors: ["Works inside the desktop app."] });
+  const search = async () => {
+    const r = await engineCall<{ entries: Entry[]; errors: string[] }>("skills.hub.search", { query: q }).catch((e) => ({ entries: [], errors: [err(e)] }));
+    setRes(r && Array.isArray(r.entries) ? { entries: r.entries, errors: Array.isArray(r.errors) ? r.errors : [] } : { entries: [], errors: ["Works inside the desktop app."] });
+  };
   useEffect(() => {
     void search();
-    void engineCall<{ publicKey: string; fingerprint: string }>("skills.publisher").then((x) => x && setMe(x)).catch(() => {});
+    void engineCall<{ publicKey: string; fingerprint: string }>("skills.publisher").then((x) => x && typeof x.publicKey === "string" && setMe(x)).catch(() => {});
   }, []);
   const hubs = s.skills?.hubs ?? [];
   const trusted = s.skills?.trusted ?? [];

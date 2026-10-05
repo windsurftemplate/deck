@@ -76,3 +76,19 @@ Chat with the crew and approve actions from your phone.
 3. Only your chat id can talk to the bot. Messages from anyone else are ignored.
 
 Telegram supports approval buttons, `/apply <id>` for proposals, and voice notes (if voice is set up).
+
+## Slack and Discord
+
+Talk to the Chief of Staff from Slack or Discord, approve from your phone, and get the morning brief there. Settings > **Slack and Discord** walks you through setup (about 3 minutes each).
+
+- **Slack:** create an app from the manifest deck copies for you, install it, then paste the bot token (xoxb-) and an app-level token (xapp-) with connections:write. Add your member id.
+- **Discord:** create an application and bot, paste the bot token, use the invite link deck shows to add the bot to a private server of yours, and add your user id.
+
+How it behaves:
+
+- Both connect outward from your computer (Slack Socket Mode, Discord Gateway). No port is opened.
+- Only direct messages from your user ids are answered. Other people, server channels and other bots are ignored.
+- Commands start with ! because / belongs to Slack and Discord: !brief, !tasks, !status, !approve id, !reject id, !undo id, !kill all, !help. Anything else goes to the Chief of Staff, in a Slack or Discord chat in the sidebar.
+- Approval cards have Approve and Reject buttons and include the CISO's opinion. After you approve something that leaves your machine, an Undo button arrives with the countdown.
+- Each approval is sent once to every channel that is on (Telegram, Slack, Discord). Decide in any one; the rest catch up.
+- Tokens are kept in your keychain and removed from anything sent to a model or saved.

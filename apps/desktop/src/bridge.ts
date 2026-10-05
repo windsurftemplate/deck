@@ -115,6 +115,35 @@ export async function saveBotToken(token: string): Promise<string | null> {
   reloadEngine();
   return null;
 }
+/** Slack and Discord tokens: shape check, then keychain. */
+const CHANNEL_TOKENS = {
+  "chat.slack.bot": [/^xoxb-[A-Za-z0-9-]{20,}$/, "A Slack bot token starts with xoxb-."],
+  "chat.slack.app": [/^xapp-\d-[A-Za-z0-9-]{20,}$/, "A Slack app-level token starts with xapp-."],
+  "chat.discord": [/^[A-Za-z\d_-]{20,30}\.[A-Za-z\d_-]{5,8}\.[A-Za-z\d_-]{25,45}$/, "That does not look like a Discord bot token (three parts separated by dots)."],
+} as const;
+export type ChannelTokenName = keyof typeof CHANNEL_TOKENS;
+export async function saveChannelToken(name: ChannelTokenName, token: string): Promise<string | null> {
+  const t = token.trim();
+  const [re, msg] = CHANNEL_TOKENS[name];
+  if (!re.test(t)) return msg;
+  if (inTauri) await invoke("secret_set", { name, value: t });
+  else previewKeys.set(name, t);
+  reloadEngine();
+  return null;
+}
+export async function channelTokenHint(name: ChannelTokenName): Promise<string | null> {
+  if (inTauri) return invoke<string | null>("secret_hint", { name });
+  const v = previewKeys.get(name);
+  return v ? v.slice(-4) : null;
+}
+export async function removeChannelToken(name: ChannelTokenName) {
+  if (inTauri) await invoke("secret_delete", { name });
+  else previewKeys.delete(name);
+  reloadEngine();
+}
+/** Settings changes that need the engine to restart its channels. */
+export const restartChannels = () => reloadEngine();
+
 export async function botTokenHint(): Promise<string | null> {
   if (inTauri) return invoke<string | null>("secret_hint", { name: "chat.telegram" });
   const v = previewKeys.get("chat.telegram");

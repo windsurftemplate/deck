@@ -1303,6 +1303,69 @@ describe("OpenClaw import and the skills hub", () => {
   });
 });
 
+describe("Slack and Discord channels", () => {
+  it("sends each approval once with the CISO opinion and buttons, and buttons and messages work from both", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const sockets: { url: string; emit: (m: unknown) => void; sent: string[] }[] = [];
+    class WS {
+      sent: string[] = [];
+      onmessage: ((e: { data: unknown }) => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: ((e: unknown) => void) | null = null;
+      onopen: (() => void) | null = null;
+      constructor(readonly url: string) {
+        sockets.push({ url, emit: (m) => this.onmessage?.({ data: JSON.stringify(m) }), sent: this.sent });
+      }
+      send(d: string) {
+        this.sent.push(d);
+      }
+      close() {}
+    }
+    const slack: Record<string, unknown>[] = [];
+    const discord: { path: string; body: Record<string, unknown> }[] = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (u.startsWith("https://slack.com/api/")) {
+        const m = u.split("/api/")[1]!;
+        slack.push({ m, ...body });
+        return new Response(JSON.stringify(m === "apps.connections.open" ? { ok: true, url: "wss://slack.test" } : m === "conversations.open" ? { ok: true, channel: { id: "D1" } } : { ok: true }));
+      }
+      if (u.startsWith("https://discord.com/api/v10")) {
+        const path = u.replace("https://discord.com/api/v10", "");
+        discord.push({ path, body });
+        return new Response(JSON.stringify(path === "/gateway/bot" ? { url: "wss://discord.test" } : path === "/users/@me/channels" ? { id: "DM1" } : { id: "x" }));
+      }
+      return offline(u);
+    }) as unknown as typeof fetch;
+    const settings = { ...DEFAULTS, ciso: { reviews: true }, chat: { ...DEFAULTS.chat, slack: { enabled: true, ownerUserIds: ["U0OWNER1"] }, discord: { enabled: true, ownerUserIds: ["111111111111111111"] } } };
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC, "chat.slack.bot": "xoxb-1", "chat.slack.app": "xapp-1-x", "chat.discord": "dtoken" }), settings, fetch: f, webSocket: WS as never, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => (JSON.stringify(req.system).includes("# Approval review") ? { text: '{"risk":"high","opinion":"Unknown recipient."}', model: ref.model, stopReason: "end_turn", usage: U } : { text: "On it.", model: ref.model, stopReason: "end_turn", usage: U }) }) });
+    await e.open();
+    expect(await e.startChat()).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sockets.map((x) => x.url)).toEqual(["wss://slack.test", "wss://discord.test/?v=10&encoding=json"]);
+    const q = (e as unknown as { approvals: { request: (a: object) => { approval: { id: string } } } }).approvals;
+    const { approval } = q.request({ agent: "gtm", summary: "Send email to x@unknown.io", detail: "Pricing sheet", scope: "gmail.send" });
+    await new Promise((r) => setTimeout(r, 60));
+    const slackCards = slack.filter((x) => x.m === "chat.postMessage" && String(x.text).includes("Send email to x@unknown.io"));
+    const discordCards = discord.filter((x) => x.path === "/channels/DM1/messages" && String(x.body.content).includes("Send email to x@unknown.io"));
+    expect(slackCards).toHaveLength(1);
+    expect(discordCards).toHaveLength(1);
+    expect(String(slackCards[0]!.text)).toContain("CISO: high risk. Unknown recipient.");
+    expect(e.crewMessages("activity").filter((m) => m.text === "Needs your approval: Send email to x@unknown.io")).toHaveLength(1);
+    // Reject from Discord.
+    sockets[1]!.emit({ op: 0, s: 1, t: "INTERACTION_CREATE", d: { id: "i1", token: "t", type: 3, user: { id: "111111111111111111" }, data: { custom_id: `reject:${approval.id}` } } });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(e.pendingApprovals().some((a) => a.id === approval.id)).toBe(false);
+    // Free text from Slack reaches the Chief of Staff in a Slack thread.
+    sockets[0]!.emit({ envelope_id: "e1", type: "events_api", payload: { event: { type: "message", channel_type: "im", user: "U0OWNER1", text: "what is waiting for me?", channel: "D1" } } });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(slack.some((x) => x.m === "chat.postMessage" && x.text === "On it.")).toBe(true);
+    expect(e.threads.list().some((t) => t.title === "Slack")).toBe(true);
+    await e.close();
+  });
+});
+
 describe("brief sources", () => {
   it("includes pull requests waiting for review when GitHub is connected", async () => {
     let briefPrompt = "";
