@@ -77,3 +77,8 @@ Your changes can only make an agent more careful: tools can be limited but never
 ## Starting setups (packs)
 
 Packs add rules, tool limits, approved skills, first issues and a preset for a kind of work. They can only make the crew more careful. Applying a pack twice changes nothing.
+
+
+## The eval gate
+
+Before deck asks you to add new playbook lessons, they must pass an eval gate: the offline evals must all still pass, and if the live suite is on, the agent's prompt with the new lessons must do at least as well on live tasks as the last live run. The approval card shows the gate result.

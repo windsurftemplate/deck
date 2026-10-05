@@ -18,7 +18,7 @@ This file has two parts:
 | 5. Expand | Started: workspace packs, starting setup step, one-click installers | All earlier gates still hold |
 
 Code: about 9,400 lines of TypeScript, TSX and Rust across 2 apps and 13 packages, 68 commits.
-Tests (counted): **261 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
+Tests (counted): **267 TypeScript tests and 6 Rust tests, all passing.** Memory evals 5/5 (test embedder and the real local model). Safety evals 9/9. Secret scan clean on every commit.
 
 Correction: earlier log entries quoted test totals that were estimates and some were too high (for example "198"). They have been replaced below with "all tests passed at the time". The numbers in this report were counted directly.
 
@@ -289,6 +289,23 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 # Detailed log
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
+
+## 2026-10-05: Undo window, duplicate protection, PRs in the brief, eval-gated tuning
+
+**Changed**
+- Undo window: approved actions that leave the machine (`kind: external`) wait `undo.seconds` (default 60, 0 to 300) before running. Undo from the bar at the bottom of the app, `/undo <id>` in Telegram, or Stop all agents. Hooks in the agent loop (`undoWindow`), timers and events in the engine (`undo`, `undo.end`), RPCs `actions.undo` and `actions.undos`. Setting in Settings > CISO.
+- Duplicate protection: `actionKey` (tool plus details, keys sorted, case and spacing ignored); `action_keys` table; the same outside action is refused for 24 hours after it ran, and an identical request already waiting for approval is not queued again; failures, rejections and undos clear the key so a real retry is possible.
+- Brief: `GitHubRepo.awaitingReview` lists open, non-draft pull requests with check status; the brief reads PRs when GitHub (Labs) is connected and today's calendar and unread mail when Google (Labs) is connected.
+- Eval-gated tuning: after a practice-run win, `evalGate` requires the offline evals to pass and, when the live suite is on, the agent's prompt with the new lessons to do at least as well as the last live run; the result is in Crew chat and on the approval card. `liveSuite` accepts an agent prompt.
+- Manual (chat, safety, settings, learning), README and plan updated.
+
+**Verified**
+- Agent loop: Undo during the window stops a send; identical requests are not queued twice; a sent action is never repeated; keys ignore case, spacing and key order. Run three times with no flakes.
+- Engine: the window runs after its time, Undo and Stop cancel it, duplicate records persist.
+- Brief prompt includes "windsurftemplate/deck#12 Wire Jev into routing (checks pending)".
+- Gate: a harmless lesson passes (live 5/5 vs 5); a lesson that makes the model obey an injected email is blocked (4/5 vs 5).
+- Packaged engine answers the new calls; evals inside it 5/5, 13/13, 6/6; power-up Agents ok. Undo bar renders with a countdown.
+- 267 TypeScript tests pass (counted); `pnpm check` green.
 
 ## 2026-10-04: Code audit and cleanup
 

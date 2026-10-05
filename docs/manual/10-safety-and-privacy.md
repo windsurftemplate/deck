@@ -10,6 +10,10 @@ These are in code, not settings. No preset, pack, crew rule, chat request or lea
 - A planted secret (the tripwire, or honeytoken) stops all agents if any tool call ever contains it.
 - Crew members cannot delegate. Every task stops after a set number of steps.
 
+## Undo window and duplicate protection
+
+Every approved action that leaves your machine waits out an undo window (60 seconds by default, 0 to 300 in Settings > CISO) before it runs. Press **Undo** in the bar at the bottom of the screen, send `/undo <id>` in Telegram, or press **Stop all agents**, and it never runs. Separately, deck remembers every outside action it has run for 24 hours: the same tool with the same details (ignoring case and spacing) is refused as "already done", and an identical request already waiting for you is not queued again.
+
 ## The CISO
 
 A crew member dedicated to deck's own security. It gives a risk opinion (low, medium, high) on every approval card, answers security questions using a live security status (tripwire alerts, scanner flags, refused actions, approvals, Labs features, plugins, federation, Google and GitHub access, setup health), and runs a review every Monday at 09:30 that opens an issue for each high-risk finding. After a tripwire stop it posts an incident note. It advises only: it cannot approve, reject, block or change settings. Settings > CISO has the review switch, **Show security status** and **Run security review now**.

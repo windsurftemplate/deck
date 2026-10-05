@@ -19,6 +19,7 @@ Type in the box at the bottom of the chat panel and press **Send** or Return. Th
 | "Remember that Sam prefers calls on Fridays" | A fact is saved (through the memory filter) |
 | "Create an issue to send the pricing deck to Acme by Thursday" | An issue appears in the tracker |
 | "Have GTM draft a follow-up to Dana" | The Chief of Staff delegates; the draft lands in Drafts |
+| "Brief me" | The morning brief: your issues, what waits for you, and when connected, pull requests waiting for review (GitHub, Labs), today's calendar and unread mail (Google, Labs) |
 | "Research the latest breaches caused by leaked API keys" | Research searches the web and answers with sources |
 | "Do a deep dive on Acme's security team and funding" | A research swarm: 2 to 5 searches in parallel, then one combined brief with sources |
 | "Prep me for my meeting with Dana Wright at Acme on Tuesday" | A meeting brief: who they are professionally, company news, our history, talking points, questions. Saved to the second brain |
@@ -34,7 +35,7 @@ Meeting prep works by name, never from a photo. It uses what you already know (m
 
 ## Approvals in chat
 
-When an agent wants to do something that needs you, a card shows the action and its details. **Approve** lets it happen. **Reject** cancels it and teaches the crew (rejections are reviewed during nightly learning).
+When an agent wants to do something that needs you, a card shows the action and its details. **Approve** lets it happen. **Reject** cancels it and teaches the crew (rejections are reviewed during nightly learning). After you approve something that leaves your machine (a send, a draft, a pull request, a plugin call), it waits 60 seconds with an **Undo** bar at the bottom of the screen before it runs; in Telegram, `/undo <id>` does the same. Change the wait in Settings > CISO. The crew never runs the same outside action with the same details twice, and never asks you to approve the same thing twice.
 
 ## Pictures
 

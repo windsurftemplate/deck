@@ -10,7 +10,7 @@ Open Settings from the sidebar or with <kbd>Cmd</kbd> + <kbd>,</kbd>. Every card
 | **Approvals** | Cautious, Balanced or Autonomous | Anything external always asks |
 | **Telegram** | Bot token, your chat id, on or off | Only your chat id is answered |
 | **VaultProof** | MCP address, on or off | Off by default. Connection status shows on the power-up screen |
-| **CISO** | Risk opinion on every approval card; show security status; run a security review now | On by default; weekly review Mondays 09:30 |
+| **CISO** | Risk opinion on every approval card; undo window for approved outside actions; show security status; run a security review now | Reviews on; undo window 60 seconds; weekly review Mondays 09:30 |
 | **Helper agents** | On or off; most helpers per task; token budget per task; recent helpers with Keep as crew member | On, 10, 300,000 by default |
 | **Your crew members** | Up to 8 members you define: name, role, tools from a safe list | Same rules as the built-in crew |
 | **Crew** | Per agent: instructions, rules, tool modes; history and undo; learned guidance | Changes only make agents more careful |

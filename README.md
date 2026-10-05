@@ -11,7 +11,7 @@ with encrypted memory on your machine and your approval on anything that leaves 
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-12151c?style=flat-square)](#install)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](#development)
-[![Tests](https://img.shields.io/badge/tests-261%20passing-5fd39a?style=flat-square)](#evals)
+[![Tests](https://img.shields.io/badge/tests-267%20passing-5fd39a?style=flat-square)](#evals)
 [![Safety evals](https://img.shields.io/badge/safety%20evals-13%2F13-5fd39a?style=flat-square)](#evals)
 [![Models](https://img.shields.io/badge/models-OpenAI%20%C2%B7%20Claude%20%C2%B7%20Gemini%20%C2%B7%20Ollama-79a8ff?style=flat-square)](#models)
 [![MCP](https://img.shields.io/badge/MCP-ready-c59bff?style=flat-square)](https://modelcontextprotocol.io)
@@ -132,6 +132,7 @@ Add PDF, Word, Markdown, text, CSV, JSON and HTML files; paste text; add web pag
 <details>
 <summary><b>🔎 Research and meeting prep</b></summary>
 
+- **Morning brief** with your issues and approvals, plus pull requests waiting for review, today's calendar and unread mail when GitHub or Google are connected.
 - **Web research** through the provider's own search tool, with sources, 25 searches a day, personal data removed from questions.
 - **Research swarm**: a planner splits a question into 2 to 5 angles, searches run in parallel, and one brief combines them with numbered sources and disagreements noted.
 - **Meeting prep**: by name, from your memory and calendar plus professional sources only. Private life is excluded from searches and filtered from the brief. Saved to the second brain.
@@ -156,7 +157,7 @@ Goals are planned into 3 to 7 dated milestones (as issues) and checked every Mon
 | Playbook (ACE) | Lessons per agent with helped and misled counts; added, never reworded; retired when they mislead |
 | Skills | Proposed from checked work, active only after you approve; open SKILL.md format |
 | Nightly learning | Facts from events and new documents, rejection review, skill retirement |
-| Prompt tuning | New lessons tested on practice runs of real tasks; adopted only with a clear win and your approval |
+| Prompt tuning | New lessons tested on practice runs of real tasks, then gated on the evals (offline must pass; live must not get worse); adopted only with your approval |
 | Model arena | Compares your models on an agent's real tasks; one click assigns the winner |
 | Idle-time notes | While you are away, short notes per agent from facts and the crew's own history |
 
@@ -256,7 +257,9 @@ flowchart TB
 | **Tripwire** | A planted fake secret; using it stops every agent and raises an incident |
 | **Privacy filters** | Personal data removed from web searches; meeting prep limited to professional sources |
 | **Budgets** | Daily tokens, searches, helper budgets, step limits |
-| **Stop switch** | Stops everything and rejects all waiting actions |
+| **Undo window** | Approved actions that leave the machine wait 60 seconds with an Undo button (and /undo in Telegram) |
+| **No duplicates** | The same outside action with the same details never runs twice or asks twice |
+| **Stop switch** | Stops everything, rejects all waiting actions, and undoes anything in its undo window |
 
 **No keys in this repository.** Every API key (OpenAI, Jev, GitHub, Google and the rest) is entered in the app and kept in your OS keychain; a pre-commit hook and CI scan every commit for secrets.
 
@@ -300,7 +303,7 @@ Built-in reasoning is used on hard work with OpenAI reasoning models, Claude and
 | Behavior evals | A sandboxed copy of deck: unfinished work caught, escalation once after failure, failure lessons recalled, helpers capped and narrowed, safe custom tools, advice-only CISO | 6/6 |
 | Live evals (opt-in) | Real tasks on your models and Jev: tool calling, resisting injected instructions, JSON output, checker accuracy, routing | Tracked over time |
 | Baseline gate | Any score drop fails the build (`evals/baseline.json`) | 100% |
-| Unit and contract tests | Every package, plus Rust | 261 TS + 6 Rust |
+| Unit and contract tests | Every package, plus Rust | 267 TS + 6 Rust |
 
 All suites also run inside the app (offline suites nightly, live suite on demand or weekly) and appear in the Command center with scores, trends, per-case details and alerts when a score drops. In the app, a checker grades every delegated task, practice runs grade prompt changes and model choices, and the Command center tracks success rates over time. CI runs `pnpm check` and a gitleaks secret scan on every push.
 

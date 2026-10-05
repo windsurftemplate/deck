@@ -2084,7 +2084,10 @@ export class Engine {
     this.say({ sender: "learning", recipient: agent, kind: "check", text: `${result} ${d.adopt ? "Asking the owner to add them." : "Not better enough; keeping the playbook as it is."}` });
     await this.store.setMeta(`playbook.queue.${agent}`, "[]");
     if (!d.adopt) return `${result} Kept the playbook as it is.`;
-    const { decision } = this.approvals.request({ agent: "learning", summary: `Add ${adds.length} playbook lesson${adds.length > 1 ? "s" : ""} for ${name} (practice ${d.before} to ${d.after})`, detail: guidance, scope: "crew.tune" });
+    const gate = await this.evalGate(agent, adds);
+    this.say({ sender: "learning", recipient: agent, kind: "check", text: `Eval gate: ${gate.text}` });
+    if (!gate.pass) return `${result} Not adopted: ${gate.text}`;
+    const { decision } = this.approvals.request({ agent: "learning", summary: `Add ${adds.length} playbook lesson${adds.length > 1 ? "s" : ""} for ${name} (practice ${d.before} to ${d.after})`, detail: `${guidance}\n\nEval gate: ${gate.text}`, scope: "crew.tune" });
     void decision.then(async (a) => {
       if (a.status === "approved") {
         const now = this.crew[agent] ?? {};
@@ -2092,6 +2095,27 @@ export class Engine {
       }
     });
     return `${result} Waiting for you to approve it.`;
+  }
+
+  /**
+   * A playbook change ships only if evals hold: the offline suites must all pass, and when the live suite is on,
+   * the agent's prompt with the new lessons must score at least as well as the last live run.
+   */
+  async evalGate(agent: string, adds: string[]): Promise<{ pass: boolean; text: string }> {
+    const off = await this.runEvals().catch((e) => ({ suites: [] as EvalSuiteResult[], drops: [`could not run (${(e as Error).message})`] }));
+    const failing = off.suites.filter((x) => x.score < 1);
+    if (!off.suites.length || failing.length) return { pass: false, text: `offline evals not all passing (${failing.map((x) => `${x.title} ${x.passed}/${x.total}`).join("; ") || off.drops.join("; ")}).` };
+    const offText = `offline evals pass (${off.suites.map((x) => `${x.passed}/${x.total}`).join(", ")})`;
+    if (!this.d.settings.evals?.live) return { pass: true, text: `${offText}; live evals are off, so the lessons were not tested on live tasks.` };
+    const cur = this.crew[agent] ?? {};
+    const playbook = [...(cur.playbook ?? []).map((x) => x.text), ...adds].map((t) => `- ${t}`).join("\n");
+    const live = await liveSuite({ chat: (role, req) => this.router.chat(role, "evals", req), assess: (t) => this.assess(t), tokensUsed: () => this.router.usedToday(), agentSystem: `${this.roleFor(agent)}\n\n## Playbook\n${playbook}` });
+    const last = (this.activity?.evalRuns(400) ?? []).find((x) => x.suite === "live");
+    const lastPassed = last ? last.cases.filter((c) => !c.id.startsWith("live-jev")).filter((c) => c.passed).length : null;
+    const nowPassed = live.cases.filter((c) => c.passed).length;
+    const lost = live.cases.filter((c) => !c.passed).map((c) => c.title);
+    if (lastPassed !== null ? nowPassed < lastPassed : lost.length > 0) return { pass: false, text: `${offText}, but with the new lessons the live suite got worse (${nowPassed}/${live.total}${lastPassed !== null ? ` vs ${lastPassed} last time` : ""}; failing: ${lost.join("; ")}).` };
+    return { pass: true, text: `${offText}; live suite with the new lessons ${nowPassed}/${live.total}${lastPassed !== null ? ` (last run ${lastPassed})` : ""}, ${live.tokens.toLocaleString("en-US")} tokens.` };
   }
 
   /** Evidence for the weekly self-review. */

@@ -93,15 +93,15 @@ Gate to leave Phase 1: the daily brief is useful 5 workdays in a row.
 | 6.1 | `packages/connectors/gmail.ts` | Read inbox, draft (no send yet) | Brief lists today's important emails | done (needs Gmail OAuth to run) |
 | 6.2 | `packages/connectors/calendar.ts` | Read today and tomorrow | Brief lists meetings | done (needs Calendar OAuth to run) |
 | 6.3 | `packages/tracker/src/tracker.ts` | Built-in issue tracker (replaces Linear): keys, priority, labels, history, search | Brief lists open issues | done |
-| 6.4 | `packages/connectors/github.ts` | Read PRs and checks | Brief lists PRs waiting on review | not built (the GitHub Labs connector reads files and opens PRs, but the brief does not list PRs yet) |
+| 6.4 | `packages/connectors/github.ts` | Read PRs and checks | Brief lists PRs waiting on review | done (with check status; calendar and unread mail too when Google is connected) |
 ### Step 7: Safety basics
 
 | # | File | What it does | Done when | Status |
 |---|------|--------------|-----------|--------|
 | 7.1 | `packages/gate/secret-scan.ts` | Scans every outbound prompt for keys and secrets | Planted key is redacted | done |
 | 7.2 | `packages/gate/approvals.ts` | Approval queue for external actions | Draft needs approval before send | done |
-| 7.3 | `packages/gate/undo.ts` | 60-second undo window on external actions | Undo cancels a send | not built: code existed but was never wired; removed in the audit |
-| 7.4 | `packages/gate/idempotency.ts` | Keys on side-effect tools | Retry never double-sends | not built: code existed but was never wired; removed in the audit |
+| 7.3 | `packages/gate/undo.ts` | 60-second undo window on external actions | Undo cancels a send | done (rebuilt in the engine: app bar, Telegram /undo, Stop; 0 to 300 seconds) |
+| 7.4 | `packages/gate/idempotency.ts` | Keys on side-effect tools | Retry never double-sends | done (24-hour memory of outside actions; identical approvals not queued twice) |
 
 ### Step 8: Chat front door
 
@@ -150,7 +150,7 @@ Gate to leave Phase 3: eval scores rise two weeks running.
 | P3.3 | Nightly pass at 02:00 (and Run learning now): facts from recent work through the write gate, feedback review, retire failing skills, report to the owner | Runs once per episode; conflicts go to the owner | done |
 | P3.4 | Quarantined reader for untrusted content (email, web) | Injected instructions never reach a tool call | partly built: plan lock, input scanner and untrusted wrapper; a separate quarantined reader model not built |
 | P3.5 | Honeytokens | A planted fake secret used anywhere stops the crew and alerts the owner | done |
-| P3.6 | Prompt evolution with evals | A prompt change ships only if every eval suite holds or improves | partly built: tuning adopts only on practice-run wins; not yet gated on the live eval suite |
+| P3.6 | Prompt evolution with evals | A prompt change ships only if every eval suite holds or improves | done: practice-run win, then offline evals must pass and the live suite (when on) must not get worse with the new lessons |
 | P3.7 | Task and safety eval suites | Replayed tasks and injection attempts scored in CI | done: safety 13, behavior 6, live suite on real models (opt-in) |
 
 ## Phase 4: World and research (in progress)
