@@ -5,7 +5,7 @@ import { statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { ROLE_LABEL, PROVIDER_LABEL, untrusted, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, type Judge, routeComplexity, parseSkillMd, toSkillMd, skillSlug, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode, type ToolPolicy } from "@deck/agents";
 import { ChatBot, TelegramClient, WhisperCppTranscriber, type BotActions } from "@deck/chat";
-import { GitHubRepo, GoogleApi, McpHttpClient, googleSignIn, type McpTool } from "@deck/connectors";
+import { GitHubRepo, GoogleApi, McpHttpClient, googleSignIn, type BriefSources, type McpTool } from "@deck/connectors";
 import { JevClient, choiceOf, noulOf, type JevQuestion, type JevResult } from "@deck/models";
 import { execFile } from "node:child_process";
 import { vaultProofProbe } from "@deck/connectors";
@@ -1594,6 +1594,18 @@ export class Engine {
     ];
   }
 
+  /** What the morning brief reads: issues always; pull requests, calendar and mail when those Labs features are connected. */
+  private async briefSources(): Promise<BriefSources> {
+    const L = this.d.settings.labs;
+    const src: BriefSources = { issues: this.tracker.briefSource() };
+    if (L.github.enabled && L.github.repo && (await this.d.keychain.get("tool.github").catch(() => null))) src.code = { awaitingReview: async () => (await this.repo()).awaitingReview() };
+    if (L.google.enabled && (await this.d.keychain.get("google.refresh").catch(() => null))) {
+      src.calendar = { today: async () => (await (await this.google()).calendar(1)).map((e) => ({ start: e.start, end: e.end, title: e.title, attendees: [] })) };
+      src.email = { needsReply: async () => (await (await this.google()).gmailSearch("is:unread in:inbox newer_than:2d", 10)).map((m) => ({ id: m.id, from: m.from, subject: m.subject, snippet: m.snippet, receivedAt: m.date })) };
+    }
+    return src;
+  }
+
   /* ---------- labs: GitHub pull requests ---------- */
   private async repo() {
     const token = await this.d.keychain.get("tool.github").catch(() => null);
@@ -2415,7 +2427,7 @@ export class Engine {
   }
 
   async brief(): Promise<string> {
-    const b = await composeBrief({ sources: { issues: this.tracker.briefSource() }, userModel: await this.userModel(), needsYou: this.approvals.pending().map((a) => a.summary), chat: (req) => this.router.chat("heavy", AGENT, req) });
+    const b = await composeBrief({ sources: await this.briefSources(), userModel: await this.userModel(), needsYou: this.approvals.pending().map((a) => a.summary), chat: (req) => this.router.chat("heavy", AGENT, req) });
     return b.text;
   }
 

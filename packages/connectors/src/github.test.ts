@@ -30,3 +30,19 @@ describe("GitHub proposals", () => {
     expect(() => new GitHubRepo("bad repo", "t")).toThrow(/owner\/name/);
   });
 });
+
+describe("pull requests for the brief", () => {
+  it("lists open, non-draft pull requests with their check status", async () => {
+    const f = (async (url: string) => {
+      if (url.includes("/pulls?")) return new Response(JSON.stringify([{ number: 7, title: "Add CISO", draft: false, head: { sha: "a1" } }, { number: 8, title: "WIP", draft: true, head: { sha: "b2" } }, { number: 9, title: "Fix bundle", draft: false, head: { sha: "c3" } }]));
+      if (url.endsWith("/commits/a1/status")) return new Response(JSON.stringify({ state: "success", total_count: 2 }));
+      if (url.endsWith("/commits/c3/status")) return new Response(JSON.stringify({ state: "failure", total_count: 1 }));
+      return new Response("{}", { status: 404 });
+    }) as unknown as typeof fetch;
+    const prs = await new GitHubRepo("windsurftemplate/deck", "t", f).awaitingReview();
+    expect(prs).toEqual([
+      { repo: "windsurftemplate/deck", number: 7, title: "Add CISO", checks: "passing" },
+      { repo: "windsurftemplate/deck", number: 9, title: "Fix bundle", checks: "failing" },
+    ]);
+  });
+});

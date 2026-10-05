@@ -31,6 +31,24 @@ export class GitHubRepo {
     if (p.split("/").some((s) => s === ".." || s === ".git")) throw new Error("That path is not allowed.");
     return p.split("/").map(encodeURIComponent).join("/");
   }
+  /** Open pull requests (not drafts) with their combined check status, newest first, for the daily brief. */
+  async awaitingReview(max = 10): Promise<{ repo: string; number: number; title: string; checks: "passing" | "failing" | "pending" | "unknown" }[]> {
+    const prs = (await this.call<{ number: number; title: string; draft: boolean; head: { sha: string } }[]>("GET", `/pulls?state=open&sort=created&direction=desc&per_page=${Math.min(30, max * 2)}`)) ?? [];
+    const open = prs.filter((p) => !p.draft).slice(0, max);
+    return Promise.all(
+      open.map(async (p) => {
+        let checks: "passing" | "failing" | "pending" | "unknown" = "unknown";
+        try {
+          const st = await this.call<{ state: string; total_count: number }>("GET", `/commits/${encodeURIComponent(p.head.sha)}/status`);
+          checks = !st || st.total_count === 0 ? "unknown" : st.state === "success" ? "passing" : st.state === "failure" || st.state === "error" ? "failing" : "pending";
+        } catch {
+          /* leave unknown */
+        }
+        return { repo: this.repo, number: p.number, title: p.title, checks };
+      }),
+    );
+  }
+
   async list(path = ""): Promise<string> {
     const items = await this.call<{ name: string; type: string; size: number }[] | { name: string }>("GET", `/contents/${this.clean(path)}`, undefined, true);
     if (!items) return `Nothing at ${path || "the root"}.`;

@@ -1189,6 +1189,24 @@ describe("undo window and duplicate protection (engine)", () => {
   });
 });
 
+describe("brief sources", () => {
+  it("includes pull requests waiting for review when GitHub is connected", async () => {
+    let briefPrompt = "";
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const f = (async (u: string) => {
+      if (u.includes("/pulls?")) return new Response(JSON.stringify([{ number: 12, title: "Wire Jev into routing", draft: false, head: { sha: "s1" } }]));
+      if (u.includes("/commits/s1/status")) return new Response(JSON.stringify({ state: "pending", total_count: 1 }));
+      return offline(u);
+    }) as unknown as typeof fetch;
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC, "tool.github": "ghp_" + "t".repeat(36) }), settings: { ...DEFAULTS, labs: { ...DEFAULTS.labs, github: { enabled: true, repo: "windsurftemplate/deck" } } }, fetch: f, makeEmbedder: () => new HashEmbedder(64),
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => ((briefPrompt += JSON.stringify(req.messages)), { text: "Brief.", model: ref.model, stopReason: "end_turn", usage: U }) }) });
+    await e.open();
+    await (e as unknown as { brief: () => Promise<unknown> }).brief();
+    expect(briefPrompt).toContain("windsurftemplate/deck#12 Wire Jev into routing (checks pending)");
+    await e.close();
+  });
+});
+
 describe("setup health", () => {
   it("scores the setup, lists fixes, and notices when a check starts failing", async () => {
     let now = new Date("2026-10-01T10:00:00Z");
