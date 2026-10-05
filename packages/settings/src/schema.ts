@@ -94,6 +94,8 @@ export interface Settings {
   notifications: { enabled: boolean };
   /** How agents think: a plan step for complex work, built-in model reasoning for hard work. */
   thinking: { mode: "auto" | "always" | "off"; reasoning: "low" | "medium" | "high"; idlePrep: boolean };
+  /** Skills hubs (catalogs of skills) and the publishers you trust. Your own signing key is always trusted. */
+  skills: { hubs: { name: string; url: string }[]; trusted: { name: string; publicKey: string }[] };
   /** Seconds an approved action that leaves the machine waits before it runs, so it can be undone (0 turns it off). */
   undo: { seconds: number };
   /** Evals: offline suites daily (no tokens); the live suite weekly only if turned on (uses tokens). */
@@ -130,6 +132,7 @@ export const DEFAULTS: Settings = {
   ciso: { reviews: true },
   evals: { daily: true, live: false },
   undo: { seconds: 60 },
+  skills: { hubs: [{ name: "deck", url: "https://raw.githubusercontent.com/windsurftemplate/deck/main/skills-hub/index.json" }], trusted: [] },
   labs: {
     routing: false,
     ollama: { enabled: false, baseUrl: "http://localhost:11434" },
@@ -315,6 +318,16 @@ export function applyUpdate(current: Settings, patch: DeepPartial<Settings>): Se
   if (patch.notifications?.enabled !== undefined) next.notifications.enabled = !!patch.notifications.enabled;
   if (patch.labs) next.labs = applyLabs(next.labs, patch.labs as DeepPartial<Labs>);
   if (patch.ciso?.reviews !== undefined) next.ciso.reviews = !!patch.ciso.reviews;
+  if (patch.skills?.hubs) {
+    const hubs = patch.skills.hubs.slice(0, 10).map((h) => ({ name: String(h.name ?? "").trim().slice(0, 40), url: String(h.url ?? "").trim() }));
+    for (const h of hubs) if (!h.name || !/^https:\/\/[^\s]+$/.test(h.url)) throw new SettingsError("skills.hubs", "Each hub needs a name and an https address.");
+    next.skills = { ...next.skills, hubs };
+  }
+  if (patch.skills?.trusted) {
+    const t = patch.skills.trusted.slice(0, 50).map((x) => ({ name: String(x.name ?? "").trim().slice(0, 60), publicKey: String(x.publicKey ?? "").trim() }));
+    for (const x of t) if (!x.name || !/^[A-Za-z0-9+/]{43}=$/.test(x.publicKey)) throw new SettingsError("skills.trusted", "A trusted publisher needs a name and a 44-character public key.");
+    next.skills = { ...next.skills, trusted: t };
+  }
   if (patch.undo?.seconds !== undefined) {
     const n = patch.undo.seconds;
     if (!Number.isInteger(n) || n < 0 || n > 300) throw new SettingsError("undo.seconds", "Choose 0 to 300 seconds.");
@@ -382,7 +395,7 @@ export function parseSettings(json: string | null | undefined): Settings {
     const raw = JSON.parse(json) as DeepPartial<Settings>;
     // Apply each section on its own so one bad section falls back to defaults without losing the rest.
     let out = structuredClone(DEFAULTS);
-    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "helpers", "ciso", "evals", "undo", "general", "boot", "vaultproof", "chat"] as const) {
+    for (const key of ["storage", "models", "embeddings", "preset", "onboarding", "world", "voice", "camera", "tools", "notifications", "labs", "thinking", "helpers", "ciso", "evals", "undo", "skills", "general", "boot", "vaultproof", "chat"] as const) {
       if (raw[key] === undefined) continue;
       try {
         out = applyUpdate(out, { [key]: raw[key] } as DeepPartial<Settings>);

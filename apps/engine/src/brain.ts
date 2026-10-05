@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { extractFile, fetchPage, readAppleNotes, readNotionZip, parseMarkdown, type Extracted } from "@deck/ingest";
 import { embedChunks, type Embedder, type MemoryStore } from "@deck/memory";
-import { scanInjection } from "@deck/gate";
+import { redactSecrets, scanInjection } from "@deck/gate";
 
 export interface BrainDeps {
   store: MemoryStore;
@@ -43,7 +43,10 @@ export class Brain {
   private async save(x: Extracted, kind: string, source: string): Promise<{ id: number; title: string; chunks: number; warning?: string }> {
     if (!x.text.trim()) throw new Error(`${x.title || source}: no text to add.`);
     const scan = scanInjection(x.text);
-    x = { ...x, text: scan.clean };
+    // Keys and tokens are removed before anything is stored, so the second brain never holds a live secret.
+    const redacted = redactSecrets(scan.clean);
+    const secrets = redacted.findings.reduce((a, f) => a + f.count, 0);
+    x = { ...x, title: redactSecrets(x.title).clean, text: redacted.clean };
     if (scan.score < 0.5 && this.d.checkInjection) {
       const p = await this.d.checkInjection(x.text.slice(0, 6000)).catch(() => null);
       if (p !== null && p >= 0.75) {
@@ -57,7 +60,12 @@ export class Brain {
     if (scan.score >= 0.5) {
       const warning = `"${x.title}" contains text that tries to instruct the crew (${scan.signals.join("; ")}). It was added, and the crew will see a warning whenever it reads it.`;
       await this.d.log(`Scanner: ${warning}`);
-      return { id, title: x.title, chunks: chunks.length, warning };
+      return { id, title: x.title, chunks: chunks.length, warning: secrets ? `${warning} ${secrets} key or token${secrets > 1 ? "s were" : " was"} removed.` : warning };
+    }
+    if (secrets) {
+      const note = `"${x.title}": ${secrets} key or token${secrets > 1 ? "s were" : " was"} removed before saving.`;
+      await this.d.log(`Scanner: ${note}`);
+      return { id, title: x.title, chunks: chunks.length, warning: note };
     }
     return { id, title: x.title, chunks: chunks.length };
   }

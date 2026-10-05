@@ -12,3 +12,4 @@ export { routeComplexity } from "./route.js";
 export { applyPlaybookDelta, playbookFromLearned, overlap, type PlaybookEntry, type PlaybookDelta } from "./crew-config.js";
 export { reflectPlaybook } from "./tune.js";
 export { parseSkillMd, toSkillMd, skillSlug, type SkillMd } from "./skill-md.js";
+export { verifySkill, signSkill, checkSignature, newSigningKey, keyFingerprint, type SkillVerification, type SkillSignature, type SkillCheck } from "./skill-verify.js";
