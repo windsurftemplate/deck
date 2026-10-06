@@ -290,6 +290,17 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-05: Fix: Windows install failed without Git
+
+**Problem.** On Windows without Git (and from a GitHub zip download), `pnpm install` stopped at the root `prepare` script: `git config core.hooksPath .githooks || true` needs Git, and `true` does not exist in the Windows shell.
+
+**Changed**
+- `prepare` now runs `scripts/setup-hooks.mjs`: sets the Git hooks only when the folder is a Git checkout and Git is installed; otherwise skips quietly. Works on every platform.
+- Checked every other package script for Mac- or Linux-only commands (none), and the lockfile for dependencies fetched with Git (none).
+
+**Verified**
+- The script exits cleanly with no repository and with a repository but no Git; `pnpm install --frozen-lockfile` passes.
+
 ## 2026-10-05: Safe computer use (Labs): sandboxed shell and isolated browser
 
 **Changed**
