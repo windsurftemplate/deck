@@ -8,7 +8,7 @@ Status keys: `todo`, `doing`, `done`, `blocked`.
 
 ## Next file
 
-**P7.6, working memory for long coding tasks** (Phase 7, code memory). P7.1 to P7.5 are done.
+**Decide P7.7** (orchestrate an external coding agent such as Claude Code; marked "idea, decide later"). P7.1 to P7.6 are done.
 Also open: run the Windows installer on a real Windows machine (step 1.7).
 
 ## Phase 1: Core (weeks 1 to 2)
@@ -220,7 +220,7 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P5.13 | Automations: recurring jobs for any agent, set on a page or proposed from chat; results to chat, Crew chat, notifications and Telegram | Runs on schedule while the app is open | done |
 | P5.14 | Learning: your documents become facts nightly; prompt tuning drafts guidance from misses, tests it on practice tasks (nothing changed or sent), adopts only a clear win with your approval | Tuned guidance shows in Settings, Crew, and can be removed | done |
 
-## Phase 7: Code memory (in progress)
+## Phase 7: Code memory (P7.1 to P7.6 done; P7.7 to decide)
 
 Memory today is built for slow-changing facts about your world. Code changes every commit, is found by exact names and structure, and is a dense graph of imports and calls. Rule for this phase: never memorize code; index it, read it fresh, and prove claims with tests. Memory keeps pointers and lessons, each tied to the commit it describes. Order is by value for effort: P7.1 and P7.2 give most of the benefit.
 
@@ -231,7 +231,7 @@ Memory today is built for slow-changing facts about your world. Code changes eve
 | P7.3 | Live code index: split code at real boundaries (functions, classes, types) with tree-sitter; search by exact name (keyword) and by meaning (embeddings); every entry carries the file hash and commit; changed files re-indexed incrementally; stale entries never served | Searching a renamed function finds the new name after one re-index; the old location is not returned | done: `packages/code-index` (WebAssembly tree-sitter, 15 languages plus line windows; `CodeIndexStore` port with SQLite and in-memory adapters and a contract suite); Engineering's `code_search` tool |
 | P7.4 | Fix memory: "this error came from X; this change fixed it", tied to the commit and the files involved; marked stale when those files change; re-checked before use | A repeat of a fixed error recalls the earlier fix; after the files change, the entry is flagged as possibly stale | done: `FixMemory` in `packages/code-index`; remembered when a failing test passes after a change, recalled on a failing test run and with `fix_search` |
 | P7.5 | Code graph: imports, calls, types and which tests cover which code, rebuilt for changed files; recall follows it ("what depends on this?") | Asking what breaks if a function changes lists its callers and covering tests | done: links stored per file in `packages/code-index` (imports, calls, types), imports resolved at question time (TypeScript and JavaScript, Python, Go, Java, Rust), tests found directly and through one caller; Engineering's `code_impact` tool |
-| P7.6 | Working memory for long coding tasks: plan, to-do list and notes kept in a file in the workspace, restated every step and re-read after the conversation is compacted | A task longer than the context window finishes without losing its plan | planned |
+| P7.6 | Working memory for long coding tasks: plan, to-do list and notes kept in a file in the workspace, restated every step and re-read after the conversation is compacted | A task longer than the context window finishes without losing its plan | done: `update_notes` and compaction in the agent loop (`packages/agents/src/act.ts`); Engineering's coding tasks get 30 steps and a notes file in `.deck/tasks/` |
 | P7.7 | Option: orchestrate an external coding agent (for example Claude Code) inside the sandbox, with deck's approvals, no merging, and test-based checks around it | A coding task runs end to end through the external agent and lands as a pull request waiting for approval | idea, decide later |
 
 ## How to use this file

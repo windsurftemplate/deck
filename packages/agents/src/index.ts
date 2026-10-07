@@ -3,7 +3,7 @@ export { decideTool, effectiveScopes, type ToolPolicy, type ToolDecision } from 
 export { loadCoreRules, loadRole, loadPolicy } from "./load.js";
 export { composeBrief, type Brief, type BriefInput } from "./brief.js";
 export { parseModelCommand, describeModels, ROLE_LABEL, PROVIDER_LABEL, type ModelCommand, type Role } from "./commands.js";
-export { runAgent, actionKey, needsApproval, verifyWork, summarizeThought, type Verdict, type AgentTool, type ActionRecord, type ActionKind, type Preset, type RunAgentInput, type Judge, type ToolOutput, type ShellFact, type RequireTests } from "./act.js";
+export { runAgent, NOTES_TOOL, actionKey, needsApproval, verifyWork, summarizeThought, type Verdict, type AgentTool, type ActionRecord, type ActionKind, type Preset, type RunAgentInput, type Judge, type ToolOutput, type ShellFact, type RequireTests } from "./act.js";
 export { reflect, extractFacts, jsonFrom, skillName, type SkillDraft } from "./learn.js";
 export { LOCKED_RULES, validateOverride, checkLearned, effectivePolicy, effectiveRole, describeOverrideChange, type CrewOverride, type CrewOverrides, type ToolMode } from "./crew-config.js";
 export { draftGuidance, practiceScore, shouldAdopt } from "./tune.js";

@@ -290,6 +290,21 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-07: Code memory, part 5: working memory for long tasks (P7.6)
+
+**Changed**
+- Agent loop (`packages/agents/src/act.ts`): optional working notes. The built-in `update_notes` tool replaces the task's notes (plan, to-do list, notes; keys removed, size capped); the plan seeds them when there is one. The notes are restated at the end of every step. Optional context budget: when the conversation grows past it, older steps are replaced by the task, the notes re-read from the file, the last 10 actions and the latest results, and the agent continues from its first unfinished to-do. Shown in Crew chat as a reflection.
+- Engine: Engineering's coding tasks (shell on) get up to 30 steps, a 60,000-token budget and a notes file at `.deck/tasks/<task>.md` in the workspace, outside any project and skipped by the code index and fix memory.
+- Engineering role file and manual updated. Build plan: P7.6 done; Next points at the P7.7 decision.
+
+**Verified**
+- A task needing 12 large reads under a 4,000-token budget compacts several times, never goes more than one step over, keeps the task, the plan and the latest to-do state from the notes file, and finishes.
+- Notes are restated every step, never hold keys, and are not offered when a run has no notes.
+- Engine: a coding task's notes land in `.deck/tasks/` and are restated to the agent.
+
+**Next**
+- Decide P7.7 (an external coding agent inside the sandbox).
+
 ## 2026-10-07: Code memory, part 4: code graph (P7.5)
 
 **Changed**

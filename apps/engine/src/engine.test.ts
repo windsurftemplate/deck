@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1465,6 +1465,13 @@ describe.runIf(sandboxAvailable())("code memory: project guide and tests as grou
       const good = await e.delegate("code", "Fix the value", "test", ["value.txt is ok"]);
       expect(good).toContain("Checked: all done-when items met.");
       // The guide is also a tool, for a project cloned during the task.
+      // Long coding work keeps its notes in a file in the workspace.
+      script.push({ name: "update_notes", input: { text: "# Plan\nset the value\n# To do\n- [x] value is ok" } });
+      await e.delegate("code", "Note the plan", "test", ["the plan is written down"]);
+      const tasks = readdirSync(join(ws, ".deck", "tasks"));
+      expect(tasks).toHaveLength(1);
+      expect(readFileSync(join(ws, ".deck", "tasks", tasks[0]!), "utf8")).toContain("- [x] value is ok");
+      expect(prompts[prompts.length - 1]).toMatch(/# Your working notes \(.*\.deck\/tasks\/.*\.md\)/);
       script.push({ name: "project_guide", input: { folder: "app" } });
       await e.delegate("code", "Read the guide", "test", ["the guide was read"]);
       expect(prompts.join("\n")).toContain("Coding work is finished only when `node test.js` passes");

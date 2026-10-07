@@ -1941,6 +1941,8 @@ export class Engine {
     const project = agent === "code" && this.codeAccess() ? await this.projectGuide().catch(() => null) : null;
     // Tests are required once a project is known; without one, a failing test run still fails the task.
     const fixWatch = agent === "code" ? await this.watchForFix().catch(() => null) : null;
+    // Long coding work: more steps, a notes file in the workspace, and compaction instead of running out of context.
+    const long = agent === "code" && this.d.settings.labs.shell?.enabled ? { maxTurns: 30, contextBudget: 60_000, notes: this.taskNotes(task.id) } : {};
     const requireTests = agent === "code" && this.codeAccess() ? { mustRun: !!project, ...(project?.guide.commands.test ? { command: project.guide.commands.test } : {}) } : undefined;
     const p = buildPrompt({ coreRules: loadCoreRules(), role: this.roleFor(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(memories), working: [await this.observe(agent), project ? this.describeProject(project) : "", await this.experienceFor(agent, goal).catch(() => "")].filter(Boolean).join("\n\n") });
     // Delegated tasks are multi-step by nature: always plan (unless thinking is off); hard ones also reason.
@@ -1962,6 +1964,7 @@ export class Engine {
         tripwire: this.tripwire,
         onTripwire: (t) => this.onTripwire(agent, t),
         verify: { goal, doneWhen, chat: (req) => this.router.chat("cheap", "verifier", req), judge: this.jevJudge(), ...(requireTests ? { requireTests } : {}) },
+        ...long,
         onAction: (a) => this.say({ sender: agent, recipient: a.tool, kind: "tool", text: `${a.status}: ${a.summary}${a.result ? `\n${a.result.slice(0, 400)}` : ""}`, taskId: task.id }),
         ...(think ? { think } : {}),
         onThought: (kind, text) => this.say({ sender: agent, recipient: "owner", kind: "thinking", text: `${THOUGHT_LABEL[kind]}: ${text}`, taskId: task.id }),
@@ -3217,6 +3220,21 @@ export class Engine {
         const name = String(i.name ?? "").trim();
         const { impacts, report } = await this.codeIndexFor(i.folder ? String(i.folder).trim() : undefined).impact(name);
         return untrusted("code graph", formatImpact(name, impacts, report));
+      },
+    };
+  }
+
+  /** A task's working notes: a Markdown file in the workspace (outside the project), kept after the task as its record. */
+  private taskNotes(taskId: string) {
+    const dir = join(this.workspaceDir(), ".deck", "tasks");
+    const file = join(dir, `${taskId.replace(/[^\w-]/g, "_")}.md`);
+    return {
+      where: file.startsWith(homedir()) ? `~${file.slice(homedir().length)}` : file,
+      read: async () => (existsSync(file) ? readFileSync(file, "utf8") : ""),
+      write: async (text: string) => {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(`${file}.tmp`, text);
+        renameSync(`${file}.tmp`, file);
       },
     };
   }

@@ -89,7 +89,7 @@ export function findProjectRoot(workspace: string): string | null {
 }
 
 /** Folders that hold dependencies, builds, caches or editor state, never the project's own code. */
-const SKIP_DIRS = new Set([".git", "node_modules", "dist", "build", "out", "target", "vendor", ".venv", "venv", "env", "__pycache__", ".next", ".nuxt", ".turbo", ".cache", "coverage", "bin", "obj", ".idea", ".vscode", ".gradle", "Pods", "DerivedData", ".pnpm-store", ".mypy_cache", ".pytest_cache", ".tox", "site-packages"]);
+const SKIP_DIRS = new Set([".git", ".deck", "node_modules", "dist", "build", "out", "target", "vendor", ".venv", "venv", "env", "__pycache__", ".next", ".nuxt", ".turbo", ".cache", "coverage", "bin", "obj", ".idea", ".vscode", ".gradle", "Pods", "DerivedData", ".pnpm-store", ".mypy_cache", ".pytest_cache", ".tox", "site-packages"]);
 
 /** Simple .gitignore lines at the project root: folder and file names, and *.ext patterns. Others are ignored. */
 function rootIgnores(root: string): (rel: string, name: string, dir: boolean) => boolean {
