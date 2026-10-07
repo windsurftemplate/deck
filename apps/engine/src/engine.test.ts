@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { applyUpdate, DEFAULTS as REAL_DEFAULTS, type Settings } from "@deck/set
 // Most tests script the model's replies turn by turn, so they run with thinking off; thinking has its own test.
 // They also pin Claude models (the shipped default is OpenAI auto-pick, tested on its own below).
 const DEFAULTS: Settings = { ...REAL_DEFAULTS, ciso: { reviews: false }, thinking: { mode: "off", reasoning: "medium", idlePrep: true }, models: { ...REAL_DEFAULTS.models, heavy: { provider: "anthropic", model: "claude-sonnet-5" }, cheap: { provider: "anthropic", model: "claude-haiku-4-5-20251001" } } };
+import { sandboxAvailable } from "@deck/connectors";
 import { Engine } from "./engine.js";
 import { memoryKeychain, type Keychain } from "./keychain.js";
 import { handleLine } from "./protocol.js";
@@ -1430,6 +1431,47 @@ describe.runIf(existsSync("/usr/bin/bwrap") && existsSync("/opt/pw-browsers/chro
       server.close();
     }
   }, 90_000);
+});
+
+describe.runIf(sandboxAvailable())("code memory: project guide and tests as ground truth", () => {
+  it("Engineering gets the project's own test command, and a change is finished only when that test passes", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const ws = dir();
+    mkdirSync(join(ws, "app"));
+    writeFileSync(join(ws, "app", "AGENTS.md"), "# App\n\nRun the tests with `node test.js` before every commit.\nUse tabs, not spaces.\n");
+    writeFileSync(join(ws, "app", "test.js"), "const v = require('fs').readFileSync(__dirname + '/value.txt', 'utf8').trim();\nif (v !== 'ok') { console.error('expected ok, got ' + v); process.exit(1); }\nconsole.log('1 passed');\n");
+    const script: { name: string; input: Record<string, unknown> }[] = [];
+    const prompts: string[] = [];
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      settings: { ...DEFAULTS, undo: { seconds: 0 }, labs: { ...DEFAULTS.labs, shell: { enabled: true, workspace: ws } } },
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        if (!req.tools?.length) return { text: '{"missing": []}', model: ref.model, stopReason: "end_turn", usage: U }; // the checker model agrees with anything
+        prompts.push(JSON.stringify(req.messages));
+        const next = script.shift();
+        if (next) return { text: "", toolCalls: [{ type: "tool_call", id: `t${script.length}${next.name}`, name: next.name, input: next.input }], model: ref.model, stopReason: "tool_use", usage: U };
+        return { text: "Done, all tests pass.", model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    try {
+      // A change that breaks the test: the agent says it is done, but the real exit code says otherwise.
+      script.push({ name: "shell_run", input: { command: "echo bug > value.txt", cwd: "app" } }, { name: "shell_run", input: { command: "node test.js", cwd: "app" } });
+      const bad = await e.delegate("code", "Set the value", "test", ["value.txt is set"]);
+      expect(prompts[0]).toContain("# Project: app");
+      expect(prompts[0]).toContain("test: node test.js (from AGENTS.md)");
+      expect(prompts[0]).toContain("Use tabs, not spaces.");
+      expect(bad).toMatch(/Not finished: The project's tests \(node test.js\) must pass after the last change: the last run did not pass \(it exited 1\)/);
+      // The fix, proven by a passing run after the last change.
+      script.push({ name: "shell_run", input: { command: "echo ok > value.txt", cwd: "app" } }, { name: "shell_run", input: { command: "node test.js", cwd: "app" } });
+      const good = await e.delegate("code", "Fix the value", "test", ["value.txt is ok"]);
+      expect(good).toContain("Checked: all done-when items met.");
+      // The guide is also a tool, for a project cloned during the task.
+      script.push({ name: "project_guide", input: { folder: "app" } });
+      await e.delegate("code", "Read the guide", "test", ["the guide was read"]);
+      expect(prompts.join("\n")).toContain("Coding work is finished only when `node test.js` passes");
+    } finally {
+      await e.close();
+    }
+  }, 60_000);
 });
 
 describe("brief sources", () => {

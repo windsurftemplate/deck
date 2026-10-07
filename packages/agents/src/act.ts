@@ -1,6 +1,7 @@
 import type { ApprovalQueue } from "@deck/gate";
 import { redactSecrets } from "@deck/gate";
 import type { Block, ChatMessage, ChatRequest, ChatResponse, TextBlock, ToolCallBlock, ToolSpec } from "@deck/models";
+import { testEvidence } from "./project.js";
 import { decideTool, type ToolPolicy } from "./tools.js";
 
 /** read: looks only. write: changes something on this machine that can be changed back. external: leaves the machine (send, post, pay, merge). */
@@ -14,7 +15,21 @@ export interface AgentTool {
   kind: ActionKind;
   /** One line the owner reads on an approval card. */
   describe(input: Record<string, unknown>): string;
-  run(input: Record<string, unknown>): Promise<string>;
+  run(input: Record<string, unknown>): Promise<string | ToolOutput>;
+}
+
+/** A tool result with facts the checker can trust because the tool, not the model, reports them. */
+export interface ToolOutput {
+  text: string;
+  /** A sandboxed command: what ran, how risky it was, and its real exit code. */
+  shell?: ShellFact;
+}
+
+export interface ShellFact {
+  command: string;
+  risk: "read" | "write" | "network";
+  exitCode: number | null;
+  timedOut: boolean;
 }
 
 export interface ActionRecord {
@@ -23,6 +38,8 @@ export interface ActionRecord {
   status: "done" | "waiting" | "denied" | "failed";
   approvalId?: string;
   result?: string;
+  /** Set by shell tools from the real run; the test check reads only this, never the report. */
+  shell?: ShellFact;
 }
 
 /** When a tool needs the owner first. External actions always do; writes do under Cautious. */
@@ -75,7 +92,17 @@ export interface RunAgentInput {
   /** Summaries of the agent's thinking: its plan, its reasoning, and its reflections after a step fails. */
   onThought?: (kind: "plan" | "thinking" | "reflect", text: string) => void;
   /** Check the result against the task's done-when list before reporting done. One retry if something is missing. */
-  verify?: { goal: string; doneWhen: string[]; chat: (req: ChatRequest) => Promise<ChatResponse>; judge?: Judge };
+  verify?: { goal: string; doneWhen: string[]; chat: (req: ChatRequest) => Promise<ChatResponse>; judge?: Judge; requireTests?: RequireTests };
+}
+
+/**
+ * Tests as ground truth for coding work: when the task changed code, it is finished only when a test run after
+ * the last change exited 0. command is the project's test command when known (from its own guide or build files).
+ */
+export interface RequireTests {
+  command?: string;
+  /** False when no project was found up front: a test run is not required, but a failing one still fails. Default true. */
+  mustRun?: boolean;
 }
 
 export interface Verdict {
@@ -95,8 +122,9 @@ export interface Verdict {
  */
 export type Judge = (v: { goal: string; doneWhen: string[]; report: string; actions: ActionRecord[] }) => Promise<(Verdict & { by?: string }) | null>;
 
-export async function verifyWork(v: { goal: string; doneWhen: string[]; report: string; actions: ActionRecord[]; chat: (req: ChatRequest) => Promise<ChatResponse>; judge?: Judge }): Promise<Verdict> {
-  const failed = v.actions.filter((a) => a.status === "failed").map((a) => `Failed: ${a.summary}`);
+export async function verifyWork(v: { goal: string; doneWhen: string[]; report: string; actions: ActionRecord[]; chat: (req: ChatRequest) => Promise<ChatResponse>; judge?: Judge; requireTests?: RequireTests }): Promise<Verdict> {
+  // Failed actions and unproven code changes fail the check whatever the report, a judge or the checker model says.
+  const failed = [...v.actions.filter((a) => a.status === "failed").map((a) => `Failed: ${a.summary}`), ...(v.requireTests ? testEvidence(v.actions, v.requireTests.command, v.requireTests.mustRun ?? true).missing : [])];
   if (v.judge) {
     const quick = await v.judge({ goal: v.goal, doneWhen: v.doneWhen, report: v.report, actions: v.actions }).catch(() => null);
     // Failed actions always fail, whatever any judge says.
@@ -281,9 +309,10 @@ async function handle(call: ToolCallBlock, i: RunAgentInput, allowed: AgentTool[
   }
   const execute = async (): Promise<ActionRecord> => {
     try {
-      const out = redactSecrets(await tool.run(call.input)).clean.slice(0, 6000);
+      const raw = await tool.run(call.input);
+      const out = redactSecrets(typeof raw === "string" ? raw : raw.text).clean.slice(0, 6000);
       if (key) await i.once!.mark(key, "done", summary);
-      return { tool: call.name, summary, status: "done", result: out };
+      return { tool: call.name, summary, status: "done", result: out, ...(typeof raw !== "string" && raw.shell ? { shell: raw.shell } : {}) };
     } catch (err) {
       if (key) await i.once!.mark(key, "clear", summary); // a failed attempt may be retried
       return { tool: call.name, summary, status: "failed", result: (err as Error).message };

@@ -80,7 +80,8 @@ export const SAFETY_CASES: SafetyCase[] = [
     id: "untrusted-wrapper-cannot-be-closed-by-the-attacker",
     run: async () => {
       const { tools } = world();
-      const text = await tools[0]!.run({});
+      const out = await tools[0]!.run({});
+      const text = typeof out === "string" ? out : out.text;
       return (text.match(/<\/untrusted>/g) ?? []).length === 1 && text.trimEnd().endsWith("</untrusted>");
     },
   },

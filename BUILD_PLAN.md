@@ -8,8 +8,8 @@ Status keys: `todo`, `doing`, `done`, `blocked`.
 
 ## Next file
 
-**Your Mac: run the app end to end** (`pnpm install && pnpm --filter @deck/engine build && pnpm --filter @deck/desktop tauri dev`).
-Then step 1.5, engine packaging, so the installed app needs no Node.
+**P7.3, live code index** (Phase 7, code memory). P7.1 and P7.2 are done.
+Also open: run the Windows installer on a real Windows machine (step 1.7).
 
 ## Phase 1: Core (weeks 1 to 2)
 
@@ -136,7 +136,6 @@ Gate to leave Phase 2: no raw key anywhere in the app or logs, and every externa
 | P2.4 | Email drafts and calendar holds | Draft replies and hold times, both behind approval | Approve in the app sends the draft | partly built: Gmail drafts with approval (Labs, needs your Google OAuth client); calendar holds not built |
 | P2.5 | GTM, Code and Ops agents | Role files, tools, handoffs from the Chief of Staff | A delegated task finishes with a report | done (GTM, Ops, Engineering; Engineering plans only until repo tools exist) |
 | P2.6 | Jev routing and Laya intent check | Decide which agent and check each action matches the task | Off-task actions are stopped | Jev done (routing, checks, approval risk, scanner); Laya intent check not built (needs a decision) |
-| P2.8 | Crew rules you can change | Settings > Crew (instructions, your rules, each tool Allowed / Ask me / Off, history, undo) and from chat (proposal, then Apply); tool-list ask-first now honored | Changes can only make agents more careful; locked rules shown read-only | done |
 | P2.8 | Crew rules | Settings > Crew (instructions, your rules, tools Allowed, Ask me or Off; locked rules shown), chat proposals with Apply, history and undo; tool lists' ask-first honored | Changes only narrow an agent; nothing changes before you confirm | done |
 | P2.7 | Verifier | Check work against done-when before reporting done | Unfinished work is not reported done | done |
 ## Phase 3: Learning (in progress)
@@ -221,14 +220,14 @@ Gate to leave Phase 4: first agent PR merged after your review (needs repository
 | P5.13 | Automations: recurring jobs for any agent, set on a page or proposed from chat; results to chat, Crew chat, notifications and Telegram | Runs on schedule while the app is open | done |
 | P5.14 | Learning: your documents become facts nightly; prompt tuning drafts guidance from misses, tests it on practice tasks (nothing changed or sent), adopts only a clear win with your approval | Tuned guidance shows in Settings, Crew, and can be removed | done |
 
-## Phase 7: Code memory (planned, not started)
+## Phase 7: Code memory (in progress)
 
 Memory today is built for slow-changing facts about your world. Code changes every commit, is found by exact names and structure, and is a dense graph of imports and calls. Rule for this phase: never memorize code; index it, read it fresh, and prove claims with tests. Memory keeps pointers and lessons, each tied to the commit it describes. Order is by value for effort: P7.1 and P7.2 give most of the benefit.
 
 | # | What | Done when | Status |
 |---|------|-----------|--------|
-| P7.1 | Project knowledge from the repo: read the repository's own AGENTS.md, CLAUDE.md, README and decision records (build and test commands, conventions, architecture decisions) as the source of truth; deck's facts only add to them | Engineering states the repo's test command and conventions without being told, and follows them | planned |
-| P7.2 | Tests as ground truth: run the repo's tests in the sandboxed shell; a coding task counts as done only when the checker sees passing test output, not the agent's report | A change that breaks a test is marked not finished even when the agent says it is done | planned (needs P6.3, done) |
+| P7.1 | Project knowledge from the repo: read the repository's own AGENTS.md, CLAUDE.md, README and decision records (build and test commands, conventions, architecture decisions) as the source of truth; deck's facts only add to them | Engineering states the repo's test command and conventions without being told, and follows them | done: `packages/agents/src/project.ts` reads the guides, decision records and build files (local workspace or GitHub); Engineering gets them in every task and as the `project_guide` tool |
+| P7.2 | Tests as ground truth: run the repo's tests in the sandboxed shell; a coding task counts as done only when the checker sees passing test output, not the agent's report | A change that breaks a test is marked not finished even when the agent says it is done | done: shell tools report the real exit code; the verifier fails any code change without a passing test run after it, whatever the report says |
 | P7.3 | Live code index: split code at real boundaries (functions, classes, types) with tree-sitter; search by exact name (keyword) and by meaning (embeddings); every entry carries the file hash and commit; changed files re-indexed incrementally; stale entries never served | Searching a renamed function finds the new name after one re-index; the old location is not returned | planned |
 | P7.4 | Fix memory: "this error came from X; this change fixed it", tied to the commit and the files involved; marked stale when those files change; re-checked before use | A repeat of a fixed error recalls the earlier fix; after the files change, the entry is flagged as possibly stale | planned |
 | P7.5 | Code graph: imports, calls, types and which tests cover which code, rebuilt for changed files; recall follows it ("what depends on this?") | Asking what breaks if a function changes lists its callers and covering tests | planned |

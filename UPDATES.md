@@ -290,6 +290,24 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-07: Code memory, part 1: project guide and tests as ground truth (P7.1, P7.2)
+
+**Changed**
+- `packages/agents/src/project.ts`: `loadProjectGuide` reads a project's AGENTS.md, CLAUDE.md, Copilot instructions, CONTRIBUTING and README (agent guides first, within a budget; a CLAUDE.md that only points at AGENTS.md is skipped), lists decision records, and finds the test, build, lint and typecheck commands, from the guides first, then from package.json, Makefile, Cargo.toml, go.mod or pyproject.toml. `testEvidence` decides from real exit codes whether a code change is proven: a test run after the last change, exit 0, not timed out, and nothing hiding the exit code (no pipe after it, no `|| true`, no `;`).
+- `packages/agents/src/act.ts`: tools can return facts with their text (`ToolOutput`); shell runs record the command, risk and exit code on the action. `verifyWork` takes `requireTests`: unproven code changes fail the check whatever the report, Jev or the checker model say, and the agent gets one retry with the reason.
+- `packages/connectors/src/project-files.ts`: read-only project access for a workspace folder (never leaves it, even through links; large files skipped) or a GitHub repository; `findProjectRoot` picks the workspace or its only project folder.
+- Engine: Engineering's delegated tasks include the project guide (as untrusted text: it sets commands and conventions, never tools or rules; the project's files win over memory) and require tests once a project is known. Without a known project, a failing test run still fails the task. New `project_guide` tool for a project cloned during a task.
+- Engineering role file: repository tools, working from the project's own files, reading code fresh, running the test command on its own.
+- Build plan: P7.1 and P7.2 done, Next file moved to P7.3, duplicate P2.8 row removed.
+
+**Verified**
+- Reading this repository finds `pnpm check` from AGENTS.md and its conventions.
+- Engine end to end in the real macOS sandbox (sandbox-exec): a change that breaks the project's test is reported "Not finished" with exit 1 although the agent said all tests pass; the fix with a passing run is checked; the guide tool works. This is also the first run of the P6.3 macOS sandbox profile on a real Mac.
+- `pnpm check`: all packages pass except one engine test that also fails on main on this Mac (OpenClaw import scan finds 19 items instead of 6); not touched here. Memory and safety evals unchanged.
+
+**Next**
+- P7.3, live code index.
+
 ## 2026-10-05: Fix: Windows install failed without Git
 
 **Problem.** On Windows without Git (and from a GitHub zip download), `pnpm install` stopped at the root `prepare` script: `git config core.hooksPath .githooks || true` needs Git, and `true` does not exist in the Windows shell.
