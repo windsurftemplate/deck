@@ -23,6 +23,7 @@ apps/desktop          Tauri 2 shell (UI, tray, keychain, engine bridge)
 apps/engine           agent engine (Node): workspace DB, models, Chief of Staff, Telegram; JSON lines over stdio
 packages/core         orchestrator, task board, events, scheduler, agent loop
 packages/memory       schema, migrations, write and read paths
+packages/code-index   live code index: tree-sitter chunks, name, keyword and meaning search, never stale
 packages/models       provider adapters, roles, caps (Gateway client on hold)
 packages/settings     settings schema and validation (no secrets)
 packages/tracker      local issue tracker (replaces Linear)
@@ -54,6 +55,7 @@ Every outside dependency sits behind an interface (a port) with swappable adapte
 |------|----------------|---------------|
 | `MemoryStore` (`@deck/memory`) | SQLite (encrypted), in-memory | Postgres + pgvector, LanceDB, a server |
 | `TrackerStore` (`@deck/tracker`) | SQLite (same file), in-memory | Postgres, GitHub Issues sync |
+| `CodeIndexStore` (`@deck/code-index`) | SQLite (same file), in-memory | Postgres + pgvector, a server |
 | `Embedder` | test hash embedder | OpenAI, local model |
 | `ChatModel` (`@deck/models`) | Claude direct, Claude via Gateway | OpenAI, Gemini, OpenRouter, local |
 | `BriefSources` (`@deck/connectors`) | Gmail, Calendar, tracker | any source |
@@ -61,7 +63,7 @@ Every outside dependency sits behind an interface (a port) with swappable adapte
 | `BotActions` (`@deck/chat`) | Telegram | Slack |
 
 Rules:
-- A new adapter is done when it passes the port's contract suite (`@deck/memory/contract`, `@deck/tracker/contract`).
+- A new adapter is done when it passes the port's contract suite (`@deck/memory/contract`, `@deck/tracker/contract`, `@deck/code-index/contract`).
 - Moving data between adapters uses the export and import methods (`migrateMemory` re-embeds when the vector size changes).
 - Every port method is atomic on its own; no transactions leak across the interface.
 

@@ -1474,6 +1474,44 @@ describe.runIf(sandboxAvailable())("code memory: project guide and tests as grou
   }, 60_000);
 });
 
+describe("code memory: live code index", () => {
+  it("Engineering searches code by name and meaning; after a rename the new name is found and the old location never served", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const ws = dir();
+    mkdirSync(join(ws, "app", "src"), { recursive: true });
+    writeFileSync(join(ws, "app", "package.json"), JSON.stringify({ scripts: { test: "node test.js" } }));
+    writeFileSync(join(ws, "app", "src", "billing.ts"), "export function chargeCustomer(id: string) {\n  return id;\n}\n");
+    const script: { name: string; input: Record<string, unknown> }[] = [];
+    const results: string[] = [];
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      settings: { ...DEFAULTS, labs: { ...DEFAULTS.labs, shell: { enabled: true, workspace: ws } } },
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        if (!req.tools?.length) return { text: '{"missing": []}', model: ref.model, stopReason: "end_turn", usage: U };
+        const last = req.messages[req.messages.length - 1];
+        if (last && Array.isArray(last.content)) for (const b of last.content as { type: string; content?: unknown }[]) if (b.type === "tool_result") results.push(String(b.content));
+        const next = script.shift();
+        if (next) return { text: "", toolCalls: [{ type: "tool_call", id: `s${script.length}`, name: next.name, input: next.input }], model: ref.model, stopReason: "tool_use", usage: U };
+        return { text: "Found it.", model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    try {
+      script.push({ name: "code_search", input: { query: "chargeCustomer" } });
+      await e.delegate("code", "Find the billing code", "test", ["the function is located"]);
+      expect(results[0]).toMatch(/<untrusted source="code search">/);
+      expect(results[0]).toMatch(/1\. function chargeCustomer at src\/billing.ts:1-3 \(found by name/);
+      writeFileSync(join(ws, "app", "src", "billing.ts"), "export function billCustomer(id: string) {\n  return id;\n}\n");
+      results.length = 0;
+      script.push({ name: "code_search", input: { query: "billCustomer" } }, { name: "code_search", input: { query: "chargeCustomer" } });
+      await e.delegate("code", "Find the billing code again", "test", ["the function is located"]);
+      expect(results[0]).toContain("re-indexed 1 changed file(s)");
+      expect(results[0]).toMatch(/1\. function billCustomer at src\/billing.ts:1-3/);
+      expect(results[1]).not.toMatch(/function chargeCustomer at/);
+    } finally {
+      await e.close();
+    }
+  }, 60_000);
+});
+
 describe("brief sources", () => {
   it("includes pull requests waiting for review when GitHub is connected", async () => {
     let briefPrompt = "";

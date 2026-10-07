@@ -290,6 +290,25 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-07: Code memory, part 2: live code index (P7.3)
+
+**Changed**
+- New package `packages/code-index`:
+  - `chunk.ts` splits code at real boundaries with tree-sitter: functions, methods, classes, interfaces, types, enums, structs, traits, impls, modules, each with its qualified name (`Store.save`), lines and signature, plus a file head (imports, header comment). TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, C and C++, Ruby, PHP and shell. Grammars are WebAssembly (`@vscode/tree-sitter-wasm`, MIT), so there is no compiler or native module on any platform. Other code (Kotlin, Swift, SQL and more) is indexed as 80-line windows.
+  - `CodeIndexStore` port with an SQLite adapter (tables in the encrypted workspace, FTS5 for keywords with identifiers split into words, sqlite-vec for meaning; emptied and rebuilt if the embedding size changes) and an in-memory adapter, both passing `@deck/code-index/contract`.
+  - `CodeIndex`: incremental refresh before every search (size and modified time first, then the content hash; a file that was only touched keeps its chunks and vectors; deleted files dropped). Search merges exact name, keyword and meaning by rank. Every hit is checked against the file as it is now; a hit whose hash no longer matches is re-indexed and never served. Every entry carries the file hash and the commit it was indexed at.
+- `packages/connectors`: `localCodeFiles` (skips dependency, build and cache folders, simple root .gitignore entries and links) and `gitHead` (reads the commit from .git, including worktrees and packed refs, without running Git).
+- Engine: `code_search` tool for Engineering when the shell is on (output treated as untrusted); the project brief points to it. One index per project folder in the workspace.
+- Packaging checks that the grammars ship in the engine bundle. Manual (Labs: working on a project), AGENTS.md (layout, ports table, contract suites) and third-party notices updated.
+
+**Verified**
+- Chunk shapes checked for 11 languages, including Python decorators, Go receivers, Rust trait impls, C++ out-of-class methods and nested modules.
+- Contract suite on both adapters: a renamed function is found by its new name after one re-index and its old location is not returned; a change with the same size and modified time is still caught before serving; unchanged files are not read again; deleted files and other projects never appear.
+- Engine end to end: Engineering finds a function by name, the file is renamed on disk, the next search re-indexes one file, finds the new name and does not return the old one.
+
+**Next**
+- P7.4, fix memory.
+
 ## 2026-10-07: Code memory, part 1: project guide and tests as ground truth (P7.1, P7.2)
 
 **Changed**

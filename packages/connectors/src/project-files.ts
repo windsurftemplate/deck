@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 import type { GitHubRepo } from "./github.js";
 
 /** Read-only access to one project's files, the shape `loadProjectGuide` in @deck/agents reads. */
@@ -74,4 +74,67 @@ export function findProjectRoot(workspace: string): string | null {
   if (MARKERS.some((m) => existsSync(join(root, m)))) return root;
   const subs = readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && MARKERS.some((m) => existsSync(join(root, e.name, m))));
   return subs.length === 1 ? join(root, subs[0]!.name) : null;
+}
+
+/** Folders that hold dependencies, builds, caches or editor state, never the project's own code. */
+const SKIP_DIRS = new Set([".git", "node_modules", "dist", "build", "out", "target", "vendor", ".venv", "venv", "env", "__pycache__", ".next", ".nuxt", ".turbo", ".cache", "coverage", "bin", "obj", ".idea", ".vscode", ".gradle", "Pods", "DerivedData", ".pnpm-store", ".mypy_cache", ".pytest_cache", ".tox", "site-packages"]);
+
+/** Simple .gitignore lines at the project root: folder and file names, and *.ext patterns. Others are ignored. */
+function rootIgnores(root: string): (rel: string, name: string, dir: boolean) => boolean {
+  const lines = existsSync(join(root, ".gitignore")) ? readFileSync(join(root, ".gitignore"), "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#") && !l.startsWith("!")) : [];
+  const names = new Set(lines.filter((l) => /^\/?[\w.-]+\/?$/.test(l)).map((l) => l.replace(/^\/|\/$/g, "")));
+  const exts = lines.filter((l) => /^\*\.[\w]+$/.test(l)).map((l) => l.slice(1));
+  return (_rel, name, dir) => names.has(name) || (!dir && exts.some((e) => name.endsWith(e)));
+}
+
+/** The commit checked out, read from .git without running Git. null outside a repository. */
+export function gitHead(root: string): string | null {
+  try {
+    let git = join(root, ".git");
+    if (!existsSync(git)) return null;
+    if (statSync(git).isFile()) git = resolve(root, readFileSync(git, "utf8").replace(/^gitdir:\s*/, "").trim()); // worktree
+    const head = readFileSync(join(git, "HEAD"), "utf8").trim();
+    if (!head.startsWith("ref:")) return /^[0-9a-f]{40,64}$/.test(head) ? head : null;
+    const ref = head.slice(4).trim();
+    const common = existsSync(join(git, "commondir")) ? resolve(git, readFileSync(join(git, "commondir"), "utf8").trim()) : git;
+    for (const g of [git, common]) if (existsSync(join(g, ref))) return readFileSync(join(g, ref), "utf8").trim();
+    const packed = existsSync(join(common, "packed-refs")) ? readFileSync(join(common, "packed-refs"), "utf8") : "";
+    return packed.split("\n").find((l) => l.endsWith(` ${ref}`))?.split(" ")[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A project folder for the code index: every file under it except dependency, build and ignored folders.
+ * Links are not followed, so the walk never leaves the folder.
+ */
+export function localCodeFiles(dir: string, maxEntries = 50_000) {
+  const root = realpathSync(dir);
+  const reader = localProjectFiles(root);
+  return {
+    async list() {
+      const ignored = rootIgnores(root);
+      const out: { path: string; size: number; mtimeMs: number }[] = [];
+      let seen = 0;
+      const walk = (d: string) => {
+        for (const e of readdirSync(d, { withFileTypes: true })) {
+          if (++seen > maxEntries) return;
+          const p = join(d, e.name);
+          const rel = relative(root, p).split(sep).join("/");
+          if (e.isSymbolicLink()) continue;
+          if (e.isDirectory()) {
+            if (!SKIP_DIRS.has(e.name) && !ignored(rel, e.name, true)) walk(p);
+          } else if (e.isFile() && !ignored(rel, e.name, false)) {
+            const st = lstatSync(p);
+            out.push({ path: rel, size: st.size, mtimeMs: st.mtimeMs });
+          }
+        }
+      };
+      walk(root);
+      return out;
+    },
+    read: (path: string) => reader.read(path),
+    commit: async () => gitHead(root),
+  };
 }

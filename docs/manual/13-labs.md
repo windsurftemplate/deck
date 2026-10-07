@@ -93,6 +93,14 @@ Engineering can run commands inside your operating system's sandbox: `sandbox-ex
 
 Inside the sandbox, commands can change files only in the workspace folder (default `~/deck-workspace`; deck refuses your home, Desktop, Documents or system folders), cannot read the rest of your home folder, get a clean environment with no keys or tokens, and stop after 2 minutes (5 for network commands). Output is treated as untrusted and keys are removed from it.
 
+### Working on a project
+
+When the shell is on, Engineering works from the project in the workspace (the workspace itself, or its only project folder):
+
+- **The project's own guide.** Its AGENTS.md, CLAUDE.md, README, contributing guide and decision records, plus the build and test commands from them (or from package.json, Makefile, Cargo.toml, go.mod or pyproject.toml). Where deck's memory disagrees, the project's files win.
+- **Code search.** Engineering finds code by exact name or by what it does. The index splits code into functions, classes and types, lives in your encrypted workspace, and is brought up to date before every search; a result whose file changed is never shown. Code is never memorized: results point at the file and lines, and Engineering reads the file before changing it. If you use OpenAI for memory search, indexing also sends code pieces to OpenAI for embedding; the default local model keeps them on your computer.
+- **Tests decide.** A code change counts as finished only when the project's test command passes after the last change. deck reads the real exit code from the sandbox, not the agent's report.
+
 ## Isolated browser
 
 Research and the Chief of Staff can browse using Chrome, Chromium, Edge or Brave with a separate, empty profile: none of your cookies, logins or saved passwords, no extensions or sync, downloads off. Every request to this computer or your local network is blocked, including images and scripts on a page.
