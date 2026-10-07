@@ -290,6 +290,22 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-07: Code memory, part 4: code graph (P7.5)
+
+**Changed**
+- `packages/code-index/src/chunk.ts`: `analyzeFile` records, with the chunks, each file's imports and, for each definition, the functions and methods it calls and the types it uses (credited to the innermost definition; top-level code to the file). Common built-ins are left out.
+- `CodeIndexStore`: links stored and replaced with their file (so only changed files are rebuilt), queried with `edges`; both adapters and the contract. The SQLite index has a format version: an index from before the graph is rebuilt once from the files.
+- `packages/code-index/src/graph.ts`: `resolveImport` (relative TypeScript and JavaScript paths with .js to .ts and index files, Python relative and absolute modules, Go packages by folder, Java classes, Rust `crate::` paths), resolved against the current file list at question time. `codeImpact` lists a definition's callers (sure when in the same file, importing it, in the same Go package, or the only definition with that name; callers bound to another same-named definition are left out), the files importing it, and the tests that call it or call one of its callers. `isTestFile` knows the usual conventions.
+- Engine: `code_impact` tool for Engineering (output untrusted). Role file and manual updated: check what a change affects, update callers, run the tests that reach it.
+
+**Verified**
+- Links for TypeScript, Python and Go; import resolution for six languages; test-file conventions.
+- Contract (both adapters): what breaks if `price` changes lists its caller `total` and both tests (one direct, one through `total`); a same-named `price` elsewhere keeps its own caller; a caller added later is found on the next question; an old-format index is rebuilt.
+- Engine end to end: Engineering asks what depends on a function and gets its caller and the test that reaches it through that caller.
+
+**Next**
+- P7.6, working memory for long coding tasks.
+
 ## 2026-10-07: Code memory, part 3: fix memory (P7.4)
 
 **Changed**

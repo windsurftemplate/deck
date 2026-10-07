@@ -1,7 +1,10 @@
 import { ftsQuery, type DB } from "@deck/memory";
 import { identifierWords } from "./chunk.js";
-import type { ChunkToStore, CodeIndexStore, FixRecord, IndexedFile, StoredCodeChunk } from "./store.js";
+import type { CodeEdge } from "./chunk.js";
+import type { ChunkToStore, CodeIndexStore, FixRecord, IndexedFile, StoredCodeChunk, StoredEdge } from "./store.js";
 
+/** Bump when what is stored per file changes, so existing indexes are rebuilt once. 2: links (code graph). */
+const FORMAT = "2";
 const COLS = "c.id, c.path, c.name, c.qualified, c.kind, c.start_line AS startLine, c.end_line AS endLine, c.signature, c.text, c.hash, c.commit_id AS 'commit'";
 
 /**
@@ -21,17 +24,24 @@ export class SqliteCodeIndexStore implements CodeIndexStore {
       CREATE INDEX IF NOT EXISTS code_chunks_file ON code_chunks (project, path);
       CREATE INDEX IF NOT EXISTS code_chunks_name ON code_chunks (project, name COLLATE NOCASE);
       CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(name, words, signature, text);
+      CREATE TABLE IF NOT EXISTS code_edges (project TEXT NOT NULL, path TEXT NOT NULL, from_name TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS code_edges_name ON code_edges (project, kind, name);
+      CREATE INDEX IF NOT EXISTS code_edges_file ON code_edges (project, path);
       CREATE TABLE IF NOT EXISTS code_fixes (id INTEGER PRIMARY KEY, project TEXT NOT NULL, error TEXT NOT NULL, signature TEXT NOT NULL, summary TEXT NOT NULL, files TEXT NOT NULL, commit_id TEXT, test_command TEXT, created_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS code_fixes_project ON code_fixes (project, id);
     `);
-    const stored = (db.prepare("SELECT value FROM code_meta WHERE key = 'dim'").get() as { value: string } | undefined)?.value;
+    const meta = (k: string) => (db.prepare("SELECT value FROM code_meta WHERE key = ?").get(k) as { value: string } | undefined)?.value;
+    const stored = meta("dim");
     const want = vecDim === null ? "none" : String(vecDim);
-    if (stored !== undefined && stored !== want) {
+    const format = meta("format");
+    // A new index format (for example links added to an older index) also rebuilds the cache from the files.
+    if ((stored !== undefined && stored !== want) || (format !== undefined && format !== FORMAT) || (format === undefined && stored !== undefined)) {
       // A different embedding model: the old vectors mean nothing now. Start the cache over (fixes have no vectors and stay).
-      db.exec("DELETE FROM code_files; DELETE FROM code_chunks; DELETE FROM code_fts; DROP TABLE IF EXISTS vec_code;");
+      db.exec("DELETE FROM code_files; DELETE FROM code_chunks; DELETE FROM code_fts; DELETE FROM code_edges; DROP TABLE IF EXISTS vec_code;");
     }
     if (vecDim !== null) db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_code USING vec0(embedding float[${vecDim}])`);
     db.prepare("INSERT INTO code_meta (key, value) VALUES ('dim', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(want);
+    db.prepare("INSERT INTO code_meta (key, value) VALUES ('format', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(FORMAT);
   }
 
   async dim() {
@@ -48,9 +58,10 @@ export class SqliteCodeIndexStore implements CodeIndexStore {
       if (this.vecDim !== null) this.db.prepare("DELETE FROM vec_code WHERE rowid = ?").run(BigInt(r.id));
     }
     this.db.prepare("DELETE FROM code_chunks WHERE project = ? AND path = ?").run(project, path);
+    this.db.prepare("DELETE FROM code_edges WHERE project = ? AND path = ?").run(project, path);
   }
 
-  async putFile(project: string, file: IndexedFile, chunks: ChunkToStore[]) {
+  async putFile(project: string, file: IndexedFile, chunks: ChunkToStore[], edges: CodeEdge[] = []) {
     this.db.transaction(() => {
       this.dropChunks(project, file.path);
       this.db.prepare("INSERT INTO code_files (project, path, hash, commit_id, size, mtime) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(project, path) DO UPDATE SET hash = excluded.hash, commit_id = excluded.commit_id, size = excluded.size, mtime = excluded.mtime").run(project, file.path, file.hash, file.commit, file.size, file.mtimeMs);
@@ -64,7 +75,18 @@ export class SqliteCodeIndexStore implements CodeIndexStore {
           this.db.prepare("INSERT INTO vec_code (rowid, embedding) VALUES (?, ?)").run(BigInt(id), c.vec);
         }
       }
+      const link = this.db.prepare("INSERT INTO code_edges (project, path, from_name, kind, name) VALUES (?, ?, ?, ?, ?)");
+      for (const e of edges) link.run(project, file.path, e.from, e.kind, e.name);
     })();
+  }
+
+  async edges(project: string, q: { kind?: CodeEdge["kind"]; name?: string; path?: string }) {
+    const where = ["project = ?"];
+    const args: string[] = [project];
+    if (q.kind) where.push("kind = ?"), args.push(q.kind);
+    if (q.name) where.push("name = ?"), args.push(q.name);
+    if (q.path) where.push("path = ?"), args.push(q.path);
+    return this.db.prepare(`SELECT path, from_name AS 'from', kind, name FROM code_edges WHERE ${where.join(" AND ")} ORDER BY path, from_name LIMIT 20000`).all(...args) as StoredEdge[];
   }
 
   async touchFile(project: string, path: string, size: number, mtimeMs: number) {

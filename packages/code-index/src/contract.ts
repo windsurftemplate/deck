@@ -129,6 +129,31 @@ export function codeIndexContract(name: string, make: (dim: number | null) => Pr
       expect(await new FixMemory({ store, project: "/work/other", files }).recall(repeat)).toEqual([]);
     });
 
+    it("answers what breaks if a function changes: its callers and the tests that reach it, after re-indexing changes", async () => {
+      const files = memoryFiles({
+        "src/price.ts": "export function price(cents: number) {\n  return cents * 1.2;\n}\n",
+        "src/cart.ts": "import { price } from './price.js';\nexport function total(items: number[]) {\n  return items.map((c) => price(c)).reduce((a, b) => a + b, 0);\n}\n",
+        "src/cart.test.ts": "import { total } from './cart.js';\nit('adds', () => { expect(total([1])).toBe(1.2); });\n",
+        "src/price.test.ts": "import { price } from './price';\ntest('taxes', () => price(100));\n",
+        "src/legacy/price.ts": "export function price() { return 0; }\n",
+        "src/legacy/use.ts": "import { price } from './price';\nexport const old = () => price();\n",
+      });
+      const { index } = await setup(64, files);
+      const { impacts } = await index.impact("price");
+      const main = impacts.find((i) => i.target.path === "src/price.ts")!;
+      expect(main.target).toMatchObject({ kind: "function", startLine: 1, endLine: 3 });
+      expect(main.callers.map((c) => `${c.from}@${c.path}:${c.line}:${c.match}`)).toEqual(["total@src/cart.ts:2:sure"]); // the legacy caller imports the other price
+      expect(main.importers).toEqual(["src/cart.ts", "src/price.test.ts"]);
+      expect(main.tests.map((t) => `${t.path}${t.via ? ` via ${t.via}` : ""}`).sort()).toEqual(["src/cart.test.ts via total", "src/price.test.ts"]);
+      const legacy = impacts.find((i) => i.target.path === "src/legacy/price.ts")!;
+      expect(legacy.callers.map((c) => c.from)).toEqual(["old"]);
+      expect(legacy.tests).toEqual([]);
+      // A new caller appears; the next question sees it.
+      files.write("src/report.ts", "import { price } from './price';\nexport function report() { return price(5); }\n");
+      const again = (await index.impact("price")).impacts.find((i) => i.target.path === "src/price.ts")!;
+      expect(again.callers.map((c) => c.from)).toEqual(["total", "report"]);
+    });
+
     it("works without an embedder (name and keyword search only)", async () => {
       const { index } = await setup(null);
       const { hits, report } = await index.search("chargeCustomer");

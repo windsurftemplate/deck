@@ -1,5 +1,6 @@
 import { identifierWords } from "./chunk.js";
-import type { ChunkToStore, CodeIndexStore, FixRecord, IndexedFile, StoredCodeChunk } from "./store.js";
+import type { CodeEdge } from "./chunk.js";
+import type { ChunkToStore, CodeIndexStore, FixRecord, IndexedFile, StoredCodeChunk, StoredEdge } from "./store.js";
 
 /** In-memory adapter, for tests and for running without a workspace file. Same behavior as the SQLite one. */
 export class InMemoryCodeIndexStore implements CodeIndexStore {
@@ -7,6 +8,7 @@ export class InMemoryCodeIndexStore implements CodeIndexStore {
   private chunks: (StoredCodeChunk & { project: string; words: string; vec: Float32Array | null })[] = [];
   private next = 1;
   private fixes: (FixRecord & { project: string })[] = [];
+  private links: (StoredEdge & { project: string })[] = [];
   constructor(private vecDim: number | null = null) {}
   private key = (project: string, path: string) => `${project}\0${path}`;
   private out = ({ project: _p, words: _w, vec: _v, ...c }: (typeof this.chunks)[number]): StoredCodeChunk => c;
@@ -17,9 +19,10 @@ export class InMemoryCodeIndexStore implements CodeIndexStore {
   async files(project: string) {
     return [...this.fileRows.entries()].filter(([k]) => k.startsWith(`${project}\0`)).map(([, f]) => ({ ...f })).sort((a, b) => a.path.localeCompare(b.path));
   }
-  async putFile(project: string, file: IndexedFile, chunks: ChunkToStore[]) {
+  async putFile(project: string, file: IndexedFile, chunks: ChunkToStore[], edges: CodeEdge[] = []) {
     for (const c of chunks) if (c.vec && this.vecDim !== null && c.vec.length !== this.vecDim) throw new Error(`code index: vector has ${c.vec.length} dimensions, expected ${this.vecDim}`);
     this.chunks = this.chunks.filter((c) => !(c.project === project && c.path === file.path));
+    this.links = [...this.links.filter((e) => !(e.project === project && e.path === file.path)), ...edges.map((e) => ({ ...e, project, path: file.path }))];
     this.fileRows.set(this.key(project, file.path), { ...file });
     for (const c of chunks) this.chunks.push({ ...c, project, id: this.next++, hash: file.hash, commit: file.commit, vec: this.vecDim === null ? null : c.vec });
   }
@@ -27,8 +30,12 @@ export class InMemoryCodeIndexStore implements CodeIndexStore {
     const f = this.fileRows.get(this.key(project, path));
     if (f) Object.assign(f, { size, mtimeMs });
   }
+  async edges(project: string, q: { kind?: CodeEdge["kind"]; name?: string; path?: string }) {
+    return this.links.filter((e) => e.project === project && (!q.kind || e.kind === q.kind) && (!q.name || e.name === q.name) && (!q.path || e.path === q.path)).map(({ project: _p, ...e }) => e).sort((a, b) => a.path.localeCompare(b.path) || a.from.localeCompare(b.from));
+  }
   async removeFile(project: string, path: string) {
     this.chunks = this.chunks.filter((c) => !(c.project === project && c.path === path));
+    this.links = this.links.filter((e) => !(e.project === project && e.path === path));
     this.fileRows.delete(this.key(project, path));
   }
   async byName(project: string, name: string, limit: number) {

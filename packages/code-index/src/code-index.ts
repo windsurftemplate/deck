@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Embedder } from "@deck/memory";
-import { chunkFile, identifierWords, isCode, type ChunkKind, type CodeChunk } from "./chunk.js";
+import { analyzeFile, identifierWords, isCode, type ChunkKind, type CodeChunk, type CodeEdge } from "./chunk.js";
+import { codeImpact } from "./graph.js";
 import type { ChunkToStore, CodeIndexStore, IndexedFile, StoredCodeChunk } from "./store.js";
 
 /** The project's files as the indexer sees them (a port: local folder today). Paths are relative to the root. */
@@ -103,7 +104,7 @@ export class CodeIndex {
 
   /** Re-chunks and stores one file. */
   private async put(file: IndexedFile, text: string, r?: RefreshReport) {
-    const chunks = await chunkFile(file.path, text).catch(() => [] as CodeChunk[]);
+    const { chunks, edges } = await analyzeFile(file.path, text).catch(() => ({ chunks: [] as CodeChunk[], edges: [] as CodeEdge[] }));
     let vecs: (Float32Array | null)[] = chunks.map(() => null);
     if (this.o.embedder && chunks.length) {
       try {
@@ -115,7 +116,7 @@ export class CodeIndex {
       }
     }
     const rows: ChunkToStore[] = chunks.map((c, k) => ({ ...c, words: identifierWords(`${c.qualified} ${c.signature}`), vec: vecs[k] ?? null }));
-    await this.o.store.putFile(this.o.project, file, rows);
+    await this.o.store.putFile(this.o.project, file, rows, edges);
     if (r) r.chunks += rows.length;
   }
 
@@ -140,6 +141,11 @@ export class CodeIndex {
       fresh = await this.verify(hits);
     }
     return { hits: fresh.ok, report };
+  }
+
+  /** What depends on a definition: callers, importing files and the tests that reach it (see graph.ts). */
+  impact(name: string) {
+    return codeImpact({ store: this.o.store, project: this.o.project, refresh: () => this.refresh() }, name);
   }
 
   private async rank(query: string, limit: number, kind?: ChunkKind) {

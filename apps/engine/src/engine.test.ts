@@ -1549,6 +1549,16 @@ describe("code memory: live code index", () => {
       expect(results[0]).toContain("re-indexed 1 changed file(s)");
       expect(results[0]).toMatch(/1\. function billCustomer at src\/billing.ts:1-3/);
       expect(results[1]).not.toMatch(/function chargeCustomer at/);
+      // What breaks if it changes: its caller and the test that reaches it through that caller.
+      writeFileSync(join(ws, "app", "src", "invoice.ts"), "import { billCustomer } from './billing.js';\nexport function sendInvoice(id: string) {\n  return billCustomer(id);\n}\n");
+      writeFileSync(join(ws, "app", "src", "invoice.test.ts"), "import { sendInvoice } from './invoice.js';\nit('sends', () => sendInvoice('a'));\n");
+      results.length = 0;
+      script.push({ name: "code_impact", input: { name: "billCustomer" } });
+      await e.delegate("code", "What breaks if billing changes?", "test", ["callers and tests are listed"]);
+      expect(results[0]).toMatch(/<untrusted source="code graph">/);
+      expect(results[0]).toMatch(/function billCustomer at src\/billing.ts:1-3/);
+      expect(results[0]).toContain("- sendInvoice at src/invoice.ts:2");
+      expect(results[0]).toContain("- src/invoice.test.ts via sendInvoice");
     } finally {
       await e.close();
     }

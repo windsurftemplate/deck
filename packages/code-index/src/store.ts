@@ -1,4 +1,4 @@
-import type { CodeChunk } from "./chunk.js";
+import type { CodeChunk, CodeEdge } from "./chunk.js";
 
 /** What the index knows about one file: the content hash its chunks came from, and the commit at indexing time. */
 export interface IndexedFile {
@@ -23,6 +23,11 @@ export interface ChunkToStore extends CodeChunk {
   vec: Float32Array | null;
 }
 
+/** A stored link, with the file it is in. */
+export interface StoredEdge extends CodeEdge {
+  path: string;
+}
+
 /** A fix that worked: the error, what changed, and the files as they were right after the fix. */
 export interface FixRecord {
   id: number;
@@ -45,8 +50,10 @@ export interface FixRecord {
  */
 export interface CodeIndexStore {
   files(project: string): Promise<IndexedFile[]>;
-  /** Replaces everything stored for one file (its record and all its chunks) in one step. */
-  putFile(project: string, file: IndexedFile, chunks: ChunkToStore[]): Promise<void>;
+  /** Replaces everything stored for one file (its record, chunks and links) in one step. */
+  putFile(project: string, file: IndexedFile, chunks: ChunkToStore[], edges?: CodeEdge[]): Promise<void>;
+  /** Links matching every given filter. */
+  edges(project: string, q: { kind?: CodeEdge["kind"]; name?: string; path?: string }): Promise<StoredEdge[]>;
   /** Updates a file's size and modified time when its content (hash) did not change. Chunks stay. */
   touchFile(project: string, path: string, size: number, mtimeMs: number): Promise<void>;
   removeFile(project: string, path: string): Promise<void>;

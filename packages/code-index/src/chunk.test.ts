@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkFile, identifierWords, isCode } from "./chunk.js";
+import { analyzeFile, chunkFile, identifierWords, isCode } from "./chunk.js";
 const samples: Record<string, string> = {
   "a.ts": "import x from 'y';\nexport class Store {\n  save(a: number) { return a }\n  private load() {}\n}\nexport function helper() {}\nexport const arrow = async () => 1;\nconst k = 3;\ninterface Shape { a: string }\nexport type T = number;\nenum E { A }\nnamespace NS { export function inner() {} }\n",
   "a.tsx": "export function App() { return <div/> }\n",
@@ -43,5 +43,18 @@ describe("chunking at real boundaries", () => {
   it("splits identifiers into words", () => {
     expect(identifierWords("getHTTPResponse_code")).toBe("get http response code");
     expect(identifierWords("Store.save")).toBe("store save");
+  });
+
+  it("records imports, and the calls and types inside each definition", async () => {
+    const ts = await analyzeFile("src/cart.ts", "import { price } from './price.js';\nimport type { Item } from \"../types\";\nconst fs = require('node:fs');\nexport class Cart {\n  total(items: Item[]): number { return items.reduce((s, i) => s + price(i), 0); }\n}\nexport function checkout(c: Cart) { return c.total([]); }\nsetup();\n");
+    const by = (k: string) => ts.edges.filter((e) => e.kind === k).map((e) => `${e.from}>${e.name}`);
+    expect(by("import")).toEqual(["src/cart.ts>./price.js", "src/cart.ts>../types", "src/cart.ts>node:fs"]);
+    expect(by("call")).toEqual(["Cart.total>reduce", "Cart.total>price", "checkout>total", "src/cart.ts>setup"]);
+    expect(by("type")).toEqual(["Cart.total>Item", "checkout>Cart"]);
+    const py = await analyzeFile("app/views.py", "from .models import Order\nimport os.path\ndef show(r):\n    return render(Order.objects.get(id=1))\n");
+    expect(py.edges.filter((e) => e.kind === "import").map((e) => e.name)).toEqual([".models", "os.path"]);
+    expect(py.edges.filter((e) => e.kind === "call").map((e) => `${e.from}>${e.name}`)).toEqual(["show>render", "show>get"]);
+    const go = await analyzeFile("cmd/main.go", "package main\nimport (\n  \"example.com/app/internal/db\"\n)\nfunc main() { db.Open() }\n");
+    expect(go.edges.map((e) => `${e.kind}:${e.from}>${e.name}`)).toEqual(["import:cmd/main.go>example.com/app/internal/db", "call:main>Open"]);
   });
 });

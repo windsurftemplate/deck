@@ -16,4 +16,14 @@ describe("sqlite code index store", () => {
     expect(await b.files("/p")).toEqual([]);
     expect(await b.dim()).toBe(32);
   });
+
+  it("rebuilds an index written in an older format", async () => {
+    const db = openMemory({ path: ":memory:", key: "k".repeat(32), dim: 64 });
+    const a = new SqliteCodeIndexStore(db, 64);
+    await a.putFile("/p", { path: "a.ts", hash: "h", commit: null, size: 1, mtimeMs: 1 }, []);
+    db.prepare("DELETE FROM code_meta WHERE key = 'format'").run(); // as written before the code graph
+    expect(await new SqliteCodeIndexStore(db, 64).files("/p")).toEqual([]);
+    await new SqliteCodeIndexStore(db, 64).putFile("/p", { path: "a.ts", hash: "h", commit: null, size: 1, mtimeMs: 1 }, []);
+    expect(await new SqliteCodeIndexStore(db, 64).files("/p")).toHaveLength(1); // same format: kept
+  });
 });

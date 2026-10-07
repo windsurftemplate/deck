@@ -124,18 +124,36 @@ const cut = (s: string) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}\n…`
 
 /** Splits one file into chunks. Always returns a "file" chunk (its head: imports, header comment) first. */
 export async function chunkFile(path: string, source: string): Promise<CodeChunk[]> {
+  return (await analyzeFile(path, source)).chunks;
+}
+
+/**
+ * One link in the code graph, from a definition (its qualified name; the file path for top-level code):
+ * import (name is the module as written), call (name of the function or method called), type (a type it uses).
+ */
+export interface CodeEdge {
+  from: string;
+  kind: "import" | "call" | "type";
+  name: string;
+}
+
+/** Chunks plus the file's links: what it imports, and what each definition calls and which types it uses. */
+export async function analyzeFile(path: string, source: string): Promise<{ chunks: CodeChunk[]; edges: CodeEdge[] }> {
   const lines = source.split("\n");
   const head: CodeChunk = { path, name: basename(path), qualified: path, kind: "file", startLine: 1, endLine: Math.min(lines.length, HEAD_LINES), signature: path, text: cut(lines.slice(0, HEAD_LINES).join("\n")) };
   const grammar = GRAMMAR[extname(path).toLowerCase()];
-  if (!grammar) return [head, ...windows(path, lines)];
+  if (!grammar) return { chunks: [head, ...windows(path, lines)], edges: [] };
   const parser = await parserFor(grammar);
   const tree = parser.parse(source);
-  if (!tree) return [head, ...windows(path, lines)];
+  if (!tree) return { chunks: [head, ...windows(path, lines)], edges: [] };
   const defs = DEFS[grammar]!;
   const out: CodeChunk[] = [head];
+  /** Definition node start:end -> qualified name, so links can be credited to the innermost definition. */
+  const owners = new Map<string, string>();
   // inType: directly inside a class, impl, trait or similar, where functions are methods (not inside a module).
   const emit = (n: TS.Node, range: TS.Node, kind: ChunkKind, name: string, scope: string[], inType: boolean) => {
     if (!name) return;
+    owners.set(`${n.startIndex}:${n.endIndex}`, [...scope, name].join("."));
     out.push({ path, name, qualified: [...scope, name].join("."), kind: inType && kind === "function" ? "method" : kind, startLine: range.startPosition.row + 1, endLine: range.endPosition.row + 1, signature: firstLine(n.text), text: cut(range.text) });
   };
   const walk = (n: TS.Node, scope: string[], inType: boolean, range: TS.Node = n): void => {
@@ -171,9 +189,85 @@ export async function chunkFile(path: string, source: string): Promise<CodeChunk
     if (PASS_THROUGH.has(n.type) || n.parent === null) for (const c of n.namedChildren) if (c) walk(c, scope, inType);
   };
   walk(tree.rootNode, [], false);
+  const edges = links(tree.rootNode, grammar, owners, path);
   tree.delete();
   parser.delete();
-  return out;
+  return { chunks: out, edges };
+}
+
+/* ---------- links: imports, calls, types ---------- */
+
+/** Call-like nodes per language family. */
+const CALLS = new Set(["call_expression", "new_expression", "call", "method_invocation", "object_creation_expression", "invocation_expression", "function_call_expression", "member_call_expression", "scoped_call_expression", "nullsafe_member_call_expression", "object_creation_expression", "macro_invocation"]);
+const NAMEISH = new Set(["identifier", "property_identifier", "field_identifier", "type_identifier", "constant", "name", "simple_identifier", "command_name", "private_property_identifier"]);
+const TYPE_REFS = new Set(["type_identifier"]);
+/** Built-ins and very common names that would only add noise to the graph. */
+const SKIP_CALLS = new Set(["require", "import", "super", "this", "self", "print", "len", "str", "int", "push", "map", "filter", "forEach", "then", "catch", "log", "toString", "String", "Number", "Boolean", "Array", "Object", "JSON", "Promise", "Error", "println", "format", "append", "make", "new", "Some", "Ok", "Err", "vec", "assert", "expect", "it", "describe", "test"]);
+
+/** The name a call refers to: the last segment (obj.save() -> save, pkg.Func() -> Func, a::b::c() -> c). */
+function calleeName(n: TS.Node | null, depth = 0): string {
+  if (!n || depth > 6) return "";
+  if (NAMEISH.has(n.type)) return n.text;
+  for (const f of ["property", "field", "attribute", "name", "method", "function", "constructor", "type", "macro"]) {
+    const c = n.childForFieldName(f);
+    if (c && c.id !== n.id) {
+      const got = calleeName(c, depth + 1);
+      if (got) return got;
+    }
+  }
+  const named = n.namedChildren.filter(Boolean) as TS.Node[];
+  for (let k = named.length - 1; k >= 0; k--) if (NAMEISH.has(named[k]!.type)) return named[k]!.text;
+  return "";
+}
+
+const unquote = (s: string) => s.replace(/^['"`]|['"`]$/g, "");
+
+/** Modules a node imports, as written. */
+function importsOf(n: TS.Node, grammar: string): string[] {
+  switch (n.type) {
+    case "import_statement":
+      if (grammar === "python") return n.namedChildren.filter((c) => c && (c.type === "dotted_name" || c.type === "aliased_import")).map((c) => (c!.type === "aliased_import" ? c!.childForFieldName("name")?.text ?? "" : c!.text));
+      return n.childForFieldName("source") ? [unquote(n.childForFieldName("source")!.text)] : [];
+    case "export_statement":
+      return n.childForFieldName("source") ? [unquote(n.childForFieldName("source")!.text)] : [];
+    case "import_from_statement":
+      return n.childForFieldName("module_name") ? [n.childForFieldName("module_name")!.text] : [];
+    case "import_spec":
+      return n.childForFieldName("path") ? [unquote(n.childForFieldName("path")!.text)] : [];
+    case "import_declaration":
+      return grammar === "java" ? [n.text.replace(/^import\s+(static\s+)?/, "").replace(/;\s*$/, "").trim()] : [];
+    case "use_declaration":
+      return n.childForFieldName("argument") ? [n.childForFieldName("argument")!.text] : [];
+    case "call_expression": {
+      const f = n.childForFieldName("function");
+      const arg = n.childForFieldName("arguments")?.namedChildren[0];
+      if ((f?.text === "require" || f?.type === "import") && arg?.type === "string") return [unquote(arg.text)];
+      return [];
+    }
+    default:
+      return [];
+  }
+}
+
+function links(root: TS.Node, grammar: string, owners: Map<string, string>, path: string): CodeEdge[] {
+  const seen = new Set<string>();
+  const edges: CodeEdge[] = [];
+  const add = (from: string, kind: CodeEdge["kind"], name: string) => {
+    if (!name || name.length > 200) return;
+    const key = `${from}\0${kind}\0${name}`;
+    if (!seen.has(key)) seen.add(key), edges.push({ from, kind, name });
+  };
+  const visit = (n: TS.Node, owner: string) => {
+    const own = owners.get(`${n.startIndex}:${n.endIndex}`) ?? owner;
+    for (const m of importsOf(n, grammar)) add(path, "import", m);
+    if (CALLS.has(n.type)) {
+      const name = calleeName(n.type === "call_expression" || n.type === "call" || n.type === "invocation_expression" || n.type === "function_call_expression" ? n.childForFieldName("function") ?? n : n);
+      if (name && !SKIP_CALLS.has(name)) add(own, "call", name);
+    } else if (TYPE_REFS.has(n.type) && own !== path && n.text !== own.split(".").pop()) add(own, "type", n.text);
+    for (const c of n.namedChildren) if (c) visit(c, own);
+  };
+  visit(root, path);
+  return edges;
 }
 
 /** Line windows for code without a grammar (and files that fail to parse). */
