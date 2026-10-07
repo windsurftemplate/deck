@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HashEmbedder } from "@deck/memory";
 import { CodeIndex, type CodeFiles } from "./code-index.js";
+import { FixMemory } from "./fixes.js";
 import type { CodeIndexStore } from "./store.js";
 
 /** A project held in memory. Writing a file bumps its modified time, like a real edit. */
@@ -105,6 +106,27 @@ export function codeIndexContract(name: string, make: (dim: number | null) => Pr
       await other.refresh();
       expect((await other.search("chargeCustomer")).hits.some((h) => h.path === "src/billing.ts")).toBe(false);
       expect((await index.search("Other")).hits.some((h) => h.path === "x.go")).toBe(false);
+    });
+
+    it("remembers a fix, recalls it for a repeat of the error, and flags it possibly stale once its files change", async () => {
+      const store = await make(64);
+      const files = memoryFiles({ "src/billing.ts": "export const rate = 0.2;\n" });
+      const fixes = new FixMemory({ store, project: "/work/app", files, clock: () => new Date("2026-10-07T10:00:00Z") });
+      const failing = "FAIL src/billing.test.ts > charges tax\nAssertionError: expected 120 to be 125\n ❯ src/billing.test.ts:14:22\nTests 1 failed | 4 passed (5) in 812ms";
+      files.write("src/billing.ts", "export const rate = 0.25;\n");
+      const saved = await fixes.remember({ error: failing, summary: "The tax rate was 0.2; set it to 0.25.", files: ["src/billing.ts"], testCommand: "pnpm test" });
+      expect(saved).toMatchObject({ commit: "c0ffee1", files: [{ path: "src/billing.ts" }], testCommand: "pnpm test" });
+      // The same failure later, with different line numbers and timings.
+      const repeat = "FAIL src/billing.test.ts > charges tax\nAssertionError: expected 120 to be 125\n ❯ src/billing.test.ts:15:9\nTests 1 failed | 6 passed (7) in 1.2s";
+      const [hit] = await fixes.recall(repeat);
+      expect(hit).toMatchObject({ score: 1, changedSince: [] });
+      expect(hit!.fix.summary).toBe("The tax rate was 0.2; set it to 0.25.");
+      expect(await fixes.recall("TypeError: cannot read properties of undefined (reading 'name')")).toEqual([]);
+      files.write("src/billing.ts", "export const rate = 0.2;\n");
+      expect((await fixes.recall(repeat))[0]!.changedSince).toEqual(["src/billing.ts"]);
+      files.remove("src/billing.ts");
+      expect((await fixes.recall(repeat))[0]!.changedSince).toEqual(["src/billing.ts"]);
+      expect(await new FixMemory({ store, project: "/work/other", files }).recall(repeat)).toEqual([]);
     });
 
     it("works without an embedder (name and keyword search only)", async () => {

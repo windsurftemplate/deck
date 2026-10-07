@@ -99,6 +99,7 @@ When the shell is on, Engineering works from the project in the workspace (the w
 
 - **The project's own guide.** Its AGENTS.md, CLAUDE.md, README, contributing guide and decision records, plus the build and test commands from them (or from package.json, Makefile, Cargo.toml, go.mod or pyproject.toml). Where deck's memory disagrees, the project's files win.
 - **Code search.** Engineering finds code by exact name or by what it does. The index splits code into functions, classes and types, lives in your encrypted workspace, and is brought up to date before every search; a result whose file changed is never shown. Code is never memorized: results point at the file and lines, and Engineering reads the file before changing it. If you use OpenAI for memory search, indexing also sends code pieces to OpenAI for embedding; the default local model keeps them on your computer.
+- **Fixes that worked.** When a failing test passes after a change, deck remembers the error, what fixed it and the files it changed. If the same error comes back, the earlier fix is shown with the failing output, marked possibly stale when those files have changed since.
 - **Tests decide.** A code change counts as finished only when the project's test command passes after the last change. deck reads the real exit code from the sandbox, not the agent's report.
 
 ## Isolated browser

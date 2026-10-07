@@ -1,6 +1,6 @@
 import { ftsQuery, type DB } from "@deck/memory";
 import { identifierWords } from "./chunk.js";
-import type { ChunkToStore, CodeIndexStore, IndexedFile, StoredCodeChunk } from "./store.js";
+import type { ChunkToStore, CodeIndexStore, FixRecord, IndexedFile, StoredCodeChunk } from "./store.js";
 
 const COLS = "c.id, c.path, c.name, c.qualified, c.kind, c.start_line AS startLine, c.end_line AS endLine, c.signature, c.text, c.hash, c.commit_id AS 'commit'";
 
@@ -21,11 +21,13 @@ export class SqliteCodeIndexStore implements CodeIndexStore {
       CREATE INDEX IF NOT EXISTS code_chunks_file ON code_chunks (project, path);
       CREATE INDEX IF NOT EXISTS code_chunks_name ON code_chunks (project, name COLLATE NOCASE);
       CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(name, words, signature, text);
+      CREATE TABLE IF NOT EXISTS code_fixes (id INTEGER PRIMARY KEY, project TEXT NOT NULL, error TEXT NOT NULL, signature TEXT NOT NULL, summary TEXT NOT NULL, files TEXT NOT NULL, commit_id TEXT, test_command TEXT, created_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS code_fixes_project ON code_fixes (project, id);
     `);
     const stored = (db.prepare("SELECT value FROM code_meta WHERE key = 'dim'").get() as { value: string } | undefined)?.value;
     const want = vecDim === null ? "none" : String(vecDim);
     if (stored !== undefined && stored !== want) {
-      // A different embedding model: the old vectors mean nothing now. Start the cache over.
+      // A different embedding model: the old vectors mean nothing now. Start the cache over (fixes have no vectors and stay).
       db.exec("DELETE FROM code_files; DELETE FROM code_chunks; DELETE FROM code_fts; DROP TABLE IF EXISTS vec_code;");
     }
     if (vecDim !== null) db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_code USING vec0(embedding float[${vecDim}])`);
@@ -100,7 +102,17 @@ export class SqliteCodeIndexStore implements CodeIndexStore {
     return this.db.prepare(`SELECT ${COLS} FROM vec_code v JOIN code_chunks c ON c.id = v.rowid WHERE v.embedding MATCH ? AND k = ? AND c.project = ? ORDER BY v.distance LIMIT ?`).all(vec, k, project, limit) as StoredCodeChunk[];
   }
 
+  async addFix(project: string, f: Omit<FixRecord, "id">) {
+    return Number(this.db.prepare("INSERT INTO code_fixes (project, error, signature, summary, files, commit_id, test_command, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(project, f.error, f.signature, f.summary, JSON.stringify(f.files), f.commit, f.testCommand, f.createdAt).lastInsertRowid);
+  }
+
+  async listFixes(project: string, limit: number) {
+    const rows = this.db.prepare("SELECT id, error, signature, summary, files, commit_id AS 'commit', test_command AS testCommand, created_at AS createdAt FROM code_fixes WHERE project = ? ORDER BY id DESC LIMIT ?").all(project, limit) as (Omit<FixRecord, "files"> & { files: string })[];
+    return rows.map((r) => ({ ...r, files: JSON.parse(r.files) as FixRecord["files"], commit: r.commit ?? null, testCommand: r.testCommand ?? null }));
+  }
+
   async clear(project: string) {
     for (const f of await this.files(project)) await this.removeFile(project, f.path);
+    this.db.prepare("DELETE FROM code_fixes WHERE project = ?").run(project);
   }
 }

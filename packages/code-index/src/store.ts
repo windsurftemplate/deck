@@ -23,6 +23,22 @@ export interface ChunkToStore extends CodeChunk {
   vec: Float32Array | null;
 }
 
+/** A fix that worked: the error, what changed, and the files as they were right after the fix. */
+export interface FixRecord {
+  id: number;
+  /** The failing output (keys already removed), cut short. */
+  error: string;
+  /** Normalized error lines used to match a repeat (paths, numbers and ids removed). */
+  signature: string;
+  /** What fixed it, from the agent's report. */
+  summary: string;
+  /** Files changed by the fix, with their content hash right after it. */
+  files: { path: string; hash: string }[];
+  commit: string | null;
+  testCommand: string | null;
+  createdAt: string;
+}
+
 /**
  * Storage for the code index (a port). Every method is atomic on its own. A project is the absolute path of its
  * root folder; projects never see each other's entries.
@@ -40,7 +56,10 @@ export interface CodeIndexStore {
   byKeyword(project: string, query: string, limit: number): Promise<StoredCodeChunk[]>;
   /** Nearest by meaning. Chunks stored without a vector are never returned here. */
   byVector(project: string, vec: Float32Array, limit: number): Promise<StoredCodeChunk[]>;
-  /** Forgets a project entirely. */
+  addFix(project: string, fix: Omit<FixRecord, "id">): Promise<number>;
+  /** Newest first. */
+  listFixes(project: string, limit: number): Promise<FixRecord[]>;
+  /** Forgets a project entirely (its index and its fixes). */
   clear(project: string): Promise<void>;
   /** Vector size this store holds, or null when it has none yet. */
   dim(): Promise<number | null>;

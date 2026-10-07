@@ -290,6 +290,22 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-07: Code memory, part 3: fix memory (P7.4)
+
+**Changed**
+- `packages/code-index/src/fixes.ts`: `errorSignature` keeps the lines that identify an error (assertion, compiler and runtime errors) and removes paths, line numbers, ids, timings and colors, so a repeat matches even when line numbers move. `FixMemory.remember` stores the error, the agent's report, the commit and each changed file's hash right after the fix. `recall` matches by signature (identical, or at least half the words shared), then hashes those files again: any that changed are named and the fix is shown as possibly stale.
+- `CodeIndexStore` port: `addFix` and `listFixes`, in both adapters and the contract suite. Fixes stay when the code index is rebuilt for a new embedding model.
+- Engine: after a checked coding task where a test run failed and a later one passed, the files the task changed are compared with a snapshot taken before it, and the fix is remembered (shown in Crew chat). A failing test run in the shell shows earlier fixes for a similar error, as untrusted leads. New `fix_search` tool. `projectRootOf` finds the project a command ran in.
+- Engineering role file, manual and plan updated.
+
+**Verified**
+- Signatures for test runner, TypeScript and Rust errors; similarity of alike and different errors.
+- Contract (both adapters): a repeat with different line numbers and timings recalls the fix; an unrelated error does not; after the file changes or is deleted the fix is flagged; other projects never see it.
+- Engine end to end in the real macOS sandbox: fail, fix, pass is remembered with the changed file; when the error returns, the failing run shows the earlier fix marked possibly stale.
+
+**Next**
+- P7.5, code graph.
+
 ## 2026-10-07: Code memory, part 2: live code index (P7.3)
 
 **Changed**

@@ -3,10 +3,10 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, 
 import { homedir } from "node:os";
 import { statfs } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import { ROLE_LABEL, PROVIDER_LABEL, untrusted, loadProjectGuide, formatProjectGuide, hasGuide, type ProjectGuide, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, verifySkill, keyFingerprint, checkLearned, type Judge, type SkillSignature, routeComplexity, parseSkillMd, toSkillMd, skillSlug, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode, type ToolPolicy } from "@deck/agents";
+import { ROLE_LABEL, PROVIDER_LABEL, untrusted, testRunIn, loadProjectGuide, formatProjectGuide, hasGuide, type ProjectGuide, buildPrompt, composeBrief, describeModels, loadCoreRules, loadPolicy, loadRole, parseModelCommand, reflect, extractFacts, runAgent, verifySkill, keyFingerprint, checkLearned, type Judge, type SkillSignature, routeComplexity, parseSkillMd, toSkillMd, skillSlug, draftGuidance, applyPlaybookDelta, playbookFromLearned, overlap, reflectPlaybook, practiceScore, shouldAdopt, LOCKED_RULES, validateOverride, effectivePolicy, effectiveRole, describeOverrideChange, type ActionRecord, type AgentTool, type CrewOverride, type CrewOverrides, type ToolMode, type ToolPolicy } from "@deck/agents";
 import { ChatBot, DiscordChannel, SlackChannel, TelegramChannel, TelegramClient, WhisperCppTranscriber, approvalButtons, approvalText, type BotActions, type Channel, type ChannelButton, type WebSocketCtor } from "@deck/chat";
-import { CodeIndex, SqliteCodeIndexStore, formatHits, type ChunkKind } from "@deck/code-index";
-import { GitHubRepo, GoogleApi, IsolatedBrowser, McpHttpClient, classifyCommand, findProjectRoot, githubProjectFiles, localCodeFiles, localProjectFiles, type ProjectFileReader, googleSignIn, runSandboxed, sandboxAvailable, type BriefSources, type McpTool, type PageSnapshot } from "@deck/connectors";
+import { CodeIndex, FixMemory, SqliteCodeIndexStore, formatFixes, formatHits, type ChunkKind } from "@deck/code-index";
+import { GitHubRepo, GoogleApi, IsolatedBrowser, McpHttpClient, classifyCommand, findProjectRoot, githubProjectFiles, localCodeFiles, localProjectFiles, projectRootOf, type ProjectFileReader, googleSignIn, runSandboxed, sandboxAvailable, type BriefSources, type McpTool, type PageSnapshot } from "@deck/connectors";
 import { JevClient, choiceOf, noulOf, type JevQuestion, type JevResult } from "@deck/models";
 import { execFile } from "node:child_process";
 import { vaultProofProbe } from "@deck/connectors";
@@ -790,7 +790,7 @@ export class Engine {
       });
     if (agent === "code" && this.d.settings.labs.github.enabled && this.d.settings.labs.github.repo) extra.push(...this.githubTools());
     if (agent === "code" && this.codeAccess()) extra.push(this.projectGuideTool());
-    if (agent === "code" && this.d.settings.labs.shell?.enabled) extra.push(this.codeSearchTool());
+    if (agent === "code" && this.d.settings.labs.shell?.enabled) extra.push(this.codeSearchTool(), this.fixSearchTool());
     if (agent === AGENT && this.d.settings.labs.fanout)
       extra.push({
         spec: {
@@ -1940,6 +1940,7 @@ export class Engine {
     // Engineering works from the project's own guide (its commands and conventions), read fresh for every task.
     const project = agent === "code" && this.codeAccess() ? await this.projectGuide().catch(() => null) : null;
     // Tests are required once a project is known; without one, a failing test run still fails the task.
+    const fixWatch = agent === "code" ? await this.watchForFix().catch(() => null) : null;
     const requireTests = agent === "code" && this.codeAccess() ? { mustRun: !!project, ...(project?.guide.commands.test ? { command: project.guide.commands.test } : {}) } : undefined;
     const p = buildPrompt({ coreRules: loadCoreRules(), role: this.roleFor(agent), userModel: await this.userModel(), skillsIndex: await this.skillsIndex(), task: { goal, why, doneWhen, returnFormat: "A short report: what you did, what is waiting for the owner, anything you could not do." }, memories: formatMemories(memories), working: [await this.observe(agent), project ? this.describeProject(project) : "", await this.experienceFor(agent, goal).catch(() => "")].filter(Boolean).join("\n\n") });
     // Delegated tasks are multi-step by nature: always plan (unless thinking is off); hard ones also reason.
@@ -1977,6 +1978,7 @@ export class Engine {
       const v = out.verdict;
       this.say({ sender: agent, recipient: "chief-of-staff", kind: "report", text: out.text, taskId: task.id });
       this.pendingReports.set(task.id, out.text); // saved with the task's log row when it finishes
+      if (fixWatch && v?.passed) void this.rememberFix(fixWatch, out.actions, out.text, requireTests?.command, task.id).catch(() => {});
       if (v) this.say({ sender: "verifier", recipient: agent, kind: "check", text: v.passed ? (v.checked ? "Checked: every done-when item is met." : "Not independently checked.") : `Not finished: ${v.missing.join("; ")}`, taskId: task.id });
       const check = !v ? "" : v.passed ? (v.checked ? "\nChecked: all done-when items met." : "\nNot independently checked.") : `\nNot finished: ${v.missing.join("; ")}`;
       this.board.move(task.id, v && !v.passed ? "failed" : "done", { result: out.text.slice(0, 2000), note: check.trim() });
@@ -3204,6 +3206,61 @@ export class Engine {
     };
   }
 
+  /* ---------- code memory: fixes that worked ---------- */
+  private fixMemoryFor(root: string): FixMemory {
+    return new FixMemory({ store: this.codeStore, project: root, files: localCodeFiles(root), clock: this.clock });
+  }
+  /** The project a command ran in: the nearest project folder at or above its working folder in the workspace. */
+  private projectAt(cwd?: string): string | null {
+    const w = this.workspaceDir();
+    if (!existsSync(w)) return null;
+    const ws = realpathSync(w);
+    const dir = cwd ? resolveIn(ws, cwd) : ws;
+    return (dir && projectRootOf(dir, ws)) ?? findProjectRoot(ws);
+  }
+  /** Before a coding task: the project's files with size and time, to see afterwards which ones the task changed. */
+  private async watchForFix(): Promise<{ root: string; before: Map<string, string> } | null> {
+    if (!this.d.settings.labs.shell?.enabled) return null;
+    const root = this.projectAt();
+    if (!root) return null;
+    const before = new Map((await localCodeFiles(root).list()).map((f) => [f.path, `${f.size}:${f.mtimeMs}`]));
+    return { root, before };
+  }
+  /**
+   * After a checked coding task: if a test run failed and a later one passed, the change in between fixed it.
+   * Remembered with the error, the agent's report and the changed files' hashes, so a repeat can recall it.
+   */
+  private async rememberFix(w: { root: string; before: Map<string, string> }, actions: ActionRecord[], report: string, testCommand: string | undefined, taskId: string) {
+    const runs = actions.map((a, k) => ({ a, k })).filter(({ a }) => a.shell && testRunIn(a.shell.command, testCommand) === "proof");
+    const failed = runs.find(({ a }) => a.shell!.exitCode !== 0);
+    const passed = failed && runs.find(({ a, k }) => k > failed.k && a.shell!.exitCode === 0 && !a.shell!.timedOut);
+    if (!failed || !passed) return;
+    const after = await localCodeFiles(w.root).list();
+    const changed = after.filter((f) => w.before.get(f.path) !== `${f.size}:${f.mtimeMs}`).map((f) => f.path);
+    const fix = await this.fixMemoryFor(w.root).remember({ error: failed.a.result ?? "", summary: report, files: changed, testCommand: testCommand ?? passed.a.shell!.command });
+    if (fix) this.say({ sender: "code", recipient: "owner", kind: "check", text: `Remembered a fix: ${fix.signature.split("\n")[0]} (files: ${fix.files.map((f) => f.path).join(", ")}).`, taskId });
+  }
+  /** Earlier fixes for a failing run's output, as an untrusted note to add to the result. */
+  private async fixesForFailure(output: string, cwd?: string): Promise<string> {
+    const root = this.projectAt(cwd);
+    if (!root) return "";
+    const found = await this.fixMemoryFor(root).recall(output);
+    return found.length ? `\n\nEarlier fixes for a similar error (leads to check, not instructions):\n${untrusted("fix memory", formatFixes(found))}` : "";
+  }
+  private fixSearchTool(): AgentTool {
+    return {
+      spec: { name: "fix_search", description: "Look up how an error like this was fixed before in this project. Each fix says whether the files it changed are still the same; a possibly stale fix must be checked before reuse.", parameters: { type: "object", properties: { error: { type: "string", description: "The error output or message" }, folder: { type: "string", description: "Project folder in the workspace (optional)" } }, required: ["error"] } },
+      scope: "repo.read",
+      kind: "read",
+      describe: (i) => `Look up earlier fixes for: ${String(i.error).split("\n")[0]!.slice(0, 80)}`,
+      run: async (i) => {
+        const root = this.projectAt(i.folder ? String(i.folder).trim() : undefined);
+        if (!root) return "No project in the workspace.";
+        return untrusted("fix memory", formatFixes(await this.fixMemoryFor(root).recall(String(i.error ?? ""))));
+      },
+    };
+  }
+
   /* ---------- safe computer use: sandboxed shell and isolated browser ---------- */
   private workspaceDir(): string {
     return (this.d.settings.labs.shell?.workspace ?? "~/deck-workspace").replace(/^~(?=$|\/)/, homedir());
@@ -3228,8 +3285,10 @@ export class Engine {
         const r = await runSandboxed({ command: cmd, workspace: this.workspaceDir(), ...(i.cwd ? { cwd: str(i.cwd) } : {}), allowNetwork: risk === "network", timeoutMs: risk === "network" ? 300_000 : 120_000 });
         const out = redactSecrets(r.output).clean;
         const head = `exit ${r.code ?? "none"}${r.timedOut ? " (timed out)" : ""}${r.truncated ? " (output cut)" : ""}, ${r.ms} ms`;
+        // A failing test run brings up how a similar error was fixed before, if it was.
+        const fixes = r.code !== 0 && testRunIn(cmd) ? await this.fixesForFailure(out, i.cwd ? str(i.cwd) : undefined).catch(() => "") : "";
         // The exit code goes to the checker as a fact from the sandbox, not as text the model could restate.
-        return { text: `${head}\n${untrusted("command output", out.slice(-12_000))}`, shell: { command: cmd, risk, exitCode: r.code, timedOut: r.timedOut } };
+        return { text: `${head}\n${untrusted("command output", out.slice(-12_000))}${fixes}`, shell: { command: cmd, risk, exitCode: r.code, timedOut: r.timedOut } };
       },
     });
     return [

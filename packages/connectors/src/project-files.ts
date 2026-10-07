@@ -64,6 +64,18 @@ export function githubProjectFiles(repo: Pick<GitHubRepo, "list" | "read">): Pro
   };
 }
 
+/** The nearest folder from dir up to stopAt (inclusive) that marks a project, or null. */
+export function projectRootOf(dir: string, stopAt: string): string | null {
+  const stop = realpathSync(stopAt);
+  let d = existsSync(dir) ? realpathSync(dir) : null;
+  while (d && (d === stop || d.startsWith(stop + sep))) {
+    if (MARKERS.some((m) => existsSync(join(d!, m)))) return d;
+    if (d === stop) break;
+    d = resolve(d, "..");
+  }
+  return null;
+}
+
 /**
  * The project folder inside the shell workspace: the workspace itself when it is a project, otherwise its only
  * project subfolder. null when there is none, or more than one (the agent then names the folder).

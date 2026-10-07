@@ -1,11 +1,12 @@
 import { identifierWords } from "./chunk.js";
-import type { ChunkToStore, CodeIndexStore, IndexedFile, StoredCodeChunk } from "./store.js";
+import type { ChunkToStore, CodeIndexStore, FixRecord, IndexedFile, StoredCodeChunk } from "./store.js";
 
 /** In-memory adapter, for tests and for running without a workspace file. Same behavior as the SQLite one. */
 export class InMemoryCodeIndexStore implements CodeIndexStore {
   private fileRows = new Map<string, IndexedFile>();
   private chunks: (StoredCodeChunk & { project: string; words: string; vec: Float32Array | null })[] = [];
   private next = 1;
+  private fixes: (FixRecord & { project: string })[] = [];
   constructor(private vecDim: number | null = null) {}
   private key = (project: string, path: string) => `${project}\0${path}`;
   private out = ({ project: _p, words: _w, vec: _v, ...c }: (typeof this.chunks)[number]): StoredCodeChunk => c;
@@ -52,7 +53,16 @@ export class InMemoryCodeIndexStore implements CodeIndexStore {
     const dist = (a: Float32Array) => a.reduce((s, x, i) => s + (x - vec[i]!) ** 2, 0);
     return this.chunks.filter((c) => c.project === project && c.vec).sort((a, b) => dist(a.vec!) - dist(b.vec!)).slice(0, limit).map(this.out);
   }
+  async addFix(project: string, f: Omit<FixRecord, "id">) {
+    const id = this.fixes.length + 1;
+    this.fixes.push({ ...structuredClone(f), id, project });
+    return id;
+  }
+  async listFixes(project: string, limit: number) {
+    return this.fixes.filter((f) => f.project === project).reverse().slice(0, limit).map(({ project: _p, ...f }) => structuredClone(f));
+  }
   async clear(project: string) {
     for (const f of await this.files(project)) await this.removeFile(project, f.path);
+    this.fixes = this.fixes.filter((f) => f.project !== project);
   }
 }

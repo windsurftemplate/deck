@@ -1474,6 +1474,49 @@ describe.runIf(sandboxAvailable())("code memory: project guide and tests as grou
   }, 60_000);
 });
 
+describe.runIf(sandboxAvailable())("code memory: fix memory", () => {
+  it("a failing test that a change fixes is remembered; the same error later brings up the fix, flagged when its files changed", async () => {
+    const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const ws = dir();
+    mkdirSync(join(ws, "app"));
+    writeFileSync(join(ws, "app", "AGENTS.md"), "# App\n\nRun `node test.js`.\n");
+    writeFileSync(join(ws, "app", "test.js"), "const v = require('fs').readFileSync(__dirname + '/value.txt', 'utf8').trim();\nif (v !== 'ok') { console.error('AssertionError: expected value ok, got ' + v); process.exit(1); }\n");
+    writeFileSync(join(ws, "app", "value.txt"), "bug\n");
+    const script: { name: string; input: Record<string, unknown> }[] = [];
+    const results: string[] = [];
+    const crew: string[] = [];
+    const e = new Engine({ dataDir: dir(), keychain: memoryKeychain({ "provider.anthropic": ANTHROPIC }), fetch: offline, makeEmbedder: () => new HashEmbedder(64),
+      emit: (ev: string, data: unknown) => void (ev === "crew.message" && crew.push(String((data as { text?: string }).text ?? ""))),
+      settings: { ...DEFAULTS, undo: { seconds: 0 }, labs: { ...DEFAULTS.labs, shell: { enabled: true, workspace: ws } } },
+      makeModel: (ref) => ({ id: ref.model, chat: async (req) => {
+        if (!req.tools?.length) return { text: '{"missing": []}', model: ref.model, stopReason: "end_turn", usage: U };
+        const last = req.messages[req.messages.length - 1];
+        if (last && Array.isArray(last.content)) for (const b of last.content as { type: string; content?: unknown }[]) if (b.type === "tool_result") results.push(String(b.content));
+        const next = script.shift();
+        if (next) return { text: "", toolCalls: [{ type: "tool_call", id: `f${script.length}${next.name}`, name: next.name, input: next.input }], model: ref.model, stopReason: "tool_use", usage: U };
+        return { text: "value.txt said bug; set it to ok. node test.js passes.", model: ref.model, stopReason: "end_turn", usage: U };
+      } }) });
+    await e.open();
+    try {
+      const run = { name: "shell_run", input: { command: "node test.js", cwd: "app" } };
+      script.push(run, { name: "shell_run", input: { command: "echo ok > value.txt", cwd: "app" } }, run);
+      const first = await e.delegate("code", "Make the tests pass", "test", ["the tests pass"]);
+      expect(first).toContain("Checked: all done-when items met.");
+      expect(results[0]).not.toContain("Earlier fixes"); // nothing to recall the first time
+      for (let k = 0; k < 40 && !crew.some((t) => t.startsWith("Remembered a fix")); k++) await new Promise((r) => setTimeout(r, 50));
+      expect(crew.find((t) => t.startsWith("Remembered a fix"))).toMatch(/expected value ok, got bug.*files: value.txt/);
+      // The same failure comes back.
+      writeFileSync(join(ws, "app", "value.txt"), "bug\n");
+      results.length = 0;
+      script.push(run);
+      await e.delegate("code", "Tests fail again", "test", ["the cause is known"]);
+      expect(results[0]).toMatch(/exit 1[\s\S]*Earlier fixes for a similar error[\s\S]*POSSIBLY STALE: value.txt changed since this fix[\s\S]*What fixed it: value.txt said bug; set it to ok/);
+    } finally {
+      await e.close();
+    }
+  }, 60_000);
+});
+
 describe("code memory: live code index", () => {
   it("Engineering searches code by name and meaning; after a rename the new name is found and the old location never served", async () => {
     const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
