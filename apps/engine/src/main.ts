@@ -52,6 +52,8 @@ async function main() {
     "skills.hub.install": (p) => { const q = p as { hubUrl?: string; name?: string }; return engine.hubInstall(String(q?.hubUrl ?? ""), String(q?.name ?? "")); },
     "skills.hub.publish": (p) => { const q = p as { dir?: string; publisher?: string }; return engine.hubPublish(String(q?.dir ?? ""), q?.publisher); },
     "skills.publisher": () => engine.myPublisher(),
+    "openai.scan": async (p) => { const q = p as { kind?: string; path?: string }; return engine.openaiScan(q?.kind === "chatgpt" ? "chatgpt" : "codex", q?.path ? String(q.path) : undefined); },
+    "openai.import": (p) => { const q = p as { kind?: string; path?: string; since?: string; projects?: string[] }; return engine.openaiImport(q?.kind === "chatgpt" ? "chatgpt" : "codex", { ...(q?.path ? { path: String(q.path) } : {}), ...(q?.since ? { since: String(q.since) } : {}), ...(Array.isArray(q?.projects) ? { projects: q.projects.map(String) } : {}) }); },
     "openclaw.scan": async (p) => engine.openclawScan((p as { path?: string })?.path),
     "openclaw.import": (p) => { const q = p as { path?: string; parts?: object }; return engine.openclawImport(q?.path, (q?.parts ?? {}) as never); },
     "actions.undo": async (p) => engine.undo(String((p as { id?: string })?.id ?? "")),

@@ -29,6 +29,7 @@ import type { Server } from "node:http";
 import { WORKFLOW_TEMPLATES, Workflows, checkWorkflow, type WorkflowStep } from "./workflows.js";
 import { checkPassphrase, openBackup, sealBackup } from "./backup.js";
 import { Brain } from "./brain.js";
+import { openCodexStore, scanChatGPT, scanCodex, type HistoryScan } from "@deck/ingest";
 import { Activity, type CrewMessage } from "./activity.js";
 import { Automations, checkAutomation, describeSchedule, parseDays, type NewAutomation } from "./automations.js";
 
@@ -1478,6 +1479,32 @@ export class Engine {
   /** Signs every skill in a folder with your key and writes its index.json, ready to commit as a hub. */
   async hubPublish(dir: string, publisher?: string): Promise<{ index: string; signed: string[]; blocked: string[] }> {
     return publishFolder(dir, (publisher ?? "").trim() || "deck", await this.signingKey());
+  }
+
+  /* ---------- OpenAI history: ChatGPT export and Codex sessions ---------- */
+  private historyScan(kind: "chatgpt" | "codex", path?: string): HistoryScan {
+    return kind === "chatgpt" ? scanChatGPT(path ?? "") : scanCodex({ ...(path ? { dir: path } : {}), openStore: openCodexStore });
+  }
+  /** What an import would bring over: counts, dates, projects and a few titles. Nothing is saved. */
+  openaiScan(kind: "chatgpt" | "codex", path?: string) {
+    const s = this.historyScan(kind, path);
+    const dates = s.items.map((x) => x.updatedAt ?? x.createdAt).filter((d): d is string => !!d).sort();
+    const projects = new Map<string, number>();
+    for (const x of s.items) if (x.project) projects.set(x.project, (projects.get(x.project) ?? 0) + 1);
+    return { kind, from: s.from.replace(homedir(), "~"), conversations: s.items.length, messages: s.items.reduce((a, x) => a + x.messages, 0), skipped: s.skipped, truncated: s.items.filter((x) => x.truncated).length, first: dates[0] ?? null, last: dates[dates.length - 1] ?? null, projects: [...projects].sort((a, b) => b[1] - a[1]).map(([path, n]) => ({ path: path.replace(homedir(), "~"), conversations: n })), titles: s.items.slice(0, 8).map((x) => x.title) };
+  }
+  /**
+   * Imports the conversations into the second brain: each scanned for injection, keys removed, marked as
+   * outside content, and skipped if already imported. Facts are learned from them in the nightly pass.
+   */
+  async openaiImport(kind: "chatgpt" | "codex", o: { path?: string; since?: string; projects?: string[] } = {}) {
+    const s = this.historyScan(kind, o.path);
+    const since = o.since ? Date.parse(o.since) : NaN;
+    const projects = o.projects?.length ? new Set(o.projects.map((p) => p.replace(/^~(?=$|\/)/, homedir()))) : null;
+    const items = s.items.filter((x) => (Number.isNaN(since) || Date.parse(x.updatedAt ?? x.createdAt ?? "") >= since) && (!projects || (x.project && projects.has(x.project))));
+    const r = await this.brain.importHistory(items, kind);
+    this.emit("brain", {});
+    return { ...r, considered: items.length };
   }
 
   /* ---------- OpenClaw import ---------- */

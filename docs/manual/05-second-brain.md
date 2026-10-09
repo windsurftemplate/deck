@@ -12,6 +12,7 @@ The second brain holds your documents and notes so the crew can use them. Open i
 | **Obsidian vault or Markdown folder** | Pick the folder. `[[Wiki links]]` become links on the map. The `.obsidian` settings folder is skipped |
 | **Notion export** | In Notion, export as Markdown and CSV, then pick the zip. Notion's page ids are removed from titles and page links are kept |
 | **Apple Notes** (Mac) | macOS asks you to allow deck to read Notes the first time |
+| **ChatGPT and Codex history** | Settings > Learning > **Import OpenAI history**. ChatGPT: point to the export zip (ChatGPT Settings > Data controls > Export data). Codex: `~/.codex`, sessions from the Codex app and CLI. Press **Scan** to see how many conversations, which dates and (Codex) which projects, then **Import**, optionally only since a date or for chosen projects. One note per conversation; Codex command output, file diffs and reasoning are left out, sub-agent threads are skipped, and its sign-in file is never opened. Very long conversations are cut at 120,000 characters |
 | **Notes** tab | Write notes in the app, in Markdown. Link notes with `[[Note title]]` |
 
 Importing the same folder or export again skips what is already there.
@@ -48,7 +49,7 @@ The left side of the Brain page is a 3D map of what the crew knows.
 | Blue | Files |
 | Green | Notes |
 | Pink | Web pages |
-| Yellow | Imports (Obsidian, Notion, Apple Notes) |
+| Yellow | Imports (Obsidian, Notion, Apple Notes, ChatGPT, Codex) |
 
 Lines are relationships, note links, and documents that mention a person or thing by name. Drag to turn, scroll to zoom, type in **Find in your brain** to highlight matches, and click a point to read it. Documents can be removed from their panel.
 

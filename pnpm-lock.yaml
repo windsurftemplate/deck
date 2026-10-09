@@ -278,6 +278,9 @@ importers:
 
   packages/ingest:
     dependencies:
+      better-sqlite3-multiple-ciphers:
+        specifier: ^11.7.0
+        version: 11.10.0
       fflate:
         specifier: ^0.8.2
         version: 0.8.3

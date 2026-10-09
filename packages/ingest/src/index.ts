@@ -122,3 +122,6 @@ export async function readAppleNotes(run: (script: string) => Promise<string>, l
   const notes = JSON.parse(raw) as { name: string; body: string }[];
   return notes.map((n) => ({ title: n.name || "Untitled note", text: htmlToText(`<body>${n.body}</body>`).text, links: [] })).filter((n) => n.text.trim());
 }
+
+export { parseChatGPTConversations, readChatGPTExport, scanChatGPT, scanCodex, parseCodexRollout, codexItemEvent, codexNote, MAX_ITEM_CHARS, type HistoryItem, type HistoryScan, type CodexStore, type CodexThread, type CodexEvent } from "./openai.js";
+export { openCodexStore } from "./codex-sqlite.js";

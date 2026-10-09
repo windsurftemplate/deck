@@ -290,6 +290,20 @@ Correction: earlier log entries quoted test totals that were estimates and some 
 
 Newest first. One entry per meaningful change: what changed, files touched, decisions, what is next.
 
+## 2026-10-09: Import OpenAI history: ChatGPT and Codex
+
+**Changed**
+- `packages/ingest/src/openai.ts`: `readChatGPTExport` reads ChatGPT's data export (the zip, unpacking only conversations.json, or the json itself) and follows each conversation's final branch, keeping your messages and ChatGPT's answers (code answers as code blocks) and leaving out system notes, tool messages and images. `scanCodex` reads Codex sessions: the Codex app's thread history, and CLI session files in the current and earlier layouts, without reading a thread twice. Each session becomes a note with its project, branch and commit, your messages, Codex's answers, the commands it ran with exit codes, the files it changed by name, and web searches. Codex's injected context, command output, diffs and reasoning are left out; sub-agent and automatic review threads are skipped unless asked for. Conversations over 120,000 characters are cut and marked.
+- `packages/ingest/src/codex-sqlite.ts`: opens the Codex app's storage read-only. It is not a published format, so tables and columns are checked first; anything unexpected falls back to the session files.
+- Engine: `openaiScan` (counts, dates, projects, a few titles; nothing saved) and `openaiImport` (optional start date and Codex projects) into the second brain through the usual path: injection scan, keys removed, outside content, duplicates skipped. Facts are learned from them in the nightly pass.
+- App: Settings > **Import OpenAI history** card (Scan, preview, Import); ChatGPT and Codex notes shown as imports on the brain map. Manual (second brain) and build plan (P5.27) updated.
+- Rebuilt after the local copy with the first version (never pushed) was replaced by a fresh clone.
+
+**Verified**
+- ChatGPT: the final branch only; system, tool and image parts left out; untitled conversations titled from the first question; zip and json; long conversations cut.
+- Codex: both session file layouts; the app storage with sub-agent threads skipped, reasoning, output and diffs left out, the sign-in file untouched; an unknown storage layout falls back to session files.
+- Engine: preview, a start-date filter, a key in a message removed before saving, re-import skipped, a Codex project filter.
+
 ## 2026-10-07: Code memory, part 5: working memory for long tasks (P7.6)
 
 **Changed**

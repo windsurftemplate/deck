@@ -1524,6 +1524,42 @@ describe.runIf(sandboxAvailable())("code memory: fix memory", () => {
   }, 60_000);
 });
 
+describe("OpenAI history import", () => {
+  it("previews and imports ChatGPT and Codex conversations into the second brain, keys removed, without duplicates", async () => {
+    const d = dir();
+    const key = "sk-" + "proj-" + "Q".repeat(40);
+    writeFileSync(join(d, "conversations.json"), JSON.stringify([
+      { id: "c1", title: "Launch plan", create_time: 1759800000, update_time: 1759900000, current_node: "a", mapping: { u: { parent: null, message: { author: { role: "user" }, content: { content_type: "text", parts: [`Use my key ${key}`] } } }, a: { parent: "u", message: { author: { role: "assistant" }, content: { content_type: "text", parts: ["Launch on Tuesday."] } } } } },
+      { id: "c2", title: "Old idea", create_time: 1600000000, update_time: 1600000100, current_node: "u", mapping: { u: { parent: null, message: { author: { role: "user" }, content: { content_type: "text", parts: ["An old idea"] } } } } },
+    ]));
+    const codex = join(d, "codex");
+    mkdirSync(join(codex, "sessions", "2026", "09"), { recursive: true });
+    writeFileSync(join(codex, "sessions", "2026", "09", "rollout-2026-09-01T10-00-00-0199aaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl"), [
+      { timestamp: "2026-09-01T10:00:00Z", type: "session_meta", payload: { id: "s-1", cwd: "/work/app" } },
+      { timestamp: "2026-09-01T10:00:02Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Why does login fail?" }] } },
+      { timestamp: "2026-09-01T10:05:00Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "The token expiry was off by one." }] } },
+    ].map((l) => JSON.stringify(l)).join("\n"));
+    const e = make();
+    await e.open();
+    try {
+      expect(e.openaiScan("chatgpt", join(d, "conversations.json"))).toMatchObject({ conversations: 2, messages: 3, titles: ["ChatGPT: Launch plan", "ChatGPT: Old idea"] });
+      expect(e.openaiScan("codex", codex)).toMatchObject({ conversations: 1, projects: [{ path: "/work/app", conversations: 1 }] });
+      const r = await e.openaiImport("chatgpt", { path: join(d, "conversations.json"), since: "2025-01-01" });
+      expect(r).toMatchObject({ considered: 1, added: 1, skipped: 0 });
+      const docs = await e.brain.documents("chatgpt");
+      expect(docs.map((x) => x.title)).toEqual(["ChatGPT: Launch plan"]);
+      const text = (await e.brain.document(docs[0]!.id))!.text;
+      expect(text).toContain("Launch on Tuesday.");
+      expect(text).not.toContain(key);
+      expect(await e.openaiImport("chatgpt", { path: join(d, "conversations.json"), since: "2025-01-01" })).toMatchObject({ added: 0, skipped: 1 });
+      expect(await e.openaiImport("codex", { path: codex, projects: ["/work/app"] })).toMatchObject({ added: 1 });
+      expect((await e.brain.documents("codex"))[0]!.title).toBe("Codex: Why does login fail?");
+    } finally {
+      await e.close();
+    }
+  });
+});
+
 describe("code memory: live code index", () => {
   it("Engineering searches code by name and meaning; after a rename the new name is found and the old location never served", async () => {
     const U = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };

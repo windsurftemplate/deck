@@ -7,7 +7,7 @@ import { BrainScene, type BrainLink, type BrainNode } from "./scene";
 
 type Doc = { id: number; title: string; kind: string; source: string; chars: number; updatedAt: string };
 type Graph = { nodes: BrainNode[]; links: BrainLink[]; facts: Record<string, string[]> };
-const KIND: Record<string, string> = { file: "File", text: "Pasted text", page: "Web page", note: "Note", obsidian: "Obsidian", notion: "Notion", "apple-notes": "Apple Notes" };
+const KIND: Record<string, string> = { file: "File", text: "Pasted text", page: "Web page", note: "Note", obsidian: "Obsidian", notion: "Notion", "apple-notes": "Apple Notes", chatgpt: "ChatGPT", codex: "Codex" };
 
 const toBase64 = (buf: ArrayBuffer) => {
   const b = new Uint8Array(buf);

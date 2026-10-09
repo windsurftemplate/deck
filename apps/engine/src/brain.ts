@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { extractFile, fetchPage, readAppleNotes, readNotionZip, parseMarkdown, type Extracted } from "@deck/ingest";
+import { extractFile, fetchPage, readAppleNotes, readNotionZip, parseMarkdown, type Extracted, type HistoryItem } from "@deck/ingest";
 import { embedChunks, type Embedder, type MemoryStore } from "@deck/memory";
 import { redactSecrets, scanInjection } from "@deck/gate";
 
@@ -121,6 +121,11 @@ export class Brain {
   async importAppleNotes() {
     if (process.platform !== "darwin" && !this.d.osascript) throw new Error("Apple Notes import works on a Mac.");
     return this.many(await readAppleNotes(this.d.osascript ?? runJxa), "apple-notes", (x) => `apple-notes:${x.title}`);
+  }
+
+  /** ChatGPT or Codex conversations, one note each, scanned and with keys removed like every import. */
+  importHistory(items: HistoryItem[], kind: "chatgpt" | "codex") {
+    return this.many(items, kind, (x) => (x as HistoryItem).source);
   }
 
   /** Notes written in the app. */
